@@ -58,7 +58,7 @@ cd apps/web && npm run build             # needs VITE_SUPABASE_URL/_PUBLISHABLE_
 .venv/Scripts/python -m clipflow_worker.poc produce <url> --clips 3 --seed 42   # 3-5 min clips -> var/poc/<src>/manifest.json
 .venv/Scripts/python -m clipflow_worker.poc produce --file <customer video> [--captions x.srt]
 .venv/Scripts/python -m agent.cli devices | doctor --serial S | dry-run --serial S --file clip.mp4   # stops before any TikTok UI
-.venv/Scripts/python -m agent.cli connect --server http://127.0.0.1:8000 --username U --seconds 60   # token from CLIPFLOW_AGENT_TOKEN or prompt, never argv
+.venv/Scripts/python -m agent.cli connect --server http://127.0.0.1:8000 --username U --seconds 60   # token from CLIPFLOW_AGENT_TOKEN or prompt, never argv; checks/registers phones on start and every 60 s (Q-25, --no-phone-check)
 .venv/Scripts/python -m agent.cli register-devices --server http://127.0.0.1:8000 --username U       # registers ready phones by ro.serialno
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_registration.py   # opt-in, phone on USB
 ```

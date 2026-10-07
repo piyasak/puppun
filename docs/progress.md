@@ -1,10 +1,32 @@
 # Progress
 
-## Current phase: P2 — SaaS foundation (authorized by PO override Q-22). G0 = Yes, G1 = No (5/6, G1-06 deferred).
+## Current phase: P3 — Video production (PO override Q-24; G2 = No 3/5). G0 = Yes, G1 = No (5/6), G2 = No (3/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 03:xx) — CI workflow (G2-05 partial)
+### Latest slice (2026-10-08 06:xx) — Q-25 phone check on Agent start
+- PO: เมื่อเปิด Agent ให้ตรวจ serial โทรศัพท์ ส่งไปเช็กที่ Server ถ้าไม่มีให้ลงทะเบียน และแจ้งให้ไปใส่รายละเอียดในระบบหลังบ้าน
+- Implemented: `agent/device_registry.py` `DeviceSync` + `describe()` (ข้อความไทย), `run_connection(on_session=…)` เรียกตอนเข้าระบบและทุก 60s, `agent.cli connect` เปิดใช้เป็นค่าเริ่มต้น (`--no-phone-check` ปิด); API register ตอบ `missing_details` + `details_url`; `/v1/devices` มี `missing_details`; เว็บ: ป้าย "ต้องใส่รายละเอียด", `?edit=<id>` เปิดฟอร์ม
+- โทรศัพท์จริง (POCO 25078PC3EG): เปิด Agent loop → "ลงทะเบียนโทรศัพท์ 25078PC3EG (TST8…) แล้ว — กรุณาไปใส่รายละเอียด … ที่ http://localhost:5173/devices?edit=…" ✓
+- Bug ที่ test จับได้: รอบตรวจซ้ำ 1 นาทีถัดไปพิมพ์ข้อความเตือนซ้ำ (REGISTERED → ALREADY_REGISTERED) → นับเป็นสถานะเดียวกัน
+- Commands: unit 114 passed; integration 116 passed, 3 skipped; real-device 2 passed; E2E 5 passed; ruff ผ่าน
+
+### Previous slice (2026-10-08 05:xx) — P3.1 jobs + quota ledger
+- PO override Q-24: เริ่ม P3 ทั้งที่ G2 = No (G2-01, G2-05 ค้าง)
+- Implemented: migration 0005 (jobs, job_events, clips, quota_ledger, plans.clips_per_month); `/v1/jobs` สร้าง (idempotency key, ตรวจลิงก์/ชื่อไฟล์, rights Q-14, seed, review/auto ต้องยืนยัน) / รายการ / รายละเอียด / ยกเลิก; `/v1/agent/jobs/claim` + `/events` (E-35); `/v1/workspace/usage.clips`
+- Bug ที่ test จับได้: งานที่ Agent รับแล้วแต่ยังเป็น RECEIVED ถูก Agent ตัวที่สองรับซ้ำได้ → claim ดูจาก lease ไม่ใช่ state
+- Commands: integration 114 passed, 3 skipped; quota race ×3 ผ่าน; unit 111 passed; ruff ผ่าน; `alembic check` no drift; dev DB → 0005
+- Gates: G3 = 0/5 Yes (G3-01/02/04 บางส่วน)
+- Next: P3.2 อัปโหลดคลิป (MinIO, ตรวจ sha256) + preview URL อายุสั้น + metadata version + อนุมัติ (G3-05)
+
+### Previous slice (2026-10-08 04:xx) — CI green on GitHub
+- PO ล็อกอิน GitHub (Git Credential Manager ใน Terminal panel) → push `master` ขึ้น `piyasak/puppun` (private) สำเร็จ, ตั้ง upstream `origin/master`
+- **CI รอบแรกผ่านทั้งหมด (สีเขียว)** — PO ยืนยันในแชต; Claude ดูหน้า Actions ของ repo private ไม่ได้ (browser pane ไม่ได้ล็อกอิน)
+- PO ทดลอง `agent.cli connect` กับ cloud เอง: เชื่อมต่อได้ (Environment `mainx`), heartbeat ครบ
+- Gates: G2 = 3/5; G2-05 เหลือ staging deploy/rollback; G2-01 เหลือ dashboard/E-28/SMTP
+- Next: PO เลือกที่ตั้ง staging
+
+### Previous slice (2026-10-08 03:xx) — CI workflow (G2-05 partial)
 - PO ให้ remote: https://github.com/piyasak/puppun.git
 - Implemented: `.github/workflows/ci.yml` (E-34); ruff config ใน `pyproject.toml` + แก้ lint 84 จุด (ไม่มีบั๊กจริง; `poc.py` lambda ผูกตัวแปรรอบให้ชัด); `tasks.py lint|typecheck|build` ใช้งานได้; Playwright ใช้ Chromium บน Linux
 - Commands: `py tasks.py lint` → ผ่าน (oxlint warning 5 จุด set-state-in-effect); `py tasks.py typecheck` → ผ่าน; Python job ใน container Linux → ruff ผ่าน, integration 84 passed, unit 110 passed + 1 ที่ล้มเพราะไม่ได้ copy `apps/` เข้า container

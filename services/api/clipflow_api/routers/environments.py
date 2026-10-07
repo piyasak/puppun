@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import audit
+from .. import audit, quota
+from ..agent_sessions import now
 from ..deps import WebAuth, get_db, web_auth
 from ..entitlements import LIMITS, allocated, check_allocation, entitlement, in_use
 from ..errors import ApiError
@@ -70,6 +71,7 @@ def workspace_usage(auth: WebAuth = Depends(web_auth), db: Session = Depends(get
         "caps": {name: ent.cap(name) for name in LIMITS},
         "allocated": allocated(db, auth.workspace_id),
         "in_use": in_use(db, workspace_id=auth.workspace_id),
+        "clips": quota.summary(db, auth.workspace_id, now()),
     }
 
 

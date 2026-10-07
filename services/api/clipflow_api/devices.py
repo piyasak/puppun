@@ -109,6 +109,17 @@ def report(db: Session, ctx: AgentContext, states: dict[str, str]) -> int:
     return len(rows)
 
 
+def missing_details(device: Device) -> list[str]:
+    """Owner-entered fields still empty. The phone cannot be scheduled for posting until the
+    expected TikTok account is set (FR-16); the display name is for the owner's convenience."""
+    missing = []
+    if not device.display_name:
+        missing.append("display_name")
+    if not device.expected_account:
+        missing.append("expected_account")
+    return missing
+
+
 def readiness(device: Device, agent_online: bool) -> str:
     """ready / unauthorized / offline / missing / agent_offline / unknown for the web UI."""
     if device.unbound_at is not None:

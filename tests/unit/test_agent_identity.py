@@ -105,3 +105,13 @@ def test_expired_session_reconnects_once_then_continues():
     client = FakeClient([None, expired, None, expired, expired])
     result = _run(client, duration=300)
     assert client.auths == 3 and result.stopped_because == "expired"
+
+
+def test_phone_check_runs_on_start_and_then_every_minute():
+    calls = []
+    client = FakeClient([])
+    t = [0.0]
+    run_connection(client, "u", "cfat_x", "inst", 150, sleep=lambda s: t.__setitem__(0, t[0] + s),
+                   clock=lambda: t[0], log=lambda *_: None, on_session=lambda c, s: calls.append(t[0]),
+                   periodic_s=60)
+    assert calls == [0.0, 60.0, 120.0]

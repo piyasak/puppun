@@ -53,3 +53,20 @@ def test_register_the_phone_on_this_pc(onboard, server_url):
     # Release it again so the shared test database holds no binding for the real serial.
     owner.post(f"/v1/devices/{listed[0]['id']}/unbind")
     print(f"real phone: model={phone.model} android={phone.android_version} serial={phone.hw_serial[:4]}…")
+
+
+def test_agent_start_phone_check_with_the_real_phone(onboard, server_url):
+    """Q-25 with the real phone: start the Agent loop; the phone is registered and the message points to the web."""
+    from agent.device_registry import DeviceSync
+    from agent.server_client import run_connection
+
+    acc = onboard()
+    env = acc.post("/v1/environments", json={"name": "QA", "device_limit": 1}).json()
+    token = acc.post("/v1/agent-tokens", json={"environment_id": env["id"], "name": "QA PC"}).json()["token"]
+    logs = []
+    run_connection(ServerClient(server_url), acc.username, token, str(uuid.uuid4()), duration_s=0, log=logs.append,
+                   on_session=DeviceSync(lambda: Adb(default_runner()), log=logs.append))
+    device = acc.get("/v1/devices").json()["items"][0]
+    assert any(m.startswith("ลงทะเบียนโทรศัพท์") and f"/devices?edit={device['id']}" in m for m in logs), logs
+    acc.post(f"/v1/devices/{device['id']}/unbind")
+    print("\n".join(m.replace(device["serial"], device["serial"][:4] + "…") for m in logs))

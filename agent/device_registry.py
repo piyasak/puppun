@@ -55,8 +55,83 @@ def register_ready(client, session, phones: list[SeenPhone], only: str | None = 
         try:
             body = client.register_device(session, p.hw_serial, p.state, p.model, p.android_version)
             outcome = "REGISTERED" if body.get("created") else "ALREADY_REGISTERED"
-            results.append({"serial": p.hw_serial, "state": p.state, "outcome": outcome, "device_id": body["id"]})
+            results.append({"serial": p.hw_serial, "state": p.state, "outcome": outcome, "device_id": body["id"],
+                            "model": p.model, "display_name": body.get("display_name"),
+                            "expected_account": body.get("expected_account"),
+                            "missing_details": body.get("missing_details", []),
+                            "details_url": body.get("details_url")})
         except ServerError as exc:
-            results.append({"serial": p.hw_serial, "state": p.state, "outcome": exc.code, "message": exc.message})
+            results.append({"serial": p.hw_serial, "state": p.state, "outcome": exc.code, "message": exc.message,
+                            "model": p.model})
     client.report_devices(session, report_map(phones))
     return results
+
+
+def describe(result: dict) -> str:
+    """One Thai line per phone for the Agent's console / local status UI (Q-25)."""
+    name = result.get("display_name") or result.get("model") or "โทรศัพท์"
+    serial = result.get("serial") or result.get("adb_serial") or "?"
+    phone = f"{name} ({serial})"
+    outcome = result["outcome"]
+    url = result.get("details_url")
+    if outcome == "REGISTERED":
+        return f"ลงทะเบียนโทรศัพท์ {phone} แล้ว — กรุณาไปใส่รายละเอียด (ชื่อเรียกเครื่อง, บัญชี TikTok) ที่ {url}"
+    if outcome == "ALREADY_REGISTERED":
+        if result.get("missing_details"):
+            return f"โทรศัพท์ {phone} ลงทะเบียนไว้แล้ว แต่ยังไม่ได้ใส่รายละเอียด — กรุณาไปใส่ที่ {url}"
+        return f"โทรศัพท์ {phone} พร้อมใช้งาน (บัญชี TikTok @{result.get('expected_account')})"
+    if outcome == "SERIAL_UNAVAILABLE":
+        return f"โทรศัพท์ {phone} เชื่อมผ่าน ADB แบบ Wi-Fi ใช้ลงทะเบียนไม่ได้ — กรุณาเสียบสาย USB"
+    return f"โทรศัพท์ {phone}: {result.get('message') or outcome}"
+
+
+class DeviceSync:
+    """Phone check on Agent start and every minute while it runs (Q-25).
+
+    Each call reads the phones over ADB, registers the ready ones the server does not know
+    yet, and reports every phone's state. Only changes are announced, so the console is not
+    flooded every minute. Never raises: a missing `adb` or a server refusal becomes a message.
+    """
+
+    def __init__(self, adb_factory, log=print):
+        self._adb_factory = adb_factory
+        self._log = log
+        self._last: dict[str, str] = {}  # serial -> last announced outcome/state
+        self._adb = None
+        self.announced_empty = False
+
+    def __call__(self, client, session) -> list[dict]:
+        from agent.adb import AdbError
+        from agent.server_client import ServerError
+
+        try:
+            if self._adb is None:
+                self._adb = self._adb_factory()
+            phones = discover(self._adb)
+        except (AdbError, OSError) as exc:
+            self._say_once("adb", f"อ่านโทรศัพท์ผ่าน ADB ไม่ได้: {exc}")
+            return []
+        if not phones:
+            self._say_once("none", "ไม่พบโทรศัพท์ — เสียบสาย USB และเปิด USB debugging")
+            return []
+        self._last.pop("none", None)
+        try:
+            results = register_ready(client, session, phones)
+        except ServerError as exc:
+            self._say_once("server", f"ส่งข้อมูลโทรศัพท์ไปที่เซิร์ฟเวอร์ไม่ได้: {exc.message}")
+            return []
+        for r in results:
+            key = r.get("serial") or r.get("adb_serial")
+            # Newly registered and already registered are the same state for announcements: the
+            # reminder about missing details is shown once per run, not again a minute later.
+            outcome = "BOUND" if r["outcome"] in ("REGISTERED", "ALREADY_REGISTERED") else r["outcome"]
+            signature = f"{outcome}|{r['state']}|{','.join(r.get('missing_details') or [])}"
+            if self._last.get(key) != signature:
+                self._last[key] = signature
+                self._log(describe(r))
+        return results
+
+    def _say_once(self, key: str, message: str) -> None:
+        if self._last.get(key) != message:
+            self._last[key] = message
+            self._log(message)

@@ -102,16 +102,23 @@ class RunResult:
 
 
 def run_connection(client: ServerClient, username: str, agent_token: str, installation_id: str,
-                   duration_s: float | None, sleep=time.sleep, clock=time.monotonic, log=print) -> RunResult:
+                   duration_s: float | None, sleep=time.sleep, clock=time.monotonic, log=print,
+                   on_session=None, periodic_s: float = 60.0) -> RunResult:
     """Authenticate, then heartbeat until `duration_s` elapses or the server ends the session.
 
     A superseded, revoked or deregistered session stops the loop instead of signing in again:
     re-authenticating automatically would steal the session back from the newer process.
     An expired session (e.g. the PC slept) signs in again once.
+
+    `on_session(client, session)` runs right after sign-in and then every `periodic_s` seconds
+    (the phone check, Q-25).
     """
     session = client.authenticate(username, agent_token, installation_id)
     log(f"connected: environment={session.environment['name']} generation={session.generation}")
+    if on_session:
+        on_session(client, session)
     started, beats, reauthed = clock(), 0, False
+    last_check = clock()
     try:
         while duration_s is None or clock() - started < duration_s:
             sleep(session.heartbeat_interval_s)
@@ -119,6 +126,9 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
                 client.heartbeat(session)
                 beats += 1
                 reauthed = False
+                if on_session and clock() - last_check >= periodic_s:
+                    on_session(client, session)
+                    last_check = clock()
             except ServerError as exc:
                 if exc.code == "AGENT_SESSION_ENDED" and exc.reason == "expired" and not reauthed:
                     session, reauthed = client.authenticate(username, agent_token, installation_id), True
