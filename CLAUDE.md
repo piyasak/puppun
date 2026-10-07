@@ -15,7 +15,7 @@ G0 is Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. P2 (the SaaS fo
   - `poc.py`: the CLI.
 - `services/api/clipflow_api/`: the P2 API (FastAPI). Browser identity is Supabase Auth (E-27, project `punpun`, see `docs/runbooks/supabase-auth.md`). `identity.py` verifies the Bearer access token against the JWKS: ES256/RS256 only, public keys only. It also has `POST /v1/onboarding` (username + Workspace + rights acceptance + demo plan), `/v1/me`, `/v1/workspace/usage`, Environments whose limits are allocations of the plan caps (`entitlements.py`, checked under the subscription row lock), Agent tokens (`agent_tokens.py`: `cfat_<prefix>_<secret>`, stored as prefix + SHA-256 and shown once; parse tokens with `TOKEN_RE`, never `split('_')`), Alembic migrations in `services/api/migrations/`, and integration tests in `services/api/tests/` that run against a throwaway Postgres database. Tenant scoping goes through `tenancy.py` (`scoped`/`get_owned`), and cross-tenant access returns the same 404 as a missing row.
 - `apps/web/`: React + TS + Vite web app. It has Thai auth screens (signup, login, forgot, reset), onboarding and a dashboard shell. Supabase settings come from `.env*.local` (gitignored, public values only). Playwright journeys live in `apps/web/e2e/` and must only target the local Supabase (`supabase/config.toml`).
-- `agent/`: the P1 Agent POC. It has an ADB adapter, a write-ahead attempt journal (`attempt.py`) and a CLI. It has not been tested on a real phone yet.
+- `agent/`: the Agent. It has an ADB adapter, a write-ahead attempt journal (`attempt.py`), the server client (`server_client.py`: sign-in, heartbeat, phones, jobs, clip upload), the phone check (`device_registry.py`, Q-25) and the job runner (`job_runner.py`, E-37). The job runner claims a job, runs the P1 pipeline (`services/worker/clipflow_worker/pipeline.py`) and uploads clips; it keeps rendered clips under `<data dir>/clips/<job id>/` for posting later.
 - `docker-compose.yml`: local Postgres 16, Redis 7 and MinIO (private bucket `clipflow-media`), bound to 127.0.0.1.
 - `tools/check_gate.py`, `tasks.py` (the Windows task runner; there is no `make`) and a `Makefile` wrapper.
 
@@ -58,7 +58,8 @@ cd apps/web && npm run build             # needs VITE_SUPABASE_URL/_PUBLISHABLE_
 .venv/Scripts/python -m clipflow_worker.poc produce <url> --clips 3 --seed 42   # 3-5 min clips -> var/poc/<src>/manifest.json
 .venv/Scripts/python -m clipflow_worker.poc produce --file <customer video> [--captions x.srt]
 .venv/Scripts/python -m agent.cli devices | doctor --serial S | dry-run --serial S --file clip.mp4   # stops before any TikTok UI
-.venv/Scripts/python -m agent.cli connect --server http://127.0.0.1:8000 --username U --seconds 60   # token from CLIPFLOW_AGENT_TOKEN or prompt, never argv; checks/registers phones on start and every 60 s (Q-25, --no-phone-check)
+.venv/Scripts/python -m agent.cli connect --server http://127.0.0.1:8000 --username U --seconds 60 [--media-dir D]   # token from CLIPFLOW_AGENT_TOKEN or prompt, never argv; checks/registers phones on start and every 60 s (Q-25, --no-phone-check); claims and makes clip jobs one at a time (P3.3, --no-jobs)
+CLIPFLOW_REAL_SOURCE_URL=<corpus url> .venv/Scripts/python -m pytest services/api/tests/test_real_source_job.py   # opt-in, network: real source through the job runner
 .venv/Scripts/python -m agent.cli register-devices --server http://127.0.0.1:8000 --username U       # registers ready phones by ro.serialno
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_registration.py   # opt-in, phone on USB
 ```

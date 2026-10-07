@@ -27,9 +27,9 @@ from yt_dlp.utils import DownloadError, download_range_func
 
 from clipflow_worker import segments as seg
 from clipflow_worker.cooldown import Cooldown
-from clipflow_worker.local_source import inspect_local, sidecar_captions
+from clipflow_worker.local_source import inspect_local
 from clipflow_worker.media import binary, duration_gaps, ensure_on_path, probe
-from clipflow_worker.render import ClipText, RenderError, Template, render_clip
+from clipflow_worker.render import ClipText, RenderError, Template
 from clipflow_worker.source import (
     DEFAULT_MAX_DURATION_S,
     SourceError,
@@ -37,7 +37,6 @@ from clipflow_worker.source import (
     SourceInfo,
     _base_opts,
     _classify_download_error,
-    check_limits,
     classify_platform,
     format_options,
     inspect,
@@ -169,45 +168,33 @@ def clip_text(source_title: str, index: int, total: int) -> tuple[ClipText, dict
 
 
 def produce(args: argparse.Namespace) -> dict:
+    from clipflow_worker import pipeline  # imports this module's download helpers
+
     out_root = Path(args.out)
     t0 = time.perf_counter()
     local = Path(args.file) if args.file else None
     info = inspect_local(local) if local else inspect(args.url)
-    check_limits(info, args.max_duration)
     job_dir = out_root / f"{info.platform}_{info.source_id[:16]}_seed{args.seed}"
-    work = job_dir / "work"
-    work.mkdir(parents=True, exist_ok=True)
-
-    if local:
-        captions = Path(args.captions) if args.captions else sidecar_captions(local)
-        pauses, noise_db = analyze_pauses(local, info.duration_s)
-    else:
-        captions = fetch_captions(args.url, info, work)
-        pauses, noise_db = detect_pauses(args.url, work, info.duration_s)
-    cues = seg.load_cues(captions) if captions else []
-    candidates = seg.pause_candidates(pauses, args.min_len, args.max_len)
-    if not candidates:
-        candidates = seg.time_candidates(info.duration_s, args.min_len, args.max_len)
-    selection = seg.select(candidates, args.clips, args.seed)
+    p = pipeline.plan(work=job_dir / "work", count=args.clips, seed=args.seed, min_len=args.min_len,
+                      max_len=args.max_len, url=args.url, local=local,
+                      captions=Path(args.captions) if args.captions else None, max_duration=args.max_duration,
+                      info=info)
+    info, selection = p.info, p.selection
     t_select = time.perf_counter()
 
     tpl = Template(burn_subtitles=not args.no_subtitles)
     clips = []
     for index, segment in enumerate(selection.segments, start=1):
         c0 = time.perf_counter()
-        if local:
-            part, offset = local, segment.start  # cut straight from the customer's file
-        else:
-            part, offset = download_range(args.url, segment.start, segment.end, work, args.max_height), 0.0
+        part, offset = pipeline.fetch_part(p, segment, args.max_height)
         c1 = time.perf_counter()
-        text, metadata = clip_text(info.title, index, len(selection.segments))
-        text.subtitles = seg.cues_within(cues, segment)
-        result = render_clip(part, offset, segment.duration, text, job_dir / f"clip_{index:02d}.mp4", tpl)
+        result, metadata, cue_count = pipeline.render(p, index, segment, part, offset,
+                                                      job_dir / f"clip_{index:02d}.mp4", tpl)
         c2 = time.perf_counter()
         clips.append({
             "index": index,
             "source_interval": segment.to_dict(),
-            "subtitle_cues": len(text.subtitles),
+            "subtitle_cues": cue_count,
             "metadata": metadata,
             "render": {**asdict(result), "path": result.path.name},
             "timing_s": {"download": round(c1 - c0, 2), "render": round(c2 - c1, 2)},
@@ -227,9 +214,9 @@ def produce(args: argparse.Namespace) -> dict:
             "insufficient_content": selection.insufficient,
             "candidates": selection.candidates,
             "method": selection.segments[0].method if selection.segments else None,
-            "caption_track": captions.name if captions else None,
-            "audio_pauses": len(pauses),
-            "silence_threshold_db": noise_db,
+            "caption_track": p.caption_track,
+            "audio_pauses": p.pauses,
+            "silence_threshold_db": p.noise_db,
         },
         "template_version": tpl.version,
         "burn_subtitles": tpl.burn_subtitles,

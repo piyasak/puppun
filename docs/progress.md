@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 07:xx) — P3.2 clip delivery, checks, preview, metadata, approval
+### Latest slice (2026-10-08 09:xx) — P3.3 Agent job runner
+- Implemented: `agent/job_runner.py` (E-37: claim → วิเคราะห์ → source_validated → ดาวน์โหลดช่วง → render → clip_rendered → อัปโหลด → completed; keep-alive `progress`; หยุดเมื่อ LEASE_LOST/JOB_NOT_ACTIVE; resume หลัง restart), `clipflow_worker/pipeline.py` (P1 pipeline เป็นขั้นตอนที่ใช้ซ้ำ; POC CLI ใช้ตัวเดียวกัน), ServerClient: claim/event/upload; `agent.cli connect --media-dir/--no-jobs`; Server: event `progress`, spec มีรายการคลิปที่รายงานแล้ว, คลิปที่ยังไม่อัปโหลดรายงานใหม่ได้
+- Commands: integration 136 passed, 5 skipped (opt-in) — ใหม่ 6 tests ของ runner บนไฟล์วิดีโอจริงที่ ffmpeg สร้าง (หยุดเสียงทุก 10 วินาที → ตัดตรงกลางช่วงเงียบ); opt-in YouTube จริง (P1 corpus `PBES5k67dhI`, 101 นาที): READY_FOR_REVIEW 2 คลิป 3:51/4:06 ผ่านการตรวจ, โควตา 2/2, 9.8 นาที — สรุปใน var/evidence/p33_real_source.json; unit 114; ruff ผ่าน; POC `produce --file` ยังทำงาน
+- Found: เทสต์ที่เรียก runner โดยไม่มี heartbeat ทำให้ session หมดอายุ 90 วินาทีระหว่างดาวน์โหลดเสียง — ของจริงใช้ heartbeat แยก thread (`run_connection`); ต้นฉบับที่มีซับฝังในภาพ ต้องสร้างงานด้วย subtitles=false
+- Gates: G3 2/5 Yes (G3-02, G3-04); G3-03 รอ PO ดูคลิปจริง (var/evidence/p33_real_clips/)
+- Next: P3.4 หน้าเว็บ สร้างงาน/รายการงาน/รายละเอียด + preview + แก้ข้อความ + อนุมัติ; T08 + render limits (G3-01)
+
+### Previous slice (2026-10-08 07:xx) — P3.2 clip delivery, checks, preview, metadata, approval
 - Implemented: migration 0006 (clip file/check/approval columns, clip_metadata); `storage.py` (S3/MinIO + local), `mediacheck.py` (ffprobe), `clips.py` (accept_upload, metadata versions, approve/unapprove, auto policy); routes: `PUT /v1/agent/jobs/{id}/clips/{n}/file`, `/v1/clips/{id}` (detail + history), `/media` (ลิงก์ 5 นาที), `PATCH /metadata`, `/approve`, `/unapprove`, `/v1/media/...` (local signed); โควตาหักเมื่อไฟล์ถึงและ hash ตรง; `completed` ต้องอัปโหลดครบ (E-36)
 - Commands: integration 128 passed, 4 skipped (opt-in); clip tests 11 ผ่านด้วยไฟล์ 1080×1920 H.264/AAC จริงจาก ffmpeg; MinIO presigned test ผ่าน (private bucket ปฏิเสธลิงก์ไม่ลงชื่อ 403); unit 114; ruff ผ่าน; dev DB → 0006; API (8000) ใช้ MinIO แล้ว
 - Gates: G3 0/5 Yes — G3-03, G3-05 บางส่วนเพิ่ม

@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 AGENT_VERSION = "0.1.0"
@@ -52,13 +53,17 @@ class ServerClient:
         self.timeout_s = timeout_s
 
     def _post(self, path: str, body: dict, bearer: str | None = None) -> dict:
+        return self._send("POST", path, json.dumps(body).encode(), "application/json", bearer)
+
+    def _send(self, method: str, path: str, data, content_type: str, bearer: str | None,
+              extra_headers: dict | None = None, timeout_s: float | None = None) -> dict:
         req = urllib.request.Request(
-            self.base + path, data=json.dumps(body).encode(), method="POST",
-            headers={"Content-Type": "application/json", "User-Agent": f"ClipFlowAgent/{AGENT_VERSION}",
-                     **({"Authorization": f"Bearer {bearer}"} if bearer else {})},
+            self.base + path, data=data, method=method,
+            headers={"Content-Type": content_type, "User-Agent": f"ClipFlowAgent/{AGENT_VERSION}",
+                     **({"Authorization": f"Bearer {bearer}"} if bearer else {}), **(extra_headers or {})},
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=timeout_s or self.timeout_s) as resp:
                 raw = resp.read()
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as exc:
@@ -88,6 +93,19 @@ class ServerClient:
     def report_devices(self, session: Session, states: dict[str, str]) -> dict:
         return self._post("/v1/agent/devices/report", {"devices": states}, bearer=session.token)
 
+    def claim_job(self, session: Session) -> dict | None:
+        return self._post("/v1/agent/jobs/claim", {}, bearer=session.token)["job"]
+
+    def job_event(self, session: Session, job_id: str, event: dict) -> dict:
+        return self._post(f"/v1/agent/jobs/{job_id}/events", event, bearer=session.token)
+
+    def upload_clip(self, session: Session, job_id: str, index: int, path: Path) -> dict:
+        """Streams the file; the server hashes it and compares with the clip_rendered report."""
+        size = path.stat().st_size
+        with open(path, "rb") as fh:
+            return self._send("PUT", f"/v1/agent/jobs/{job_id}/clips/{index}/file", fh, "video/mp4",
+                              session.token, {"Content-Length": str(size)}, timeout_s=max(60.0, size / 1e6))
+
     def end(self, session: Session) -> None:
         # Best effort; the server expires the session after 90 s anyway.
         with contextlib.suppress(ServerError, OSError):
@@ -103,7 +121,7 @@ class RunResult:
 
 def run_connection(client: ServerClient, username: str, agent_token: str, installation_id: str,
                    duration_s: float | None, sleep=time.sleep, clock=time.monotonic, log=print,
-                   on_session=None, periodic_s: float = 60.0) -> RunResult:
+                   on_session=None, periodic_s: float = 60.0, worker=None) -> RunResult:
     """Authenticate, then heartbeat until `duration_s` elapses or the server ends the session.
 
     A superseded, revoked or deregistered session stops the loop instead of signing in again:
@@ -112,11 +130,17 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
 
     `on_session(client, session)` runs right after sign-in and then every `periodic_s` seconds
     (the phone check, Q-25).
+
+    `worker` (the job runner, P3.3) works in its own thread and always uses the current session;
+    the heartbeat stays on this thread so a long render never lets the session expire.
     """
     session = client.authenticate(username, agent_token, installation_id)
+    current = [session]
     log(f"connected: environment={session.environment['name']} generation={session.generation}")
     if on_session:
         on_session(client, session)
+    if worker:
+        worker.start(client, lambda: current[0])
     started, beats, reauthed = clock(), 0, False
     last_check = clock()
     try:
@@ -132,10 +156,13 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
             except ServerError as exc:
                 if exc.code == "AGENT_SESSION_ENDED" and exc.reason == "expired" and not reauthed:
                     session, reauthed = client.authenticate(username, agent_token, installation_id), True
+                    current[0] = session
                     log(f"session expired; reconnected: generation={session.generation}")
                     continue
                 log(f"stopped by server: {exc.code} {exc.reason or ''} — {exc.message}")
                 return RunResult(beats, exc.reason or exc.code, session.environment)
         return RunResult(beats, "duration_elapsed", session.environment)
     finally:
+        if worker:
+            worker.stop()
         client.end(session)
