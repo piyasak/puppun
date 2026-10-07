@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-Phases 0 and P1 are in progress: G0 and G1 are No. Clips are 3–5 minutes (D02); P1 phone testing happens on a separate QA machine (Q-13), and no SaaS application exists yet. What exists:
+G0 is Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. P2 (the SaaS foundation) is in progress under PO override Q-22. Clips are 3–5 minutes (D02). The QA machine is this PC, with one phone model (POCO 25078PC3EG). What exists:
 - `PRD_CLAUDE_CODE.md`: the product source of truth. Sections A–N are the implementation contract; section O is the full Thai PRD with the 47 gate checks and UAT cases. The `.docx` is the original and duplicates section O.
 - `docs/`: progress (read first), architecture, decisions (D/Q/E registers, including PO answers from 2026-10-06), requirements-map, ui-map, backlog, compatibility (real source/device results), and `gates/G0–G8.md`.
 - `services/worker/clipflow_worker/`: the P1 media POC.
@@ -13,6 +13,8 @@ Phases 0 and P1 are in progress: G0 and G1 are No. Clips are 3–5 minutes (D02)
   - `textlayout.py`: Thai-safe line wrapping.
   - `render.py`: 9:16 output via libass/.ass.
   - `poc.py`: the CLI.
+- `services/api/clipflow_api/`: the P2 API (FastAPI). Browser identity is Supabase Auth (E-27, project `punpun`, see `docs/runbooks/supabase-auth.md`). `identity.py` verifies the Bearer access token against the JWKS: ES256/RS256 only, public keys only. It also has `POST /v1/onboarding` (username + Workspace + rights acceptance), `/v1/me`, tenant-scoped Environments, Alembic migrations in `services/api/migrations/`, and integration tests in `services/api/tests/` that run against a throwaway Postgres database. Tenant scoping goes through `tenancy.py` (`scoped`/`get_owned`), and cross-tenant access returns the same 404 as a missing row.
+- `apps/web/`: React + TS + Vite web app. It has Thai auth screens (signup, login, forgot, reset), onboarding and a dashboard shell. Supabase settings come from `.env*.local` (gitignored, public values only). Playwright journeys live in `apps/web/e2e/` and must only target the local Supabase (`supabase/config.toml`).
 - `agent/`: the P1 Agent POC. It has an ADB adapter, a write-ahead attempt journal (`attempt.py`) and a CLI. It has not been tested on a real phone yet.
 - `docker-compose.yml`: local Postgres 16, Redis 7 and MinIO (private bucket `clipflow-media`), bound to 127.0.0.1.
 - `tools/check_gate.py`, `tasks.py` (the Windows task runner; there is no `make`) and a `Makefile` wrapper.
@@ -38,11 +40,17 @@ Web: React + TypeScript + Vite (`apps/web/`). API: Python FastAPI (`services/api
 ## Commands
 
 ```
-py tasks.py setup                        # create .venv, pip install -e services/worker + pytest
+py tasks.py setup                        # create .venv, pip install -e services/worker + services/api[test] + pytest
 py tasks.py test-unit                    # tests/unit + services/worker/tests (uses .venv)
 .venv/Scripts/python -m pytest services/worker/tests/test_poc_units.py::test_name   # single test
 py tasks.py check-gate <n>               # validate docs/gates/Gn.md: 0 passed, 1 not passed, 2 invalid record
 docker compose up -d                     # local Postgres/Redis/MinIO (Docker Desktop must be running)
+py tasks.py migrate [alembic args]       # default: upgrade head on DATABASE_URL or the local compose DB
+py tasks.py test-integration             # services/api/tests on a throwaway DB (skips if Postgres is down; a skip is not evidence)
+npx supabase start -x studio,storage-api,imgproxy,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta   # local auth + Mailpit
+py tasks.py test-e2e                     # Playwright (apps/web/e2e, Edge) on LOCAL Supabase + fresh clipflow_e2e DB
+cd apps/web && npm run build             # tsc + vite build; `npm run lint` = oxlint
+.venv/Scripts/python -m uvicorn clipflow_api.app:app --port 8000   # needs DATABASE_URL and SUPABASE_URL
 
 # P1 POC (run from the repo root with PYTHONPATH=services/worker, or after setup)
 .venv/Scripts/python -m clipflow_worker.poc inspect <url>...
@@ -67,7 +75,7 @@ Environment notes:
 **Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, then uploads the finished clip + sha256 for preview/approval. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
 
 **Identity chain:** Workspace → Username + Agent Token → server-bound Environment → Agent installation/session → Android serial → expected TikTok account.
-- Browser auth and Agent auth are separate.
+- Browser auth (Supabase Auth JWT in `Authorization: Bearer`, never cookies or query strings) and Agent auth (our own tokens, P2.4/P2.5) are separate. Never create accounts on the real Supabase project yourself; the PO runs live sign-up tests.
 - The Environment scope comes from the token on the server, never from a client claim.
 - Tokens are stored as public prefix + hash. The secret is shown once.
 - Reconnecting the same `installation_id` does not count as a new registration.

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipflow-api"
+version = "0.1.0"
+description = "ClipFlow API (P2: auth, workspace, tenant isolation)"
+requires-python = ">=3.12"
+# Tested combination recorded in docs/compatibility.md (P2.1, 2026-10-07).
+dependencies = [
+    "fastapi>=0.118",
+    "sqlalchemy>=2.0.43",
+    "alembic>=1.16",
+    "psycopg[binary]>=3.2.10",
+    "pyjwt[crypto]>=2.10",
+    "pydantic-settings>=2.10",
+    "uvicorn>=0.37",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+include = ["clipflow_api*"]

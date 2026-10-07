@@ -25,7 +25,8 @@
 | P1.6 | Partial — journal + recovery (fault-injection unit tests) | ทดสอบตัดการเชื่อมต่อบนเครื่องจริง | 2 |
 | P1.7 | Terms review (dated) + compatibility matrix + benchmark/cost | PO อ่านและตัดสิน D04 | 2 |
 
-## P2 — SaaS foundation (ขึ้นกับ G1 Yes)
+## P2 — SaaS foundation (ขึ้นกับ G1 Yes — เริ่มตาม PO override Q-22)
+สถานะ 2026-10-07: ✅ FastAPI skeleton + Alembic • ✅ Auth/Workspace + reset (backend) • ✅ Tenant repository layer + cross-tenant tests (Environments) — ที่เหลือด้านล่าง
 Docker Compose (Postgres/Redis/MinIO) • FastAPI skeleton + Alembic • Auth/Workspace + reset • Tenant repository layer + cross-tenant test suite • Environment + plan caps (transactional) • Token lifecycle + log redaction • Agent authenticate/heartbeat/fencing • Device register/ownership • Web shell (sidebar, auth, dashboard, connection, tokens, environments, agents, devices, settings) • CI (lint/typecheck/test/build) • staging deploy/rollback — ประมาณ 10–12 วัน
 
 ## P3 — Video production (ขึ้นกับ G2) — 10 วัน (ปรับตาม Q-15: logic ผลิตคลิปรันบน Agent; Server รับคลิป ตรวจ hash ทำ preview/approve)

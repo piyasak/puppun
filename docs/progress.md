@@ -4,7 +4,35 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-07 21:xx) — power saving (Q-23)
+### Latest slice (2026-10-07 23:xx) — cloud sign-up verified by PO
+- **Cloud จริง (PO, 2026-10-07 22:09–22:10 น.)**: สมัครด้วยอีเมลบริษัท → Supabase ส่งอีเมลยืนยัน (`mail.send` confirmation) → PO กดลิงก์ → `user_signedup` + login (implicit) → API `/v1/me` 403 ONBOARDING_REQUIRED → `POST /v1/onboarding` 201 → `/v1/me` 200; DB: users.id = Supabase user id, role owner, rights 2026-10-07, audit `account.onboard` พร้อม request_id. **ข้อค้นพบ**: ระบบสแกนอีเมลของ Microsoft 365 (IP 104.47.x / 57.155.x) เปิดลิงก์ยืนยันเองหลังผู้ใช้ 14 วินาที → ได้ 'One-time token not found' — ถ้าตัวสแกนเปิดก่อนผู้ใช้ ลิงก์จะใช้ไม่ได้ (ต้องแก้ E-28). Reset บน cloud ยังไม่ได้ทดสอบ (มีใน E2E local แล้ว)
+
+### Previous slice (2026-10-07 23:xx) — web auth screens + Playwright E2E
+- PO: ทดสอบด้วย Playwright + อีเมลจริง (confirm เอง) → Claude สมัครบัญชี/พิมพ์รหัสผ่านบนบริการภายนอกไม่ได้ จึงตกลงทำ 2 แบบ: (1) E2E อัตโนมัติบน Supabase local (2) PO ทดสอบเองบน cloud ผ่านหน้า localhost
+- ใหม่ `apps/web` (React 19 + TS 6 + Vite 8, supabase-js 2.117, react-router 7): หน้า สมัคร / เข้าสู่ระบบ / ลืมรหัสผ่าน / ตั้งรหัสใหม่ / ตั้งค่าบัญชี (onboarding + คำรับรองสิทธิ์) / แดชบอร์ด (ข้อมูลจาก `/v1/me`) — ภาษาไทย, โทนน้ำเงิน, label + error inline, dark mode, mobile
+- ใหม่ Supabase local (`supabase/config.toml`, ES256, confirm email, min 10, Mailpit) + `py tasks.py test-e2e` → **2 passed** (Edge)
+- `npm run build` ผ่าน (tsc + vite), `oxlint` 1 warning (fast-refresh)
+- Cloud: API (8000) + web (localhost:3000) ชี้ไป `punpun` รันอยู่ รอ PO สมัครด้วย piyasak_s@boonrawd.co.th และ confirm เอง — อีเมลจะส่งถึงเฉพาะเมื่ออีเมลนี้เป็นสมาชิกทีมของ org ใน Supabase (ข้อจำกัดตัวส่งพื้นฐาน)
+
+### Previous slice (2026-10-07 22:xx) — E-25 = Supabase → browser auth on Supabase Auth (E-27)
+- PO: E-25 ใช้ Supabase; เลือก "ย้าย Auth ไป Supabase" + สร้างโปรเจกต์ใหม่ `punpun` (ap-southeast-1, Free, $0/เดือน ยืนยันแล้ว) → สร้างแล้ว ref `wqcbubphiihpseqzglwe`
+- เปลี่ยน: ลบ register/login/logout/reset/session cookie/CSRF/Argon2/dev outbox ออกจาก API; เพิ่ม `identity.py` (ตรวจ Supabase JWT ด้วย JWKS, ES256/RS256 เท่านั้น), `POST /v1/onboarding`, `users.id` = Supabase user id; migration 0001 เขียนใหม่ (ยังไม่เคย commit/deploy; ล้าง dev DB ที่มีแต่ข้อมูล smoke แล้ว migrate ใหม่)
+- Commands: `py tasks.py test-integration` (+ `CLIPFLOW_SUPABASE_URL`) → 28 passed, 1 skipped (ไม่มี live token); `alembic check` → no drift; uvicorn + JWKS จริง: healthz 200, token ปลอม 401; `test-unit` → 92 passed
+- PO ต้องทำ: ตั้งค่า Supabase dashboard (confirm email, min length 10, Site URL/redirect) และทดสอบสมัคร→ยืนยัน→เข้า→reset ด้วยอีเมลสมาชิกทีม (Claude สร้างบัญชีบนบริการภายนอกเองไม่ได้) — `docs/runbooks/supabase-auth.md`
+- Open: SMTP สำหรับ production (ตัวส่งพื้นฐานของ Supabase ส่งได้เฉพาะสมาชิกทีม)
+
+### Previous slice (2026-10-07 22:xx) — P2.1 Auth/Workspace + migration baseline
+- Current phase: P2 (PO override Q-22)
+- Implemented: `services/api` (FastAPI) — register (Workspace + Owner + rights acceptance Q-14), login (email/username), logout, password reset request/confirm, `/v1/me`, Environments CRUD แบบ tenant-scoped; Argon2id; session cookie HttpOnly + CSRF ผูก session; error format `code/message/request_id`; `X-Request-ID`; audit events; Alembic `0001`
+- Changed files/modules: `services/api/**`, `tasks.py` (`migrate`, `test-integration`), `.env.example`, docs (G2, decisions E-21..E-26, requirements-map, compatibility)
+- Commands run: `py tasks.py test-integration` → 23 passed (Postgres 16.15 จริง, DB ชั่วคราว); `py tasks.py migrate` → 0001 (head); `alembic check` → no drift; HTTP smoke ผ่าน uvicorn (register 201, cross-tenant 404, no CSRF 403, request id echo); `py tasks.py test-unit` → 92 passed
+- FR/NF/Gate: FR-01, NF-01, NF-02 (บางส่วน), NF-08 (บางส่วน); G2-01, G2-05 (บางส่วน)
+- Checks passed: backend ของ G2-01; migration ส่วนของ G2-05
+- Checks No — not tested / blocked: G2-01 (หน้าเว็บ, อีเมลจริง E-25, rate limit), G2-02..G2-04 (ยังไม่ทำ), G2-05 (CI/staging)
+- Open decisions: E-25 ผู้ให้บริการอีเมล; Q-21 marker; D01 โดเมน
+- Next concrete task: P2.3–P2.4 — Environment limits + plan-wide caps (transactional) และ Agent Token lifecycle (generate/copy once/expire/revoke/rotate + log scan) → G2-02/G2-03
+
+### Previous slice (2026-10-07 21:xx) — power saving (Q-23)
 - ใหม่ `agent/power.py`: เปิด Wi-Fi + รอ VALIDATED ก่อนงาน; ปิดแอป + Wi-Fi หลังผลจบ (ไม่ปิดระหว่าง SUBMITTING/VERIFYING/UNKNOWN หรือเมื่อ ADB ผ่าน Wi-Fi); `agent.cli power status|on|off`; dry-run ใช้ power saving เป็นค่าเริ่มต้น
 - BUG แก้: ตัวตรวจ online อ่านทั้ง dumpsys → online=true ขณะ Wi-Fi ปิด → อ่านเฉพาะ Current Networks (+ regression test จากข้อความจริง)
 - เครื่องจริง: run A (เริ่มเปิด) และ run B (เริ่มปิด) ผ่าน; Wi-Fi เปิดคืนหลังทดสอบ; tests 92 passed

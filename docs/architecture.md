@@ -44,7 +44,7 @@ Server: Job/quota/approval/schedule → Agent claim publish job → ใช้ไ
 
 ### 2.1 Authentication flows
 
-- **Browser**: email/username + password → HttpOnly secure session cookie; CSRF protection; password reset ใช้ token ใช้ครั้งเดียวที่หมดอายุ และตอบเหมือนกันไม่ว่าบัญชีมีอยู่หรือไม่ (FR-01)
+- **Browser** (E-27, 2026-10-07): Supabase Auth — สมัคร/ยืนยันอีเมล/เข้า/ออก/กู้รหัสผ่านทำใน browser; API รับ `Authorization: Bearer <Supabase access token>` และตรวจด้วย JWKS ของโปรเจกต์ (public key เท่านั้น); ผู้ใช้ใหม่ต้อง `POST /v1/onboarding` (username + Workspace + rights) ก่อนใช้ resource อื่น; reset ตอบเหมือนกันไม่ว่าบัญชีมีอยู่หรือไม่ (Supabase) — รายละเอียด `docs/runbooks/supabase-auth.md`
 - **Agent**: `POST /v1/agent/authenticate {username, token, installation_id, agent_version}` (secret อยู่ใน body/header ไม่อยู่ใน query string)
   1. ค้น Token ด้วย prefix → เปรียบเทียบ hash แบบ constant-time → ตรวจ expiry/revoked
   2. Username ต้องเป็นเจ้าของ Token; ถ้าไม่ตรง ตอบ error ทั่วไปเหมือน token ผิด (ไม่เปิดเผยเจ้าของ — T02)

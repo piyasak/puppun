@@ -104,6 +104,26 @@ Segment selection บนเสียงจริงที่ดาวน์โ�
 
 Render 300 วินาทีจากวิดีโอสังเคราะห์ (ffmpeg testsrc2 1280×720 + sine, ซับไทย 29 cues): ผล 1080×1920, 300.00s, H.264/AAC; ตรวจภาพที่ 286s (title + ซับ) และ 299s (ending card, ไม่มีซับทับ) ถูกต้อง; **render ใช้ 236.3s ต่อคลิป 5 นาที (≈0.79× realtime)** บนเครื่องนี้ → งาน 3 คลิป × 5 นาที ≈ 12 นาที render ต่อ Job ต่อ worker 1 ตัว (ข้อมูลสำหรับ G1-06/capacity)
 
+## API stack (P2.1) — ทดสอบ 2026-10-07
+| Component | Version | ผล |
+|---|---|---|
+| Python (host) | 3.14.5 | 28 integration (+1 skip: ไม่มี live token) + 92 unit ผ่าน (container runtime 3.12 ตาม E-03 ยังไม่ได้ทดสอบ) |
+| FastAPI / Starlette / Pydantic | 0.142.2 / 1.7.0 / 2.13.5 | ผ่าน |
+| SQLAlchemy / Alembic / psycopg | 2.1.3 / 1.20.0 / 3.3.6 (binary) | ผ่าน; `alembic check` ไม่มี drift |
+| PyJWT[crypto] / cryptography / uvicorn | 2.15.1 / 50.0.2 / 0.54.0 | ผ่าน; ES256 verify กับ JWKS ของ Supabase จริง |
+| Supabase Auth (project `punpun`, ap-southeast-1) | JWKS: 1 key ES256 (P-256), 2026-10-07 | live: ปฏิเสธ token ที่ไม่ได้เซ็นโดยโปรเจกต์; end-to-end กับผู้ใช้จริงยังไม่ได้ทดสอบ |
+| PostgreSQL (compose) | 16.15 | ผ่าน |
+
+## Web + E2E (P2) — ทดสอบ 2026-10-07
+| Component | Version | ผล |
+|---|---|---|
+| Node / npm | 26.1.0 / 11.12.1 | ผ่าน |
+| React / TypeScript / Vite | 19.2 / 6.0 / 8.3.3 | build ผ่าน |
+| @supabase/supabase-js / react-router-dom | 2.117 / 7.18 | ผ่าน (flowType implicit) |
+| @playwright/test + Microsoft Edge (channel msedge) | 1.63 | E2E 2/2 ผ่าน |
+| Supabase cloud `punpun` + Microsoft 365 mailbox | 2026-10-07 | สมัคร/ยืนยัน/onboarding ผ่าน (PO); ตัวสแกน M365 เปิดลิงก์ยืนยันเองหลังผู้ใช้ → ต้องทำ E-28 |
+| Supabase CLI (local) | 2.120.0, postgres 17.11.0.004 image | auth + Mailpit ผ่าน; ES256 local key |
+
 ## Android / TikTok matrix (G1-03, D03)
 | Device model | Android | TikTok app ver | ADB push + SHA-256 | Gallery found | Thai input | Post verified | Date |
 |---|---|---|---|---|---|---|---|

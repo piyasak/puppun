@@ -7,7 +7,7 @@
 
 | ID | Pri | Requirement (ย่อ) | Module(s) | Planned tests / UAT | Gate | Phase | Impl |
 |---|---|---|---|---|---|---|---|
-| FR-01 | P0 | สมาชิก/Workspace, reset ไม่เปิดเผยบัญชี | api/auth, api/workspace, web/auth | test_auth, test_tenant_isolation, T01 | G2-01 | P2 | — |
+| FR-01 | P0 | สมาชิก/Workspace, reset ไม่เปิดเผยบัญชี | Supabase Auth (E-27), api/identity, api/onboarding, web/auth | test_auth, test_tenant_isolation, test_supabase_live, T01 | G2-01 | P2 | WIP — สมัคร/เข้า/reset = Supabase Auth; API ตรวจ JWT ด้วย JWKS + `/v1/onboarding` (Workspace + rights Q-14) + `/v1/me`; tests ผ่าน; หน้าเว็บ auth (`apps/web`) + Playwright E2E บน Supabase local 2/2 ผ่าน; ทดสอบ cloud ด้วยอีเมลจริง (PO) และ Custom SMTP ยังไม่มี |
 | FR-02 | P0 | รับลิงก์, allowlist, limit, rights declaration | api/jobs, worker/source | test_source_validation, test_ssrf, T08 | G1-01, G3-01 | P1/P3 | WIP — ลิงก์: allowlist/https/no-IP/no-credentials; ไฟล์ของลูกค้า (Q-17): `local_source.py` ตรวจ regular file, ≤8 GB, ffprobe ต้องเจอ video+duration, SHA-256 เป็น source ID, ไม่เก็บ path เต็ม; ทดสอบจริงกับไฟล์ 61 นาที; rights acceptance (Q-14) = P2 |
 | FR-03 | P0 | ดาวน์โหลด + metadata, แยกสถานะข้อผิดพลาด, retry จำกัด | worker/source (yt-dlp adapter) | test_source_errors, source compatibility report | G1-01, G3-01 | P1/P3 | WIP — error classes แยก (เพิ่ม SOURCE_RATE_LIMITED, UNSUPPORTED_FILE); bot check → cool-down ต่อแพลตฟอร์ม 1→6 ชม. (`cooldown.py`); range ไม่ครบ → retry 1 ครั้ง; 10/10 real links read |
 | FR-04 | P0 | คัดช่วง + random มี seed/template version | worker/analysis | test_segment_selection_reproducible | G3-02 | P3 | WIP — audio-pause boundaries + seeded selection (`segments.py`, E-11); real sources 2026-10-07 |
@@ -37,14 +37,14 @@
 
 | ID | Requirement | Module(s) | Planned evidence | Gate | Phase | Impl |
 |---|---|---|---|---|---|---|
-| NF-01 | Tenant isolation | api (repository layer), media access | cross-tenant suite ทุก resource + media (T01) | G2-01, G7-03 | P2→P7 | — |
-| NF-02 | Credential protection | api/agent_tokens, logging, agent/credentials | token entropy test, log/URL scan | G2-02 | P2 | — |
+| NF-01 | Tenant isolation | api (repository layer), media access | cross-tenant suite ทุก resource + media (T01) | G2-01, G7-03 | P2→P7 | WIP — `tenancy.py` (scoped/get_owned), cross-tenant tests ของ Environments (404 แยกไม่ออกจากไม่มีจริง), meta test: ทุกตารางลูกค้ามี `workspace_id` NOT NULL |
+| NF-02 | Credential protection | api/agent_tokens, logging, agent/credentials | token entropy test, log/URL scan | G2-02 | P2 | WIP — รหัสผ่านไม่อยู่ในระบบเรา (Supabase); API ถือแค่ public key; access token รับเฉพาะ header และไม่ลง log (test); Agent token = P2.4 |
 | NF-03 | URL/file safety, SSRF, resource limits | worker/source, worker sandbox | test_ssrf_redirect (T08), resource limit test | G3-01 | P3 | — |
 | NF-04 | P95 < 1s CRUD @50 users | api | load test report | G7-04 | P7 | — |
 | NF-05 | Dispatch 95% ≤ 60s | scheduler | load test | G4-05 | P4 | — |
 | NF-06 | Retention/lifecycle, ไม่ลบไฟล์ที่ใช้อยู่ | worker/retention | test_retention_active_job (T23) | G6-05 | P6 | — |
 | NF-07 | Backup/restore RPO ≤24h RTO ≤4h | ops | restore drill (T24) | G8-02 | P8 | — |
-| NF-08 | Observability: ID ใน log/metrics, alerts | all services | log correlation test, alert config | G8-01 | P2→P8 | — |
+| NF-08 | Observability: ID ใน log/metrics, alerts | all services | log correlation test, alert config | G8-01 | P2→P8 | WIP — `X-Request-ID` ทุก response, `request_id` ใน error body/audit event/log line (method, path, status เท่านั้น) |
 | NF-09 | Accessibility/responsive/Thai 360px, zoom 200% | web | browser checks + screenshots | G7-04 | P2→P7 | — |
 | NF-10 | Agent update ตรวจ integrity, ไม่ update ระหว่าง Submit, rollback | agent/updater | installer/update tests | G5-01 | P5 | — |
 
