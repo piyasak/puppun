@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..deps import WebAuth, get_db, web_auth
-from ..entitlements import LIMITS, allocated, check_allocation, entitlement
+from ..entitlements import LIMITS, allocated, check_allocation, entitlement, in_use
 from ..errors import ApiError
 from ..models import Environment
 from ..tenancy import get_owned, scoped
@@ -61,7 +61,7 @@ def _name_taken() -> ApiError:
 def workspace_usage(auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
     """Authoritative plan caps and how much of them the Environments have allocated.
 
-    Live usage (registered agents, sessions, devices) is added with P2.5/P2.6.
+    in_use counts registered Agents and live sessions; devices arrive with P2.6.
     """
     ent = entitlement(db, auth.workspace_id)
     return {
@@ -69,6 +69,7 @@ def workspace_usage(auth: WebAuth = Depends(web_auth), db: Session = Depends(get
                  "is_demo": ent.plan.is_demo, "status": ent.subscription.status},
         "caps": {name: ent.cap(name) for name in LIMITS},
         "allocated": allocated(db, auth.workspace_id),
+        "in_use": in_use(db, workspace_id=auth.workspace_id),
     }
 
 
@@ -114,7 +115,11 @@ def update_environment(environment_id: uuid.UUID, body: EnvironmentPatch, reques
         raise ApiError(422, "VALIDATION_ERROR", "จำนวน Session พร้อมกันต้องไม่เกินจำนวน Agent ที่ลงทะเบียนได้",
                        {"fields": [{"field": "concurrent_session_limit", "reason": "above_registered_agent_limit"}]}) from None
     check_allocation(db, auth.workspace_id, new, exclude=env.id)
-    # Lowering a limit below what is already in use is checked once usage exists (P2.5/P2.6).
+    used = in_use(db, environment_id=env.id)
+    below = [{"limit": k, "in_use": used[k], "requested": new[k]} for k in used if new[k] < used[k]]
+    if below:
+        raise ApiError(409, "LIMIT_BELOW_USAGE", "ตั้งค่าต่ำกว่าที่ใช้อยู่ไม่ได้ ยกเลิกทะเบียน Agent ที่ไม่ใช้ก่อน",
+                       {"limits": below})
     for name, value in new.items():
         setattr(env, name, value)
     if body.name is not None:

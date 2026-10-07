@@ -4,6 +4,7 @@
     python -m agent.cli doctor --serial <serial>
     python -m agent.cli dry-run --serial <serial> --file <clip.mp4> [--cleanup] [--no-power-saving]
     python -m agent.cli power --serial <serial> status|on|off
+    python -m agent.cli connect --server https://<host> --username <name> [--seconds N]
 
 `dry-run` exercises transfer -> SHA-256 check -> Gallery discovery and records
 every step in the attempt journal, then stops before any TikTok UI action. There
@@ -43,10 +44,17 @@ def main(argv: list[str] | None = None) -> int:
     p_pow.add_argument("--serial", required=True)
     p_pow.add_argument("action", choices=["status", "on", "off"])
     sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
+    p_con = sub.add_parser("connect", help="sign in to the server and send heartbeats (P2.5)")
+    p_con.add_argument("--server", required=True)
+    p_con.add_argument("--username", required=True)
+    p_con.add_argument("--seconds", type=float, default=None, help="stop after N seconds (default: run until stopped)")
+    p_con.add_argument("--data-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
     if args.cmd == "recover":
         return recover_all()
+    if args.cmd == "connect":
+        return connect(args.server, args.username, args.seconds, args.data_dir)
 
     try:
         adb = Adb(default_runner())
@@ -63,6 +71,37 @@ def main(argv: list[str] | None = None) -> int:
         return dry_run(adb, args.serial, args.file, args.cleanup, power_saving=not args.no_power_saving)
     except AdbError as exc:
         print(f"adb error: {exc}")
+        return 2
+
+
+def connect(server: str, username: str, seconds: float | None, data_dir: Path | None) -> int:
+    """The token comes from CLIPFLOW_AGENT_TOKEN or a hidden prompt, never from argv (visible to other
+    processes). Windows Credential Manager storage arrives with the installer (P5)."""
+    import getpass
+    import os
+
+    from agent.identity import AlreadyRunning, ProcessLock, default_data_dir, load_or_create_installation_id
+    from agent.server_client import ServerClient, ServerError
+
+    data_dir = data_dir or default_data_dir()
+    token = os.environ.get("CLIPFLOW_AGENT_TOKEN") or getpass.getpass("Agent token: ")
+    try:
+        with ProcessLock(data_dir):
+            installation_id = load_or_create_installation_id(data_dir)
+            from agent.server_client import run_connection
+
+            result = run_connection(ServerClient(server), username, token, installation_id, seconds)
+            print(json.dumps({"heartbeats": result.heartbeats, "stopped_because": result.stopped_because},
+                             ensure_ascii=False))
+            return 0 if result.stopped_because == "duration_elapsed" else 1
+    except AlreadyRunning as exc:
+        print(f"Agent is already running on this install: {exc}")
+        return 3
+    except ServerError as exc:
+        print(f"server refused: {exc.code} — {exc.message}")
+        return 2
+    except (OSError, ValueError) as exc:
+        print(f"cannot reach server: {exc}")
         return 2
 
 

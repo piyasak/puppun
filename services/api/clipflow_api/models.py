@@ -164,3 +164,47 @@ class AgentToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_tokens.id", ondelete="SET NULL"))
+
+class AgentInstallation(Base):
+    """One Agent install, registered against an Environment (FR-14).
+
+    `installation_id` is generated once by the Agent and kept on disk. It identifies an
+    install; it is not proof of a real machine (PRD §6). Reconnecting with the same id
+    reuses this row, so it does not consume another registration (T03).
+    """
+
+    __tablename__ = "agent_installations"
+    __table_args__ = (UniqueConstraint("environment_id", "installation_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"), index=True)
+    installation_id: Mapped[str] = mapped_column(String(64))
+    agent_version: Mapped[str | None] = mapped_column(String(32))
+    last_token_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_tokens.id", ondelete="SET NULL"))
+    generation: Mapped[int] = mapped_column(Integer)  # bumps on every new session (fencing)
+    created_at: Mapped[datetime] = _created()
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deregistered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AgentSession(Base):
+    """Short-lived Agent session (architecture §2.3). At most one live session per installation:
+    a new one ends the previous (`superseded`), and requests carrying an old generation fail."""
+
+    __tablename__ = "agent_sessions"
+    __table_args__ = (Index("ix_agent_sessions_env_live", "environment_id", "ended_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    installation_ref: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_installations.id", ondelete="CASCADE"),
+                                                        index=True)
+    token_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_tokens.id", ondelete="CASCADE"), index=True)
+    session_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    generation: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created()
+    last_heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_reason: Mapped[str | None] = mapped_column(String(32))

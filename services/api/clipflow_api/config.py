@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_jwt_audience: str = "authenticated"
 
+    # Agent sign-in attempts per client address per minute (token guessing, PRD §14).
+    agent_auth_rate_per_minute: int = 20
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

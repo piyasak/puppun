@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 00:xx) — P2.3 Environment limits + P2.4 Agent tokens
+### Latest slice (2026-10-08 01:xx) — P2.5 Agent sessions
+- Current phase: P2
+- Implemented: migration 0003 (agent_installations, agent_sessions); `/v1/agent/authenticate|heartbeat|session/end` (E-31); `/v1/agents` list + deregister; revoke/rotate token จบ session ทันที; `/v1/workspace/usage.in_use`; ลด limit ต่ำกว่าที่ใช้ไม่ได้; rate limit sign-in ของ Agent; Agent: `agent/identity.py` (installation_id, process lock), `agent/server_client.py`, `python -m agent.cli connect` (token จาก env/prompt ไม่ผ่าน argv); เว็บ: เมนู Agent (สถานะออนไลน์/ขาดการติดต่อ/ออฟไลน์, ยกเลิกทะเบียนพร้อม dialog), Environments แสดง "ใช้อยู่"
+- Commands: `py tasks.py test-integration` → 65 passed, 2 skipped (live Supabase opt-in); race 5 installs ×3 ผ่าน; `py tasks.py test-unit` → 108 passed; `py tasks.py test-e2e` → 4 passed; `alembic check` no drift; dev DB → 0003
+- Bug พบ+แก้ (E-32): `npm run build` ที่ไม่มี env ผ่าน แต่ bundle ไม่มีโค้ดแอป → build ต้องมี env + ตรวจ bundle
+- Gates: **G2-03 → Yes**; G2-02 Yes; G2-01/04/05 No
+- Next: P2.6 ลงทะเบียนโทรศัพท์ (Serial ผ่าน Agent, ownership conflict, device cap) → G2-04
+
+### Previous slice (2026-10-08 00:xx) — P2.3 Environment limits + P2.4 Agent tokens
 - Current phase: P2
 - Implemented: migration 0002 (plans + subscriptions + Environment limits + agent_tokens); แพ็กเกจ Demo `trial` (E-29) ให้ทุก Workspace ตอน onboarding; Environment limits = การจัดสรรจากแพ็กเกจ ตรวจผลรวมใต้ล็อก subscription; `/v1/workspace/usage`; Agent token generate/list/revoke/rotate + `verify()` สำหรับ P2.5 (E-30); เว็บ: เมนู Environments (การใช้แพ็กเกจ, สร้าง/แก้ไข) และ Agent Token (แสดงครั้งเดียว + คัดลอก, rotate/ยกเลิกพร้อม dialog ยืนยัน)
 - Commands: `py tasks.py test-integration` → 46 passed, 1 skipped (live token); race test ×5 ผ่าน; `alembic check` no drift; dev DB → 0002; `py tasks.py test-e2e` → 3 passed; `npm run build` ผ่าน

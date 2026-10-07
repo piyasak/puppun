@@ -65,7 +65,9 @@ def migrated_url(database_url):
 
 @pytest.fixture(scope="session")
 def app(migrated_url):
-    settings = Settings(app_env="test", database_url=migrated_url, supabase_url=SUPABASE_URL)
+    # Agent sign-in rate limit is tested on its own app (test_agent_sessions); keep it out of the way here.
+    settings = Settings(app_env="test", database_url=migrated_url, supabase_url=SUPABASE_URL,
+                        agent_auth_rate_per_minute=10_000)
     return create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key())
 
 

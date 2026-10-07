@@ -1,7 +1,7 @@
 """Agent token lifecycle for the web app: generate (shown once), list, revoke, rotate (FR-12, G2-02).
 
-Revoking or rotating also ends the token's Agent sessions once sessions exist (P2.5): the
-session check reads `revoked_at` on every Agent request.
+Revoking or rotating ends the token's live Agent sessions in the same transaction; every
+Agent request also re-checks the token (agent_sessions.resolve).
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .. import agent_tokens, audit
+from .. import agent_sessions, agent_tokens, audit
 from ..deps import WebAuth, get_db, web_auth
 from ..errors import ApiError
-from ..models import AgentToken, Environment
+from ..models import AgentSession, AgentToken, Environment
 from ..tenancy import get_owned, scoped
 
 router = APIRouter(prefix="/v1/agent-tokens")
@@ -101,6 +101,8 @@ def revoke_token(token_id: uuid.UUID, request: Request, auth: WebAuth = Depends(
     row = get_owned(db, AgentToken, token_id, auth.workspace_id, for_update=True)
     if row.revoked_at is None:
         row.revoked_at = datetime.now(UTC)
+        # Live Agent sessions on this token end now, not only at their next request.
+        agent_sessions.end_sessions(db, AgentSession.token_id == row.id, reason="token_revoked")
         audit.record(db, request, "agent_token.revoke", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                      target_id=row.id)
     db.commit()
@@ -116,6 +118,7 @@ def rotate_token(token_id: uuid.UUID, request: Request, response: Response, auth
         raise ApiError(409, "TOKEN_REVOKED", "Token นี้ถูกยกเลิกแล้ว สร้าง Token ใหม่แทน")
     env = db.get(Environment, old.environment_id)
     old.revoked_at = datetime.now(UTC)
+    agent_sessions.end_sessions(db, AgentSession.token_id == old.id, reason="token_revoked")
     days = max(1, round((old.expires_at - old.created_at).total_seconds() / 86400))
     row, token = _issue(db, auth, env, old.name, min(days, 365), rotated_from=old.id)
     audit.record(db, request, "agent_token.rotate", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,

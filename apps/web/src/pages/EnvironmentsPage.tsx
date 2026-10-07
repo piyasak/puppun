@@ -9,6 +9,7 @@ const KEYS = Object.keys(LIMIT_LABELS) as (keyof Limits)[]
 function limitError(e: ApiError): string {
   if (e.code === 'PLAN_LIMIT_EXCEEDED') return 'เกินจำนวนที่แพ็กเกจอนุญาต เมื่อรวมกับ Environment อื่นทั้งหมด'
   if (e.code === 'NAME_TAKEN') return 'มี Environment ชื่อนี้แล้ว'
+  if (e.code === 'LIMIT_BELOW_USAGE') return 'ตั้งค่าต่ำกว่าที่ใช้อยู่ไม่ได้ ยกเลิกทะเบียน Agent ที่ไม่ใช้ในเมนู Agent ก่อน'
   if (e.code === 'VALIDATION_ERROR') return 'Session พร้อมกันต้องไม่เกินจำนวน Agent และทุกค่าต้องไม่ติดลบ'
   return e.message
 }
@@ -27,6 +28,7 @@ function UsageCard({ usage }: { usage: Usage }) {
             <span className="meter-label">{LIMIT_LABELS[k]}</span>
             <span className="meter-value" data-testid={`usage-${k}`}>{usage.allocated[k]} / {usage.caps[k]}</span>
             <progress max={usage.caps[k] || 1} value={usage.allocated[k]} aria-label={`${LIMIT_LABELS[k]} ที่จัดสรรแล้ว`} />
+            {k !== 'device_limit' && <span className="hint" data-testid={`inuse-${k}`}>ใช้อยู่ {usage.in_use[k]}</span>}
           </div>
         ))}
       </div>

@@ -127,3 +127,6 @@ a { color: var(--primary); }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .sidebar { flex-wrap: wrap; }
 }
+.badge-online { color: var(--success); }
+.badge-stale { color: #8a5a00; }
+.badge-offline { color: var(--muted); }

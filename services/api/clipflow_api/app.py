@@ -17,7 +17,8 @@ from . import errors
 from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
-from .routers import agent_tokens, auth, environments
+from .ratelimit import SlidingWindow
+from .routers import agent, agent_tokens, agents, auth, environments
 
 log = logging.getLogger("clipflow.api")
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
         if not settings.supabase_url:
             raise RuntimeError("SUPABASE_URL is not set (see .env.example)")
         resolve_key = jwks_resolver(settings.supabase_jwks_url)
+    app.state.agent_auth_limiter = SlidingWindow(limit=settings.agent_auth_rate_per_minute, window_s=60)
     app.state.verifier = SupabaseVerifier(resolve_key, settings.supabase_issuer, settings.supabase_jwt_audience)
 
     app.add_middleware(
@@ -60,6 +62,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(auth.router)
     app.include_router(environments.router)
     app.include_router(agent_tokens.router)
+    app.include_router(agents.router)
+    app.include_router(agent.router)
 
     @app.get("/healthz")
     def healthz():

@@ -49,7 +49,7 @@ py tasks.py migrate [alembic args]       # default: upgrade head on DATABASE_URL
 py tasks.py test-integration             # services/api/tests on a throwaway DB (skips if Postgres is down; a skip is not evidence)
 npx supabase start -x studio,storage-api,imgproxy,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta   # local auth + Mailpit
 py tasks.py test-e2e                     # Playwright (apps/web/e2e, Edge) on LOCAL Supabase + fresh clipflow_e2e DB
-cd apps/web && npm run build             # tsc + vite build; `npm run lint` = oxlint
+cd apps/web && npm run build             # needs VITE_SUPABASE_URL/_PUBLISHABLE_KEY/VITE_API_URL; tsc + vite build + bundle check (E-32); `npm run lint` = oxlint
 .venv/Scripts/python -m uvicorn clipflow_api.app:app --port 8000   # needs DATABASE_URL and SUPABASE_URL
 
 # P1 POC (run from the repo root with PYTHONPATH=services/worker, or after setup)
@@ -57,6 +57,7 @@ cd apps/web && npm run build             # tsc + vite build; `npm run lint` = ox
 .venv/Scripts/python -m clipflow_worker.poc produce <url> --clips 3 --seed 42   # 3-5 min clips -> var/poc/<src>/manifest.json
 .venv/Scripts/python -m clipflow_worker.poc produce --file <customer video> [--captions x.srt]
 .venv/Scripts/python -m agent.cli devices | doctor --serial S | dry-run --serial S --file clip.mp4   # stops before any TikTok UI
+.venv/Scripts/python -m agent.cli connect --server http://127.0.0.1:8000 --username U --seconds 60   # token from CLIPFLOW_AGENT_TOKEN or prompt, never argv
 ```
 
 Rules for gates and commands:

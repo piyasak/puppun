@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .errors import ApiError
-from .models import Environment, Plan, Subscription
+from .models import AgentInstallation, AgentSession, Environment, Plan, Subscription
 
 LIMITS = ("registered_agent_limit", "concurrent_session_limit", "device_limit")
 PLAN_CAP = {
@@ -73,3 +73,20 @@ def check_allocation(db: Session, workspace_id: uuid.UUID, requested: dict[str, 
     ]
     if over:
         raise ApiError(409, "PLAN_LIMIT_EXCEEDED", "เกินจำนวนที่แพ็กเกจอนุญาต (รวมทุก Environment)", {"limits": over})
+
+
+def in_use(db: Session, *, workspace_id: uuid.UUID | None = None, environment_id: uuid.UUID | None = None,
+           at=None) -> dict[str, int]:
+    """Live usage: registered (not deregistered) installations and live sessions. Devices: P2.6."""
+    from .agent_sessions import live_filter, now
+
+    at = at or now()
+    inst = select(func.count()).select_from(AgentInstallation).where(AgentInstallation.deregistered_at.is_(None))
+    sess = select(func.count()).select_from(AgentSession).where(*live_filter(at))
+    if workspace_id is not None:
+        inst = inst.where(AgentInstallation.workspace_id == workspace_id)
+        sess = sess.where(AgentSession.workspace_id == workspace_id)
+    if environment_id is not None:
+        inst = inst.where(AgentInstallation.environment_id == environment_id)
+        sess = sess.where(AgentSession.environment_id == environment_id)
+    return {"registered_agent_limit": db.scalar(inst), "concurrent_session_limit": db.scalar(sess)}
