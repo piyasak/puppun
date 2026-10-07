@@ -1,0 +1,9 @@
+[project]
+name = "clipflow-repo-tools"
+version = "0.0.0"
+description = "Repository tooling for ClipFlow (services get their own projects from P1/P2)"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

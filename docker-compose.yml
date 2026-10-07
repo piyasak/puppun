@@ -1,0 +1,67 @@
+# Local development infrastructure only. Never used for production.
+# Credentials below are local-only development defaults, bound to 127.0.0.1.
+name: clipflow
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clipflow
+      POSTGRES_PASSWORD: clipflow_dev
+      POSTGRES_DB: clipflow
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipflow -d clipflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: clipflow
+      MINIO_ROOT_PASSWORD: clipflow_dev_secret
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Creates the private media bucket once MinIO is healthy (no anonymous access).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 clipflow clipflow_dev_secret &&
+             mc mb --ignore-existing local/clipflow-media &&
+             mc anonymous set none local/clipflow-media"
+    restart: "no"
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
