@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from agent.identity import AlreadyRunning, ProcessLock, load_or_create_installation_id
+from agent.identity import ProcessLock, load_or_create_installation_id
 from agent.server_client import ServerError, Session, check_server_url, run_connection
 
 

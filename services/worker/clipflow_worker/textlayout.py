@@ -17,9 +17,7 @@ def clusters(text: str) -> list[str]:
     """Split into display clusters: a base character plus its combining marks."""
     out: list[str] = []
     for ch in text:
-        if out and (unicodedata.combining(ch) or unicodedata.category(ch) == "Mn"):
-            out[-1] += ch
-        elif out and out[-1] and out[-1][-1] in LEADING_VOWELS and len(out[-1]) == 1:
+        if out and (unicodedata.combining(ch) or unicodedata.category(ch) == "Mn") or out and out[-1] and out[-1][-1] in LEADING_VOWELS and len(out[-1]) == 1:
             out[-1] += ch
         else:
             out.append(ch)

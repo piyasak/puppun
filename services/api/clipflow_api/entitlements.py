@@ -55,7 +55,7 @@ def allocated(db: Session, workspace_id: uuid.UUID, *, exclude: uuid.UUID | None
     stmt = select(*cols).where(Environment.workspace_id == workspace_id)
     if exclude is not None:
         stmt = stmt.where(Environment.id != exclude)
-    return dict(zip(LIMITS, (int(v) for v in db.execute(stmt).one())))
+    return dict(zip(LIMITS, (int(v) for v in db.execute(stmt).one()), strict=True))
 
 
 def check_allocation(db: Session, workspace_id: uuid.UUID, requested: dict[str, int],

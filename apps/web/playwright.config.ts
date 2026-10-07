@@ -20,7 +20,8 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL: 'http://127.0.0.1:5173',
-    channel: 'msedge', // installed with Windows; no browser download needed
+    // Windows dev/QA machine: the installed Edge (no download). CI (Linux): bundled Chromium.
+    channel: process.platform === 'win32' ? 'msedge' : undefined,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     locale: 'th-TH',

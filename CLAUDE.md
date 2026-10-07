@@ -44,6 +44,7 @@ py tasks.py setup                        # create .venv, pip install -e services
 py tasks.py test-unit                    # tests/unit + services/worker/tests (uses .venv)
 .venv/Scripts/python -m pytest services/worker/tests/test_poc_units.py::test_name   # single test
 py tasks.py check-gate <n>               # validate docs/gates/Gn.md: 0 passed, 1 not passed, 2 invalid record
+py tasks.py lint | typecheck | build     # ruff + oxlint | tsc | web build (build needs the VITE_ vars); CI: .github/workflows/ci.yml
 docker compose up -d                     # local Postgres/Redis/MinIO (Docker Desktop must be running)
 py tasks.py migrate [alembic args]       # default: upgrade head on DATABASE_URL or the local compose DB
 py tasks.py test-integration             # services/api/tests on a throwaway DB (skips if Postgres is down; a skip is not evidence)

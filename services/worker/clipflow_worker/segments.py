@@ -79,8 +79,8 @@ def _srt_seconds(stamp: str) -> float:
 def parse_srt(text: str) -> list[Cue]:
     cues = []
     for block in re.split(r"\r?\n\s*\r?\n", text.strip()):
-        lines = [l for l in block.splitlines() if l.strip()]
-        timing = next((i for i, l in enumerate(lines) if "-->" in l), None)
+        lines = [ln for ln in block.splitlines() if ln.strip()]
+        timing = next((i for i, ln in enumerate(lines) if "-->" in ln), None)
         if timing is None:
             continue
         start, end = (part.strip().split(" ")[0] for part in lines[timing].split("-->"))

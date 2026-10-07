@@ -19,7 +19,6 @@ from clipflow_worker.source import (
 )
 from clipflow_worker.textlayout import clusters, display_width, wrap
 
-
 # --- source validation (FR-02, NF-03) ---------------------------------------
 
 @pytest.mark.parametrize(
@@ -140,7 +139,7 @@ def test_selection_is_reproducible_and_non_overlapping():
     assert a.segments == b.segments
     assert a.segments != c.segments
     ordered = a.segments
-    assert all(x.end <= y.start for x, y in zip(ordered, ordered[1:]))
+    assert all(x.end <= y.start for x, y in zip(ordered, ordered[1:], strict=False))
 
 
 def test_insufficient_content_reports_fewer_clips_instead_of_reusing():
@@ -175,8 +174,8 @@ def test_clusters_keep_marks_and_leading_vowels_attached():
 def test_wrap_respects_width_without_orphans():
     text = "สูนซิงแกกล้าจับฉันเหรอไม่มีทีมออกแบบของ"
     lines = wrap(text, 26)
-    assert all(display_width(l) <= 26 for l in lines)
-    assert min(display_width(l) for l in lines) >= 10
+    assert all(display_width(ln) <= 26 for ln in lines)
+    assert min(display_width(ln) for ln in lines) >= 10
     assert "".join(lines) == text
 
 

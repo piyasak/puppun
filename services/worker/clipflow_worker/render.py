@@ -111,7 +111,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def render_clip(
-    source: Path, start: float, duration: float, text: ClipText, out_path: Path, tpl: Template = Template()
+    source: Path, start: float, duration: float, text: ClipText, out_path: Path, tpl: Template = Template()  # noqa: B008 - frozen dataclass, safe to share
 ) -> RenderResult:
     """Cut [start, start+duration) from `source` and render a vertical clip."""
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -6,6 +6,7 @@ body / Authorization header, never in a URL, and never printed.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 import urllib.error
@@ -88,10 +89,9 @@ class ServerClient:
         return self._post("/v1/agent/devices/report", {"devices": states}, bearer=session.token)
 
     def end(self, session: Session) -> None:
-        try:
+        # Best effort; the server expires the session after 90 s anyway.
+        with contextlib.suppress(ServerError, OSError):
             self._post("/v1/agent/session/end", {}, bearer=session.token)
-        except (ServerError, OSError):
-            pass  # best effort; the server expires the session after 90 s anyway
 
 
 @dataclass

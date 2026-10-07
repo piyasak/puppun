@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 02:xx) — P2.6 device registration
+### Latest slice (2026-10-08 03:xx) — CI workflow (G2-05 partial)
+- PO ให้ remote: https://github.com/piyasak/puppun.git
+- Implemented: `.github/workflows/ci.yml` (E-34); ruff config ใน `pyproject.toml` + แก้ lint 84 จุด (ไม่มีบั๊กจริง; `poc.py` lambda ผูกตัวแปรรอบให้ชัด); `tasks.py lint|typecheck|build` ใช้งานได้; Playwright ใช้ Chromium บน Linux
+- Commands: `py tasks.py lint` → ผ่าน (oxlint warning 5 จุด set-state-in-effect); `py tasks.py typecheck` → ผ่าน; Python job ใน container Linux → ruff ผ่าน, integration 84 passed, unit 110 passed + 1 ที่ล้มเพราะไม่ได้ copy `apps/` เข้า container
+- Blocked: `git ls-remote` → "Invalid username or token" (credential ใน Git Credential Manager ใช้กับ GitHub ไม่ได้) และ API ตอบ 404 (repo private หรือยังไม่มี) → ต้องให้ PO ล็อกอิน GitHub บนเครื่องนี้ และยืนยันชื่อ repo (`puppun` vs แบรนด์ `punpun`)
+- ก่อน push: เอกสารที่ commit แล้วมีอีเมลบริษัทของ PO และชื่อบัญชี TikTok ทดสอบ — ถ้า repo เป็น public ควรลบออกก่อน
+- Next: PO ยืนยัน repo + ล็อกอิน → push → ดูผล CI จริง; เลือกที่ตั้ง staging
+
+### Previous slice (2026-10-08 02:xx) — P2.6 device registration
 - Current phase: P2
 - Implemented: migration 0004 (devices + partial unique index on active serial); `/v1/agent/devices/register|report`; `/v1/devices` list/edit (ชื่อเรียก, บัญชี TikTok ที่คาดหวัง)/unbind; in_use.device_limit; Agent: `agent/device_registry.py` (hardware serial ผ่าน getprop, ไม่ใช้ id ของ Wi-Fi ADB), `python -m agent.cli register-devices`; เว็บ: เมนูโทรศัพท์ (สถานะพร้อม/ยังไม่อนุญาต/ไม่พบ/Agent ออฟไลน์ + วิธีแก้, แก้ไข, ยกเลิกการผูกพร้อม dialog)
 - **โทรศัพท์จริง**: POCO 25078PC3EG ลงทะเบียนผ่าน Agent → HTTP → API สำเร็จ, ซ้ำ idempotent, Workspace อื่นผูกไม่ได้ (`CLIPFLOW_REAL_DEVICE=1`, อ่าน getprop เท่านั้น)

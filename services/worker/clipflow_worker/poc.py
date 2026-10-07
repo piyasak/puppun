@@ -26,12 +26,14 @@ import yt_dlp
 from yt_dlp.utils import DownloadError, download_range_func
 
 from clipflow_worker import segments as seg
+from clipflow_worker.cooldown import Cooldown
+from clipflow_worker.local_source import inspect_local, sidecar_captions
 from clipflow_worker.media import binary, duration_gaps, ensure_on_path, probe
 from clipflow_worker.render import ClipText, RenderError, Template, render_clip
 from clipflow_worker.source import (
+    DEFAULT_MAX_DURATION_S,
     SourceError,
     SourceErrorCode,
-    DEFAULT_MAX_DURATION_S,
     SourceInfo,
     _base_opts,
     _classify_download_error,
@@ -40,8 +42,6 @@ from clipflow_worker.source import (
     format_options,
     inspect,
 )
-from clipflow_worker.cooldown import Cooldown
-from clipflow_worker.local_source import inspect_local, sidecar_captions
 
 COOLDOWN_FILE = Path("var/agent/source_cooldown.json")
 
@@ -172,10 +172,7 @@ def produce(args: argparse.Namespace) -> dict:
     out_root = Path(args.out)
     t0 = time.perf_counter()
     local = Path(args.file) if args.file else None
-    if local:
-        info = inspect_local(local)
-    else:
-        info = inspect(args.url)
+    info = inspect_local(local) if local else inspect(args.url)
     check_limits(info, args.max_duration)
     job_dir = out_root / f"{info.platform}_{info.source_id[:16]}_seed{args.seed}"
     work = job_dir / "work"
@@ -290,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         failures = 0
         for url in args.urls:
             try:
-                info = guarded(cooldown, url, lambda: inspect(url))
+                info = guarded(cooldown, url, lambda url=url: inspect(url))
                 print(json.dumps({"ok": True, **info.to_dict()}, ensure_ascii=False))
             except SourceError as exc:
                 failures += 1

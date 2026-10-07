@@ -14,11 +14,11 @@ import uuid
 from pathlib import Path
 
 import pytest
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from api_test_tokens import SIGNING_KEY, SUPABASE_URL, mint, new_identity
 from fastapi.testclient import TestClient
-import uvicorn
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 

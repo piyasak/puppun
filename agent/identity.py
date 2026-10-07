@@ -46,9 +46,9 @@ class ProcessLock:
         self.path = data_dir / "agent.lock"
         self._fh = None
 
-    def acquire(self) -> "ProcessLock":
+    def acquire(self) -> ProcessLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fh = open(self.path, "a+b")
+        fh = open(self.path, "a+b")  # noqa: SIM115 - held open for the life of the lock
         try:
             if os.name == "nt":
                 import msvcrt
@@ -78,7 +78,7 @@ class ProcessLock:
             self._fh.close()
             self._fh = None
 
-    def __enter__(self) -> "ProcessLock":
+    def __enter__(self) -> ProcessLock:
         return self.acquire()
 
     def __exit__(self, *exc) -> None:

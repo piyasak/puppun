@@ -89,7 +89,7 @@ def parse_gate(text: str, gate: int, repo_root: Path = REPO_ROOT) -> GateReport:
                 continue
             if header is None or not cells or not id_pattern.match(cells[0]):
                 continue
-            row = dict(zip(header, cells))
+            row = dict(zip(header, cells, strict=False))  # short rows allowed
             report.checks.append(
                 CheckRow(
                     check_id=cells[0],

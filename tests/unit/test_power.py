@@ -6,7 +6,6 @@ from agent.adb import Adb, is_wireless_serial
 from agent.attempt import State
 from agent.power import DeviceNotOnline, PowerSaver, release_decision
 
-
 # Trimmed from the QA phone's real `dumpsys connectivity` (2026-10-07). The Requests and
 # Offers sections mention WIFI and VALIDATED even while Wi-Fi is off.
 _NOISE = """Network Requests:

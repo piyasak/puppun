@@ -27,10 +27,7 @@ LOCAL_DATABASE_URL = "postgresql+psycopg://clipflow:clipflow_dev@127.0.0.1:5432/
 NOT_YET = {
     "dev": "P2 (docker-compose)",
     "seed-demo": "P2",
-    "lint": "P1/P2 (ruff + eslint)",
-    "typecheck": "P1/P2 (mypy + tsc)",
-    "build": "P2",
-    "smoke": "P2",
+    "smoke": "P2 (needs staging)",
 }
 
 
@@ -41,7 +38,7 @@ def setup() -> int:
         if code:
             return code
     return subprocess.call([str(VENV_PY), "-m", "pip", "install", "-q", "-e", "services/worker",
-                            "-e", "services/api[test]", "pytest"])
+                            "-e", "services/api[test]", "pytest", "ruff"])
 
 
 def migrate(rest: list[str]) -> int:
@@ -54,6 +51,32 @@ def migrate(rest: list[str]) -> int:
 
 E2E_DATABASE = "clipflow_e2e"
 NPX = "npx.cmd" if os.name == "nt" else "npx"
+NPM = "npm.cmd" if os.name == "nt" else "npm"
+WEB = ROOT / "apps" / "web"
+PY_SOURCES = ["agent", "services", "tools", "tests", "tasks.py"]
+
+
+def run_all(*commands: tuple[list[str], Path | None]) -> int:
+    """Run every command even if one fails, so one report shows all problems; non-zero if any failed."""
+    worst = 0
+    for cmd, cwd in commands:
+        worst = subprocess.call(cmd, cwd=cwd or ROOT) or worst
+    return worst
+
+
+def lint(rest: list[str]) -> int:
+    """ruff (Python) + oxlint (web)."""
+    return run_all(([PY, "-m", "ruff", "check", *PY_SOURCES, *rest], None), ([NPM, "run", "lint"], WEB))
+
+
+def typecheck(rest: list[str]) -> int:
+    """TypeScript for the web app. Python type checking is not set up yet (backlog)."""
+    return run_all(([NPX, "tsc", "-b", *rest], WEB))
+
+
+def build(rest: list[str]) -> int:
+    """Production web build; needs VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY and VITE_API_URL (E-32)."""
+    return run_all(([NPM, "run", "build", *rest], WEB))
 
 
 def _local_supabase_env() -> dict[str, str]:
@@ -101,7 +124,8 @@ def test_e2e(rest: list[str]) -> int:
 def main(argv: list[str]) -> int:
     if not argv:
         print(__doc__)
-        print("targets:", ", ".join(["setup", "migrate", "test-e2e", "check-gate <phase>", *TARGETS, *NOT_YET]))
+        print("targets:", ", ".join(["setup", "migrate", "lint", "typecheck", "build", "test-e2e", "check-gate <phase>",
+                                     *TARGETS, *NOT_YET]))
         return 2
     target, rest = argv[0], argv[1:]
     if target == "setup":
@@ -110,6 +134,8 @@ def main(argv: list[str]) -> int:
         return migrate(rest)
     if target == "test-e2e":
         return test_e2e(rest)
+    if target in ("lint", "typecheck", "build"):
+        return {"lint": lint, "typecheck": typecheck, "build": build}[target](rest)
     if target == "check-gate":
         return subprocess.call([PY, "-m", "tools.check_gate", *rest])
     if target in TARGETS:
