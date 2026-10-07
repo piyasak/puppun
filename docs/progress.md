@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-07 23:xx) — cloud sign-up verified by PO
+### Latest slice (2026-10-08 00:xx) — P2.3 Environment limits + P2.4 Agent tokens
+- Current phase: P2
+- Implemented: migration 0002 (plans + subscriptions + Environment limits + agent_tokens); แพ็กเกจ Demo `trial` (E-29) ให้ทุก Workspace ตอน onboarding; Environment limits = การจัดสรรจากแพ็กเกจ ตรวจผลรวมใต้ล็อก subscription; `/v1/workspace/usage`; Agent token generate/list/revoke/rotate + `verify()` สำหรับ P2.5 (E-30); เว็บ: เมนู Environments (การใช้แพ็กเกจ, สร้าง/แก้ไข) และ Agent Token (แสดงครั้งเดียว + คัดลอก, rotate/ยกเลิกพร้อม dialog ยืนยัน)
+- Commands: `py tasks.py test-integration` → 46 passed, 1 skipped (live token); race test ×5 ผ่าน; `alembic check` no drift; dev DB → 0002; `py tasks.py test-e2e` → 3 passed; `npm run build` ผ่าน
+- Bug ที่ test จับได้: secret base64url มี `_` ได้ → ห้าม split ด้วย `_`; server parse ด้วย regex ความยาวคงที่ (test แก้ให้ใช้ regex เดียวกัน)
+- Gates: **G2-02 → Yes** (server/web); G2-03 บางส่วน (limits) — No; G2-01/04/05 No
+- Next: P2.5 Agent authenticate/heartbeat/session fencing (T02–T05) → ปิด G2-03
+
+### Previous slice (2026-10-07 23:xx) — cloud sign-up verified by PO
 - **Cloud จริง (PO, 2026-10-07 22:09–22:10 น.)**: สมัครด้วยอีเมลบริษัท → Supabase ส่งอีเมลยืนยัน (`mail.send` confirmation) → PO กดลิงก์ → `user_signedup` + login (implicit) → API `/v1/me` 403 ONBOARDING_REQUIRED → `POST /v1/onboarding` 201 → `/v1/me` 200; DB: users.id = Supabase user id, role owner, rights 2026-10-07, audit `account.onboard` พร้อม request_id. **ข้อค้นพบ**: ระบบสแกนอีเมลของ Microsoft 365 (IP 104.47.x / 57.155.x) เปิดลิงก์ยืนยันเองหลังผู้ใช้ 14 วินาที → ได้ 'One-time token not found' — ถ้าตัวสแกนเปิดก่อนผู้ใช้ ลิงก์จะใช้ไม่ได้ (ต้องแก้ E-28). Reset บน cloud ยังไม่ได้ทดสอบ (มีใน E2E local แล้ว)
 
 ### Previous slice (2026-10-07 23:xx) — web auth screens + Playwright E2E

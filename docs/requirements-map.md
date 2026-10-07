@@ -18,8 +18,8 @@
 | FR-09 | P0 | Schedule ทุก X ชม. จากเวลานัดล่าสุด | scheduler/core | test_schedule_core (PRD examples), T11 | G4-01 | P4 | — |
 | FR-10 | P0 | Window [start,end) + IANA tz, เก็บ UTC | scheduler/core | test_schedule_window_boundaries | G4-01 | P4 | — |
 | FR-11 | P0 | Offline skip/defer, ไม่ burst, collision | scheduler | test_offline_no_burst, test_collision, T12, T13 | G4-02, G4-03 | P4 | — |
-| FR-12 | P0 | Token generate/copy once/expiry/revoke/rotate, hash only | api/agent_tokens, web/connection | test_token_lifecycle, log scan, T02 | G2-02 | P2 | — |
-| FR-13 | P0 | Environment: registered_agent_limit แยก concurrent_session_limit, plan cap รวม | api/environments | test_env_limits_concurrent, T05 | G2-03 | P2 | — |
+| FR-12 | P0 | Token generate/copy once/expiry/revoke/rotate, hash only | api/agent_tokens, web/connection | test_token_lifecycle, log scan, T02 | G2-02 | P2 | Done (server/web) — `agent_tokens.py` + router: generate/แสดงครั้งเดียว/expiry/revoke/rotate, hash-only, verify (username ไม่ตรง → ปฏิเสธแบบไม่เปิดเผย); UI `TokensPage`; 13 tests + E2E; Agent credential store = P5 |
+| FR-13 | P0 | Environment: registered_agent_limit แยก concurrent_session_limit, plan cap รวม | api/environments | test_env_limits_concurrent, T05 | G2-03 | P2 | WIP — limits แยก 3 ค่า + ผลรวม ≤ แพ็กเกจ (transactional, race test), `/v1/workspace/usage`, UI Environments; แพ็กเกจ Demo (E-29); การนับการใช้งานจริง = P2.5/P2.6 |
 | FR-14 | P0 | installation_id คงที่, reconnect ไม่เพิ่มทะเบียน, fencing | api/agent_auth, agent/identity | test_reconnect_20x (T03), test_duplicate_session (T04) | G2-03, G5-06 | P2/P5 | — |
 | FR-15 | P0 | Serial registration ผ่าน Agent, ownership conflict | api/devices, agent/adb | test_device_ownership, T07 | G2-04 | P2 | WIP — `agent/adb.py` device states + serial normalization (fake-runner tests); no real device yet |
 | FR-16 | P0 | expected_account ตรวจก่อนโพสต์, ไม่ตรง → พัก | agent/tiktok | test_account_mismatch (mock), T15 + real device | G5-03 | P5 | WIP — อ่านบัญชี (@handle) จาก Profile ก่อนโพสต์บนเครื่องจริง (ทำแบบ manual ใน P1); auto-match + NEEDS_ACTION = P5 |

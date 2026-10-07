@@ -18,9 +18,10 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..deps import WebAuth, get_db, identity, web_auth
+from ..entitlements import default_plan
 from ..errors import ApiError
 from ..identity import Identity
-from ..models import Membership, RightsAcceptance, User, Workspace
+from ..models import Membership, RightsAcceptance, Subscription, User, Workspace
 
 router = APIRouter(prefix="/v1")
 
@@ -83,6 +84,8 @@ def onboarding(body: OnboardingIn, request: Request, who: Identity = Depends(ide
         raise ApiError(409, "USERNAME_TAKEN", "ชื่อผู้ใช้นี้ถูกใช้แล้ว") from None
     db.add(Membership(workspace_id=ws.id, user_id=user.id, role="owner"))
     db.add(RightsAcceptance(workspace_id=ws.id, user_id=user.id, declaration_version=RIGHTS_DECLARATION_VERSION))
+    # Every Workspace starts on the demo plan until billing exists (P6, D05).
+    db.add(Subscription(workspace_id=ws.id, plan_id=default_plan(db).id, status="active"))
     audit.record(db, request, "account.onboard", workspace_id=ws.id, actor_user_id=user.id, target_id=user.id)
     db.commit()
     return _me(db, user.id, ws.id)

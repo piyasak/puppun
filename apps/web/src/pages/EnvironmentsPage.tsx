@@ -1,0 +1,154 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Shell } from '../components/Shell'
+import { Alert, Field } from '../components/ui'
+import { ApiError, api } from '../lib/api'
+import { LIMIT_LABELS, type Environment, type Limits, type Usage } from '../lib/types'
+
+const KEYS = Object.keys(LIMIT_LABELS) as (keyof Limits)[]
+
+function limitError(e: ApiError): string {
+  if (e.code === 'PLAN_LIMIT_EXCEEDED') return 'เกินจำนวนที่แพ็กเกจอนุญาต เมื่อรวมกับ Environment อื่นทั้งหมด'
+  if (e.code === 'NAME_TAKEN') return 'มี Environment ชื่อนี้แล้ว'
+  if (e.code === 'VALIDATION_ERROR') return 'Session พร้อมกันต้องไม่เกินจำนวน Agent และทุกค่าต้องไม่ติดลบ'
+  return e.message
+}
+
+function UsageCard({ usage }: { usage: Usage }) {
+  return (
+    <section className="card" aria-labelledby="usage-title">
+      <div className="card-head">
+        <h2 id="usage-title">แพ็กเกจ: {usage.plan.name}</h2>
+        {usage.plan.is_demo && <span className="badge badge-warn">Demo</span>}
+      </div>
+      <p className="muted">ขีดจำกัดเป็นของทั้ง Workspace — การสร้าง Environment เพิ่มไม่ได้เพิ่มสิทธิ์</p>
+      <div className="meters">
+        {KEYS.map((k) => (
+          <div key={k} className="meter">
+            <span className="meter-label">{LIMIT_LABELS[k]}</span>
+            <span className="meter-value" data-testid={`usage-${k}`}>{usage.allocated[k]} / {usage.caps[k]}</span>
+            <progress max={usage.caps[k] || 1} value={usage.allocated[k]} aria-label={`${LIMIT_LABELS[k]} ที่จัดสรรแล้ว`} />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function LimitsForm({ initial, submitLabel, onSubmit, onCancel }: {
+  initial: { name: string } & Limits
+  submitLabel: string
+  onSubmit: (v: { name: string } & Limits) => Promise<void>
+  onCancel?: () => void
+}) {
+  const [v, setV] = useState(initial)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    if (v.concurrent_session_limit > v.registered_agent_limit) {
+      setError('Session พร้อมกันต้องไม่เกินจำนวน Agent ที่ลงทะเบียนได้')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      await onSubmit(v)
+    } catch (err) {
+      setError(limitError(err as ApiError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="limits-form">
+      {error && <Alert kind="error">{error}</Alert>}
+      <Field label="ชื่อ Environment" required value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })}
+        hint="เช่น สำนักงาน, บ้าน" />
+      <div className="grid-3">
+        {KEYS.map((k) => (
+          <Field key={k} label={LIMIT_LABELS[k]} type="number" min={0} inputMode="numeric" value={String(v[k])}
+            onChange={(e) => setV({ ...v, [k]: Math.max(0, Number(e.target.value) || 0) })} />
+        ))}
+      </div>
+      <div className="form-actions">
+        {onCancel && <button type="button" className="btn btn-secondary" onClick={onCancel}>ยกเลิก</button>}
+        <button type="submit" className="btn btn-primary" disabled={busy || !v.name.trim()} aria-busy={busy}>
+          {busy ? 'กำลังบันทึก…' : submitLabel}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export function EnvironmentsPage() {
+  const [items, setItems] = useState<Environment[] | null>(null)
+  const [usage, setUsage] = useState<Usage | null>(null)
+  const [error, setError] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  const [formKey, setFormKey] = useState(0)
+
+  const load = useCallback(async () => {
+    try {
+      const [list, u] = await Promise.all([api<{ items: Environment[] }>('/v1/environments'), api<Usage>('/v1/workspace/usage')])
+      setItems(list.items)
+      setUsage(u)
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <Shell title="Environments">
+      {error && <Alert kind="error">{error}</Alert>}
+      {usage && <UsageCard usage={usage} />}
+
+      <section className="card" aria-labelledby="new-env-title">
+        <h2 id="new-env-title">สร้าง Environment</h2>
+        <LimitsForm key={formKey} submitLabel="สร้าง Environment"
+          initial={{ name: '', registered_agent_limit: 1, concurrent_session_limit: 1, device_limit: 1 }}
+          onSubmit={async (v) => {
+            await api('/v1/environments', { method: 'POST', body: v })
+            setFormKey((k) => k + 1)
+            await load()
+          }} />
+      </section>
+
+      <section className="card" aria-labelledby="env-list-title">
+        <h2 id="env-list-title">Environment ทั้งหมด</h2>
+        {items === null && <p className="muted" role="status">กำลังโหลด…</p>}
+        {items?.length === 0 && <p className="muted">ยังไม่มี Environment</p>}
+        <ul className="rows">
+          {items?.map((env) => (
+            <li key={env.id} className="row">
+              {editing === env.id ? (
+                <LimitsForm initial={env} submitLabel="บันทึก" onCancel={() => setEditing(null)}
+                  onSubmit={async (v) => {
+                    await api(`/v1/environments/${env.id}`, { method: 'PATCH', body: v })
+                    setEditing(null)
+                    await load()
+                  }} />
+              ) : (
+                <>
+                  <div className="row-main">
+                    <strong>{env.name}</strong>
+                    <span className="muted">
+                      {KEYS.map((k) => `${LIMIT_LABELS[k]} ${env[k]}`).join(' • ')}
+                    </span>
+                  </div>
+                  <button type="button" className="btn btn-secondary" onClick={() => setEditing(env.id)}
+                    aria-label={`แก้ไข ${env.name}`}>แก้ไข</button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+    </Shell>
+  )
+}

@@ -3,46 +3,9 @@
  * sign up -> blocked until confirmed -> confirm link -> onboarding -> dashboard -> sign out
  * -> generic login errors -> reset without enumeration -> new password works, old does not.
  */
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
-
-const MAILPIT = process.env.E2E_MAILPIT_URL ?? 'http://127.0.0.1:54324'
-
-function decodeEntities(s: string) {
-  return s.replace(/&amp;/g, '&')
-}
-
-/** Waits for a new message to `email` whose body contains an auth link, returns the link. */
-async function mailLink(request: APIRequestContext, email: string, after: Set<string>, type: string) {
-  for (let i = 0; i < 40; i++) {
-    const res = await request.get(`${MAILPIT}/api/v1/search`, { params: { query: `to:"${email}"` } })
-    const { messages } = (await res.json()) as { messages: { ID: string }[] }
-    for (const m of messages.filter((m) => !after.has(m.ID))) {
-      const body = await (await request.get(`${MAILPIT}/api/v1/message/${m.ID}`)).json()
-      const text = `${body.Text ?? ''}\n${body.HTML ?? ''}`
-      const link = text.match(new RegExp(`https?://[^\\s"'<>]+/auth/v1/verify\\?[^\\s"'<>]*type=${type}[^\\s"'<>]*`))
-      if (link) {
-        after.add(m.ID)
-        return decodeEntities(link[0])
-      }
-    }
-    await new Promise((r) => setTimeout(r, 500))
-  }
-  throw new Error(`no ${type} email for ${email}`)
-}
-
-async function messageIds(request: APIRequestContext, email: string) {
-  const res = await request.get(`${MAILPIT}/api/v1/search`, { params: { query: `to:"${email}"` } })
-  const { messages } = (await res.json()) as { messages: { ID: string }[] }
-  return new Set(messages.map((m) => m.ID))
-}
-
-async function login(page: Page, email: string, password: string) {
-  await page.goto('/login')
-  await page.getByLabel('อีเมล').fill(email)
-  await page.getByLabel('รหัสผ่าน', { exact: true }).fill(password)
-  await page.getByRole('button', { name: 'เข้าสู่ระบบ' }).click()
-}
+import { login, mailLink, messageIds } from './helpers'
 
 test('sign up, confirm, onboard, reset password', async ({ page, request }) => {
   const tag = randomBytes(5).toString('hex')

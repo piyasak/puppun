@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { Shell } from '../components/Shell'
 import { Alert, AuthCard, Field, Submit } from '../components/ui'
 import { ApiError, api, type Me } from '../lib/api'
-import { supabase } from '../lib/supabase'
 
 /** Loads /v1/me; sends users who have not finished onboarding to /onboarding. */
 function useMe() {
@@ -73,44 +73,26 @@ export function OnboardingPage() {
 
 export function HomePage() {
   const { me, error } = useMe()
-  const navigate = useNavigate()
 
   if (error?.code === 'ONBOARDING_REQUIRED') return <Navigate to="/onboarding" replace />
 
-  async function signOut() {
-    await supabase.auth.signOut()
-    navigate('/login', { replace: true })
-  }
-
   return (
-    <div className="shell">
-      <aside className="sidebar" aria-label="เมนูหลัก">
-        <div className="auth-brand"><span className="brand-mark">p</span> punpun</div>
-        <nav>
-          <a className="nav-item active" href="/" aria-current="page">แดชบอร์ด</a>
-        </nav>
-      </aside>
-      <main className="content">
-        <header className="topbar">
-          <h1>แดชบอร์ด</h1>
-          <button type="button" className="btn btn-secondary" onClick={signOut}>ออกจากระบบ</button>
-        </header>
-        {error && <Alert kind="error">{error.message}</Alert>}
-        {!me && !error && <p className="muted" role="status">กำลังโหลด…</p>}
-        {me && (
-          <section className="card" aria-labelledby="ws-title">
-            <h2 id="ws-title">{me.workspace.name}</h2>
-            <dl className="facts">
-              <dt>ผู้ใช้</dt><dd data-testid="me-username">{me.user.username}</dd>
-              <dt>อีเมล</dt><dd data-testid="me-email">{me.user.email}</dd>
-              <dt>บทบาท</dt><dd>{me.role === 'owner' ? 'เจ้าของ' : me.role}</dd>
-              <dt>เขตเวลา</dt><dd>{me.workspace.timezone}</dd>
-              <dt>คำรับรองสิทธิ์</dt>
-              <dd>{me.rights_declaration ? `ยอมรับแล้ว (ฉบับ ${me.rights_declaration.version})` : 'ยังไม่ยอมรับ'}</dd>
-            </dl>
-          </section>
-        )}
-      </main>
-    </div>
+    <Shell title="แดชบอร์ด">
+      {error && <Alert kind="error">{error.message}</Alert>}
+      {!me && !error && <p className="muted" role="status">กำลังโหลด…</p>}
+      {me && (
+        <section className="card" aria-labelledby="ws-title">
+          <h2 id="ws-title">{me.workspace.name}</h2>
+          <dl className="facts">
+            <dt>ผู้ใช้</dt><dd data-testid="me-username">{me.user.username}</dd>
+            <dt>อีเมล</dt><dd data-testid="me-email">{me.user.email}</dd>
+            <dt>บทบาท</dt><dd>{me.role === 'owner' ? 'เจ้าของ' : me.role}</dd>
+            <dt>เขตเวลา</dt><dd>{me.workspace.timezone}</dd>
+            <dt>คำรับรองสิทธิ์</dt>
+            <dd>{me.rights_declaration ? `ยอมรับแล้ว (ฉบับ ${me.rights_declaration.version})` : 'ยังไม่ยอมรับ'}</dd>
+          </dl>
+        </section>
+      )}
+    </Shell>
   )
 }

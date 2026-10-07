@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -90,13 +90,77 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class Plan(Base):
+    """Versioned package entitlements (FR-13). Real prices and quotas are open (D05); `is_demo` plans
+    exist only so P2 limits can be enforced and tested, and are never offered commercially."""
+
+    __tablename__ = "plans"
+    __table_args__ = (UniqueConstraint("code", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    code: Mapped[str] = mapped_column(String(32))
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(100))
+    is_demo: Mapped[bool] = mapped_column(Boolean)
+    max_registered_agents: Mapped[int] = mapped_column(Integer)
+    max_concurrent_sessions: Mapped[int] = mapped_column(Integer)
+    max_devices: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created()
+
+
+class Subscription(Base):
+    """The plan a Workspace is on. One row per Workspace; it is also the lock that serializes
+    changes to plan-wide allocations (PRD §F: caps are enforced in transactions)."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), unique=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"))
+    status: Mapped[str] = mapped_column(String(16))  # active | past_due | cancelled (billing arrives in P6)
+    created_at: Mapped[datetime] = _created()
+
+
 class Environment(Base):
-    """Agent scope inside a Workspace (architecture §2). Limits and plan caps arrive in P2.3."""
+    """Agent scope inside a Workspace (architecture §2).
+
+    The limits are allocations out of the plan's caps: the sum over all Environments of a
+    Workspace never exceeds the plan, so more Environments never mean more entitlement.
+    """
 
     __tablename__ = "environments"
-    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name"),
+        CheckConstraint("registered_agent_limit >= 0 AND concurrent_session_limit >= 0 AND device_limit >= 0",
+                        name="ck_environments_limits_non_negative"),
+        CheckConstraint("concurrent_session_limit <= registered_agent_limit",
+                        name="ck_environments_sessions_within_agents"),
+    )
 
     id: Mapped[uuid.UUID] = _uuid()
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(60))
+    registered_agent_limit: Mapped[int] = mapped_column(Integer)
+    concurrent_session_limit: Mapped[int] = mapped_column(Integer)
+    device_limit: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created()
+
+
+class AgentToken(Base):
+    """Agent credential (FR-12). Only a public prefix and a SHA-256 of the full token are stored;
+    the token itself is shown once at creation. Scope = workspace + environment, server-side."""
+
+    __tablename__ = "agent_tokens"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    prefix: Mapped[str] = mapped_column(String(16), unique=True)
+    secret_hash: Mapped[str] = mapped_column(String(64))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rotated_from_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_tokens.id", ondelete="SET NULL"))

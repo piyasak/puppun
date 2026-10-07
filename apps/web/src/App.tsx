@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth'
 import { HomePage, OnboardingPage } from './pages/AppPages'
 import { ForgotPage, LoginPage, ResetPage, SignupPage } from './pages/AuthPages'
+import { EnvironmentsPage } from './pages/EnvironmentsPage'
+import { TokensPage } from './pages/TokensPage'
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth()
@@ -21,6 +23,8 @@ export default function App() {
           <Route path="/reset" element={<ResetPage />} />
           <Route path="/onboarding" element={<RequireSession><OnboardingPage /></RequireSession>} />
           <Route path="/" element={<RequireSession><HomePage /></RequireSession>} />
+          <Route path="/environments" element={<RequireSession><EnvironmentsPage /></RequireSession>} />
+          <Route path="/agent-tokens" element={<RequireSession><TokensPage /></RequireSession>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

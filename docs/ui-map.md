@@ -40,6 +40,8 @@
 | /schedule/:seriesId | Series: pause/resume (แสดง preview ใหม่ก่อนยืนยัน), ยกเลิก | เผยแพร่ | L, X, S, ยืนยันก่อนยกเลิก | /schedules/:id/pause,/resume | FR-19 | P4 |
 | /attempts/:id/resolve | แก้ผลไม่ชัดเจน: หลักฐาน + ตัวเลือก (พบโพสต์ / ยืนยันว่าไม่ได้โพสต์ / ยังไม่ทราบ) — ไม่มีตัวเลือกที่เลือกไว้ล่วงหน้า | จัดการปัญหา | L, V (ต้องแนบหลักฐาน), X, S | POST /publish-attempts/:id/resolve | FR-18 | P5 |
 | /devices | รายการโทรศัพท์: สถานะพร้อม/Offline/unauthorized/ผิดบัญชี พร้อมเหตุผล | เชื่อมเครื่อง | L, E (CTA ติดตั้ง Agent), X | GET /devices | FR-15 | P2 |
+| /environments | (ทำแล้ว P2.3) การใช้แพ็กเกจรวม + สร้าง/แก้ไข Environment และ limit 3 ค่า; ข้อความ PLAN_LIMIT_EXCEEDED |
+| /agent-tokens | (ทำแล้ว P2.4) สร้าง Token → แสดงครั้งเดียว + คัดลอก; รายการพร้อมสถานะ; Rotate/ยกเลิก ผ่าน dialog ยืนยัน |
 | /devices/:id | รายละเอียด: rename, บัญชีปลายทาง, งานค้าง, สวิตช์ "ประหยัดพลังงาน" (เปิด Wi-Fi ก่อนโพสต์ / ปิดแอป + Wi-Fi หลังยืนยันผล — Q-23), ถอดการผูก (ยืนยัน + แสดงงานที่ได้รับผล) | เชื่อมเครื่อง | L, P, V, X, S, D (Unbind ระหว่าง Submit) | PATCH /devices/:id, POST …/unbind | FR-15,16 | P2 |
 | /connection | การเชื่อมต่อ: ขั้นตอน 1 สร้าง Environment → 2 สร้างโทเคน → 3 ดาวน์โหลด/ตั้งค่า Agent → 4 ลงทะเบียนเครื่อง | เชื่อมเครื่อง | L, E, X | — | FR-12..15 | P2 |
 | /environments, /environments/:id | Environment + ขีดจำกัด (ทะเบียน Agent, Session พร้อมกัน, เครื่อง) แสดงยอดรวมเทียบแพ็กเกจ | เชื่อมเครื่อง | L, E, V (เกินแพ็กเกจ), X, S | /environments | FR-13 | P2 |

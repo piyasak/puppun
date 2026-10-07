@@ -17,7 +17,7 @@ from . import errors
 from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
-from .routers import auth, environments
+from .routers import agent_tokens, auth, environments
 
 log = logging.getLogger("clipflow.api")
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -59,6 +59,7 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     errors.install(app)
     app.include_router(auth.router)
     app.include_router(environments.router)
+    app.include_router(agent_tokens.router)
 
     @app.get("/healthz")
     def healthz():
