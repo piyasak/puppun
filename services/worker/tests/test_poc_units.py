@@ -65,10 +65,20 @@ def test_media_url_ssrf_guard(media_url):
         ("ERROR: [youtube] x: Video unavailable", SourceErrorCode.NOT_FOUND),
         ("ERROR: Unsupported URL: https://x", SourceErrorCode.UNSUPPORTED_URL),
         ("ERROR: unable to download video data: HTTP Error 503", SourceErrorCode.DOWNLOADER_ERROR),
+        ("ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate", SourceErrorCode.NOT_ACCESSIBLE),
+        # Regression: "page" must not match an age marker; proxy failures are network errors.
+        ("ERROR: [youtube] x: Unable to download API page: ('Unable to connect to proxy', "
+         "OSError('Tunnel connection failed: 407 Proxy Authentication Required'))", SourceErrorCode.DOWNLOADER_ERROR),
+        ("ERROR: [BiliIntl] x: Unable to download webpage: <urlopen error timed out>", SourceErrorCode.DOWNLOADER_ERROR),
     ],
 )
 def test_download_errors_are_distinguished(message, code):
     assert _classify_download_error(Exception(message)).code == code
+
+
+def test_error_detail_has_no_ansi_codes():
+    err = _classify_download_error(Exception("[0;31mERROR:[0m Video unavailable"))
+    assert "" not in err.detail and err.code == SourceErrorCode.NOT_FOUND
 
 
 def _info(duration):

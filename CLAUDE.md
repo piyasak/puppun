@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-Phases 0 and P1 are in progress: G0 and G1 are No, and no SaaS application exists yet. What exists:
+Phases 0 and P1 are in progress: G0 and G1 are No. Clips are 3–5 minutes (D02); P1 phone testing happens on a separate QA machine (Q-13), and no SaaS application exists yet. What exists:
 - `PRD_CLAUDE_CODE.md`: the product source of truth. Sections A–N are the implementation contract; section O is the full Thai PRD with the 47 gate checks and UAT cases. The `.docx` is the original and duplicates section O.
 - `docs/`: progress (read first), architecture, decisions (D/Q/E registers, including PO answers from 2026-10-06), requirements-map, ui-map, backlog, compatibility (real source/device results), and `gates/G0–G8.md`.
 - `services/worker/clipflow_worker/`: the P1 media POC.
@@ -88,6 +88,7 @@ Environment notes:
 **Scheduling (PRD §G, §5):**
 - Each next slot is the previous *scheduled* slot + X hours, pushed forward into the allowed window. It is never based on the actual publish time.
 - MVP windows are same-day only. Asia/Bangkok must reproduce the PRD examples, e.g. 19:00, N=3, X=2, window 09–21 → 19:00, then 09:00 and 11:00 the next day.
+- Posting runs in parallel across devices up to the plan's limits, but claims are serialized per device: a same-device collision is queued to start when the device is free, not rejected (Q-05/Q-06).
 - Offline, pause/resume and reboot never cause a catch-up burst. Each item stores scheduled, claimed, started, submitted and verified timestamps separately.
 - The preview is calculated on the server, not in the browser.
 

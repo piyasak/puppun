@@ -95,6 +95,8 @@ SCHEDULED → CLAIMED → TRANSFERRING → PREPARING → SUBMITTING → VERIFYIN
 `slot[0] = normalize(start)`; `slot[i] = normalize(slot[i-1] + X h)` โดย `normalize(t)` = t ถ้าเวลาท้องถิ่นอยู่ใน `[window_start, window_end)` มิฉะนั้นเลื่อนไป `window_start` ของวันถัดไปที่อนุญาต; คำนวณใน IANA timezone แล้วเก็บ UTC
 ตัวอย่างที่ต้องผ่าน (Asia/Bangkok): 09:00, N=6, X=2, 09–21 → 09,11,13,15,17,19; 19:00, N=3 → 19:00, 09:00(+1), 11:00(+1)
 
+ความขนาน (Q-05/Q-06, Accepted 2026-10-07): งานโพสต์ทำพร้อมกันได้ข้ามโทรศัพท์/Session สูงสุดตามแพ็กเกจ; Claim ถูก serialize **ต่อเครื่อง** — รายการที่เวลาชนบนเครื่องเดียวกันไม่ถูกปฏิเสธ แต่เข้าคิวเริ่มทันทีที่เครื่องว่าง (preview แสดงเวลาเริ่มที่คาดการณ์); Offline มีผลเฉพาะเครื่องนั้น (defer รักษาระยะ X หรือ skip) ไม่กระทบเครื่องอื่น
+
 ## 5. Data ownership & storage
 
 - Media keys: `ws/{workspace_id}/jobs/{job_id}/...` — แต่ไม่ใช้ key เป็นการตรวจสิทธิ์; สิทธิ์ตรวจใน DB เสมอ

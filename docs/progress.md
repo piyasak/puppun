@@ -1,8 +1,17 @@
 # Progress
 
-## Current phase: P1 — Feasibility POC (in progress; PO authorized parallel to G0 on 2026-10-06). G0 = No, G1 = No.
+## Current phase: P1 — Feasibility POC (in progress). G0 = No (2/5), G1 = No (1/6).
 
 Last updated: 2026-10-07
+
+### Latest slice (2026-10-07, after commit 5ed272e)
+- PO answers recorded: Q-05/Q-06 confirmed (parallel across devices, queue per device), D02 = random 3–5 min clips per link, Q-12 subtitle toggle, Q-13 phone helper install on QA machine, Q-14 terms review waived + rights accepted once at signup (user override, PO owns the risk)
+- Defaults changed: clip length 180–300s; source resource cap 4h (E-17)
+- Bug fixed: download errors containing "page" were misclassified as SOURCE_NOT_ACCESSIBLE (bare marker "age"); network/proxy errors now DOWNLOADER_ERROR "retryable"; ANSI colour codes stripped from user-facing details (+4 regression tests)
+- D02 verified offline: 3 non-overlapping 180–300s clips selectable from real audio of all 5 sources; synthetic 300s render OK (236s render time)
+- Blocker: network now goes through `ssproxy.boonrawd.co.th:8080` returning 407 → link set 2 (YT 3, Bili 2) and real 3–5 min clips **not tested**
+- Gates: G0-04 → Yes; G1-05 → Yes (PO decision, Q-14); others unchanged No
+- `py tasks.py test-unit` → 64 passed
 
 ### Implemented
 - P0 (2026-10-06): docs baseline, gate register, `check-gate` — ดู history ด้านล่าง
@@ -47,12 +56,12 @@ FR-02, FR-03, FR-04, FR-05, FR-06, FR-07 (partial), FR-15/17/18 (logic only), NF
 - G1-01 ลิงก์ไม่ครบ 5/แพลตฟอร์ม • G1-02 ยังไม่มี human playback QA • G1-03/G1-04 ไม่มีโทรศัพท์ • G1-05 ยังไม่มี terms review • G1-06 ยังไม่มีต้นทุนเป็นเงิน/D02
 
 ### Open decisions
-D01, D02 (ต้นฉบับจริงยาว 113–203 นาที), D03, D05–D07; Q-02, Q-03, Q-05/Q-06 (ยืนยัน), Q-09, Q-10, Q-12 (ซับซ้อนกับซับฝัง); วิธีกรอกภาษาไทยบนโทรศัพท์ (ต้องติดตั้ง helper app เช่น ADBKeyboard หรือ uiautomator2 บนเครื่อง)
+D01, D03, D05–D07; Q-02 (AI text), Q-09 (UI prototype), Q-10 (rights text wording for the one-time acceptance); E-17 source cap confirmation
 
 ### Next concrete task
+0. เมื่อ network ออกได้: `poc inspect` ชุดลิงก์ที่ 2 + `poc produce` (3–5 นาที) อย่างน้อย 1 แหล่งต่อแพลตฟอร์ม → อัปเดต G1-01/G1-02
 1. เมื่อโทรศัพท์เชื่อมต่อ: `.venv/Scripts/python -m agent.cli doctor --serial <S>` แล้ว `dry-run --file var/poc_v2/.../clip_01.mp4` (ไม่โพสต์) → บันทึก matrix
-2. ขออนุญาตติดตั้ง helper สำหรับกรอกภาษาไทยบนโทรศัพท์ → ทดสอบ Thai/emoji input (T16)
-3. Terms review (G1-05) พร้อมวันที่ ให้ PO ตัดสิน
+2. บนเครื่อง QA (Q-13): ติดตั้ง helper สำหรับกรอกภาษาไทย → ทดสอบ Thai/emoji input (T16)
 4. Human playback QA ของคลิปใน `var/poc_v2/` (G1-02); ลิงก์ทดสอบเพิ่ม (G1-01)
 5. เปลี่ยนฟอนต์เป็น Noto Sans Thai (E-13) ก่อนใช้ใน P3
 

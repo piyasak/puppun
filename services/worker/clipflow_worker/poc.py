@@ -30,6 +30,7 @@ from clipflow_worker.render import ClipText, Template, render_clip
 from clipflow_worker.source import (
     SourceError,
     SourceErrorCode,
+    DEFAULT_MAX_DURATION_S,
     SourceInfo,
     _base_opts,
     _classify_download_error,
@@ -208,9 +209,9 @@ def main(argv: list[str] | None = None) -> int:
     p_produce.add_argument("url")
     p_produce.add_argument("--clips", type=int, default=3)
     p_produce.add_argument("--seed", type=int, default=42)
-    p_produce.add_argument("--min-len", type=float, default=30)
-    p_produce.add_argument("--max-len", type=float, default=60)
-    p_produce.add_argument("--max-duration", type=int, default=60 * 60)
+    p_produce.add_argument("--min-len", type=float, default=180)  # D02: 3-5 minute clips
+    p_produce.add_argument("--max-len", type=float, default=300)
+    p_produce.add_argument("--max-duration", type=int, default=DEFAULT_MAX_DURATION_S)
     p_produce.add_argument("--max-height", type=int, default=1080)
     p_produce.add_argument("--out", default="var/poc")
     p_produce.add_argument("--no-subtitles", action="store_true", help="do not burn captions (source already has hard subs)")

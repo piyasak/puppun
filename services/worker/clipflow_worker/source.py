@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 from dataclasses import asdict, dataclass, field
@@ -27,8 +28,9 @@ PLATFORM_HOSTS = {
     "bilibili": {"bilibili.com", "www.bilibili.com", "m.bilibili.com", "bilibili.tv", "www.bilibili.tv"},
 }
 
-# Proposed POC limits (Q-03 / D02 still open); enforced before any media download.
-DEFAULT_MAX_DURATION_S = 60 * 60
+# Source cap is a resource limit (E-17); D02 sets clip length, not source length.
+# Enforced before any media download.
+DEFAULT_MAX_DURATION_S = 4 * 60 * 60
 DEFAULT_MAX_FILESIZE = 2 * 1024**3
 DEFAULT_MAX_HEIGHT = 1080
 
@@ -87,15 +89,29 @@ def classify_platform(url: str) -> str:
     raise SourceError(SourceErrorCode.UNSUPPORTED_URL, f"host not supported: {host}")
 
 
-_NOT_FOUND_MARKERS = ("video unavailable", "does not exist", "404", "not found", "has been removed")
+# Network/proxy failures are checked first: they say nothing about the source itself
+# and must not be reported to the user as "video unavailable" or "private".
+_NETWORK_MARKERS = (
+    "proxy", "unable to connect", "timed out", "connection reset", "connection refused",
+    "name resolution", "getaddrinfo", "network is unreachable", "ssl:",
+)
+_NOT_FOUND_MARKERS = ("video unavailable", "does not exist", "http error 404", "not found", "has been removed")
+# Phrases, not bare words: a bare "age" matched "page" and misreported a proxy error (P1, 2026-10-07).
 _NOT_ACCESSIBLE_MARKERS = (
-    "private video", "sign in", "login", "members-only", "age", "geo", "not available in your country",
-    "premium", "copyright", "confirm you",
+    "private video", "sign in", "login", "members-only", "age-restricted", "confirm your age",
+    "inappropriate for some users", "geo-restricted", "geo restricted", "not available in your country",
+    "premium", "copyright", "confirm you're not a bot", "confirm you are not a bot",
 )
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
 def _classify_download_error(exc: Exception) -> SourceError:
-    message = str(exc).lower()
+    exc = _ANSI.sub("", str(exc))  # yt-dlp colours "ERROR:"; details are shown to users
+    message = exc.lower()
+    if any(m in message for m in _NETWORK_MARKERS):
+        return SourceError(SourceErrorCode.DOWNLOADER_ERROR, f"network error (retryable): {exc}")
     if any(m in message for m in _NOT_ACCESSIBLE_MARKERS):
         return SourceError(SourceErrorCode.NOT_ACCESSIBLE, str(exc))
     if any(m in message for m in _NOT_FOUND_MARKERS):
