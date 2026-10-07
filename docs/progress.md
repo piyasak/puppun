@@ -1,10 +1,19 @@
 # Progress
 
-## Current phase: P1 — Feasibility POC (in progress). G0 = No (2/5), G1 = No (1/6).
+## Current phase: P2 — SaaS foundation (authorized by PO override Q-22). G0 = Yes, G1 = No (5/6, G1-06 deferred).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-07 20:0x) — authorized test post
+### Latest slice (2026-10-07 20:4x) — P2 authorized
+- PO override Q-22: เริ่ม P2 ได้ แม้ G1-06 (ต้นทุน) ยังเป็น No — G1 ยังบันทึกเป็น No
+- Next: P2 slice แรก — FastAPI + SQLAlchemy/Alembic บน Docker Postgres, Auth/Workspace + tenant repository + cross-tenant tests (FR-01, NF-01, G2-01)
+
+### Previous slice (2026-10-07 20:3x) — Gate 0 approved
+- **G0 = Yes** — ปิยศักดิ์ สุทธิประภา อนุมัติ Gate 0 (2026-10-07)
+- G1-03 → Yes ตาม PO override (1 รุ่นพอสำหรับ P1); D03 = เฉพาะ POCO 25078PC3EG / Android 15 / TikTok 40.0.0
+- **G1 = No (5/6)** — เหลือ G1-06 ต้นทุน (PO ให้เลื่อนไว้, Q-18) → P2 ยังเริ่มไม่ได้ตามลำดับ Gate จนกว่า PO จะทำ G1-06 หรือสั่ง override
+
+### Previous slice (2026-10-07 20:0x) — authorized test post
 - PO: walkthrough ok → **G0-02 Yes**; ไม่มีงบแยก + ทุกบทบาท = ปิยศักดิ์ สุทธิประภา → **G0-05 Yes**; G0 technical 5/5 — **รอ PO sign-off Gate 0**
 - ADBKeyboard ติดตั้งแล้ว (ต้องเปิด Xiaomi "Install via USB" + "USB debugging (Security settings)" ก่อน)
 - โพสต์ทดสอบจริง 1 ครั้ง (เฉพาะฉัน) บน @patsy4404: แคปชันไทย+emoji ตรง, crash หลังกดโพสต์ → UNKNOWN (ไม่ retry) → resolve ด้วยหลักฐาน → VERIFIED_SUCCESS → **G1-04 Yes**; G1-03 ผ่าน 1/2 รุ่น
