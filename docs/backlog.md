@@ -28,13 +28,15 @@
 ## P2 — SaaS foundation (ขึ้นกับ G1 Yes)
 Docker Compose (Postgres/Redis/MinIO) • FastAPI skeleton + Alembic • Auth/Workspace + reset • Tenant repository layer + cross-tenant test suite • Environment + plan caps (transactional) • Token lifecycle + log redaction • Agent authenticate/heartbeat/fencing • Device register/ownership • Web shell (sidebar, auth, dashboard, connection, tokens, environments, agents, devices, settings) • CI (lint/typecheck/test/build) • staging deploy/rollback — ประมาณ 10–12 วัน
 
-## P3 — Video production (ขึ้นกับ G2) — 10 วัน
+## P3 — Video production (ขึ้นกับ G2) — 10 วัน (ปรับตาม Q-15: logic ผลิตคลิปรันบน Agent; Server รับคลิป ตรวจ hash ทำ preview/approve)
 Ingest + SSRF guard • transcript adapter • segment selection (seeded) • render worker (Dramatiq) • template versions • metadata generation adapter • quota reserve/settle/refund • Create wizard, Jobs, Job detail + real preview + approve
 
 ## P4 — Scheduler (ขึ้นกับ G3) — 5 วัน
 schedule_core + PRD examples • preview endpoint • collision/device lock/claim • pause/resume/defer/skip • week/list UI • dispatch load test
 
-## P5 — Agent & publishing (ขึ้นกับ G4) — 10 วัน
+## P5 — Agent & publishing (ขึ้นกับ G4) — 10 วัน + 3–4 วันจาก Q-15/Q-17
+ตาม Q-15 (ข2): บรรจุโมดูล media ใน Agent (E-18), claim render job, upload คลิป + sha256, cool-down UI; ตาม Q-17: เลือกไฟล์บนเครื่อง Agent เป็นต้นฉบับ
+
 Windows packaging (installer, credential store, local UI) • claim/download/hash/transfer • account verification • TikTok UI state machine • attempt events + UNKNOWN + resolve UI • update/rollback • fault tests on real devices
 
 ## P6 — Billing & Admin (ขึ้นกับ G5; prototype ทำก่อนได้) — 5 วัน
@@ -44,11 +46,11 @@ Windows packaging (installer, credential store, local UI) • claim/download/has
 ## Resource plan (PRD สมมติ 4 บทบาท — ยังไม่มีชื่อผู้รับผิดชอบ)
 | บทบาท | ผู้รับผิดชอบ | หน้าที่ใน Gate |
 |---|---|---|
-| PO | **ยังไม่ระบุ** (PRD ระบุ "คุณปิยศักดิ์ / ผู้ได้รับมอบหมาย") | อนุมัติ G0, G1, G5, G6, G7, G8 |
-| Tech Lead | ยังไม่ระบุ | G1, G2 |
-| QA | ยังไม่ระบุ | G2–G7 |
-| Video/Agent Lead | ยังไม่ระบุ | G3, G5 |
-| Ops/Finance | ยังไม่ระบุ | G6–G8 |
+| PO | ปิยศักดิ์ สุทธิประภา | อนุมัติ G0, G1, G5, G6, G7, G8 |
+| Tech Lead | ปิยศักดิ์ สุทธิประภา (Q-20) | G1, G2 |
+| QA | ปิยศักดิ์ สุทธิประภา (Q-20) | G2–G7 |
+| Video/Agent Lead | ปิยศักดิ์ สุทธิประภา (Q-20) | G3, G5 |
+| Ops/Finance | ปิยศักดิ์ สุทธิประภา (Q-20) | G6–G8 |
 งบ POC: **ยังไม่ระบุ** (ค่า AI/ASR, เครื่อง Android 2 รุ่น, storage)
 
 ## Authorized fixture plan

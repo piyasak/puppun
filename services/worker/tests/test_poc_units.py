@@ -6,6 +6,7 @@ import json
 import pytest
 
 from clipflow_worker import segments as seg
+from clipflow_worker.media import duration_gaps
 from clipflow_worker.render import ClipText, Template, build_ass
 from clipflow_worker.source import (
     SourceError,
@@ -79,6 +80,19 @@ def test_download_errors_are_distinguished(message, code):
 def test_error_detail_has_no_ansi_codes():
     err = _classify_download_error(Exception("[0;31mERROR:[0m Video unavailable"))
     assert "" not in err.detail and err.code == SourceErrorCode.NOT_FOUND
+
+
+def _probe(container, video, audio):
+    return {"format": {"duration": container},
+            "streams": [{"codec_type": "video", "duration": video}, {"codec_type": "audio", "duration": audio}]}
+
+
+def test_duration_gaps_catches_truncated_file():
+    # Real P1 case: a 230.7 s range came back as 33.4 s video / 29.7 s audio with no yt-dlp error.
+    problems = duration_gaps(_probe("33.366666", "33.333333", "29.726500"), 230.725, 1.0)
+    assert len(problems) == 3 and "expected 230.72s" in problems[0]
+    assert duration_gaps(_probe("262.133333", "262.100000", "262.088000"), 262.088, 1.0) == []
+    assert duration_gaps({"format": {}, "streams": []}, 10, 1.0) == ["container duration unknown"]
 
 
 def _info(duration):

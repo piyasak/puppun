@@ -13,11 +13,16 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from clipflow_worker.media import binary, probe
+from clipflow_worker.media import binary, duration_gaps, probe
 from clipflow_worker.segments import Cue
 from clipflow_worker.textlayout import wrap
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
+DURATION_TOLERANCE_S = 0.5
+
+
+class RenderError(Exception):
+    """The rendered file does not match the requested clip (e.g. truncated input)."""
 
 
 @dataclass(frozen=True)
@@ -135,6 +140,9 @@ def render_clip(
     subprocess.run(cmd, cwd=out_path.parent, check=True, capture_output=True, text=True, encoding="utf-8")
 
     info = probe(out_path)
+    problems = duration_gaps(info, duration, DURATION_TOLERANCE_S)
+    if problems:
+        raise RenderError(f"{out_path.name}: " + "; ".join(problems))
     video = next(s for s in info["streams"] if s["codec_type"] == "video")
     audio = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
     return RenderResult(

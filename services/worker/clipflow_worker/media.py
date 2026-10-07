@@ -38,6 +38,25 @@ def ensure_on_path() -> str:
     return folder
 
 
+def duration_gaps(info: dict, expected_s: float, tolerance_s: float) -> list[str]:
+    """Compare a probe result's container, video and audio durations with the expected length.
+
+    A truncated download can still be a valid, playable file (P1 found a 33 s file
+    for a 231 s range with no error from yt-dlp), so length must be checked explicitly.
+    """
+    problems = []
+    measured = {"container": info.get("format", {}).get("duration")}
+    for stream in info.get("streams", []):
+        if stream.get("codec_type") in ("video", "audio") and stream.get("duration"):
+            measured.setdefault(stream["codec_type"], stream["duration"])
+    for name, value in measured.items():
+        if value is None:
+            problems.append(f"{name} duration unknown")
+        elif abs(float(value) - expected_s) > tolerance_s:
+            problems.append(f"{name} duration {float(value):.2f}s, expected {expected_s:.2f}s")
+    return problems
+
+
 def probe(path: Path) -> dict:
     result = subprocess.run(
         [binary("ffprobe"), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)],

@@ -46,7 +46,8 @@ docker compose up -d                     # local Postgres/Redis/MinIO (Docker De
 
 # P1 POC (run from the repo root with PYTHONPATH=services/worker, or after setup)
 .venv/Scripts/python -m clipflow_worker.poc inspect <url>...
-.venv/Scripts/python -m clipflow_worker.poc produce <url> --clips 3 --seed 42 --max-duration 14400   # -> var/poc/<src>/manifest.json
+.venv/Scripts/python -m clipflow_worker.poc produce <url> --clips 3 --seed 42   # 3-5 min clips -> var/poc/<src>/manifest.json
+.venv/Scripts/python -m clipflow_worker.poc produce --file <customer video> [--captions x.srt]
 .venv/Scripts/python -m agent.cli devices | doctor --serial S | dry-run --serial S --file clip.mp4   # stops before any TikTok UI
 ```
 
@@ -63,7 +64,7 @@ Environment notes:
 
 ## Architecture: the parts that span modules
 
-**Pipeline:** Web UI → API → DB/quota ledger → render queue/worker → object storage → scheduler → per-device queue → customer Agent (outbound HTTPS polling only, no exposed ADB) → Android → result verification.
+**Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, then uploads the finished clip + sha256 for preview/approval. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
 
 **Identity chain:** Workspace → Username + Agent Token → server-bound Environment → Agent installation/session → Android serial → expected TikTok account.
 - Browser auth and Agent auth are separate.

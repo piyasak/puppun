@@ -76,13 +76,20 @@ def test_doctor_reports_unauthorized_and_missing_tiktok():
 def test_push_verified_rejects_and_removes_mismatched_file(tmp_path):
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"video-bytes")
-    good = Adb(FakeAdb({}, device_hash=hashlib.sha256(b"video-bytes").hexdigest()))
-    assert good.push_verified("S1", clip).endswith("/clip.mp4")
+    ok = FakeAdb({}, device_hash=hashlib.sha256(b"video-bytes").hexdigest())
+    assert Adb(ok).push_verified("S1", clip) == "/sdcard/Movies/ClipFlow/clip.mp4"
+    push = next(c for c in ok.calls if len(c) > 2 and c[2] == "push")
+    assert "/.incoming/" in push[4] and push[4].endswith(".part")  # never pushed under the final name
+    shells = [c[3] for c in ok.calls if len(c) > 3 and c[2] == "shell"]
+    assert any(s.startswith("mkdir -p") and ".nomedia" in s for s in shells)
+    assert shells[-1].startswith("mv -f") and shells[-1].endswith("/clip.mp4'")  # rename only after the hash check
 
-    fake = FakeAdb({}, device_hash="0" * 64)
+    bad = FakeAdb({}, device_hash="0" * 64)
     with pytest.raises(AdbError, match="hash mismatch"):
-        Adb(fake).push_verified("S1", clip)
-    assert any(c[3].startswith("rm -f") for c in fake.calls if len(c) > 3)
+        Adb(bad).push_verified("S1", clip)
+    bad_shells = [c[3] for c in bad.calls if len(c) > 3 and c[2] == "shell"]
+    assert bad_shells[-1].startswith("rm -f") and ".incoming/" in bad_shells[-1]
+    assert not any(s.startswith("mv ") for s in bad_shells)  # unverified file never reaches the Gallery folder
 
 
 # --- attempt journal: fault injection at every step (G1-04, T17, T18) --------

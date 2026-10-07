@@ -4,7 +4,38 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-07, after commit 5ed272e)
+### Latest slice (2026-10-07 20:0x) — authorized test post
+- PO: walkthrough ok → **G0-02 Yes**; ไม่มีงบแยก + ทุกบทบาท = ปิยศักดิ์ สุทธิประภา → **G0-05 Yes**; G0 technical 5/5 — **รอ PO sign-off Gate 0**
+- ADBKeyboard ติดตั้งแล้ว (ต้องเปิด Xiaomi "Install via USB" + "USB debugging (Security settings)" ก่อน)
+- โพสต์ทดสอบจริง 1 ครั้ง (เฉพาะฉัน) บน @patsy4404: แคปชันไทย+emoji ตรง, crash หลังกดโพสต์ → UNKNOWN (ไม่ retry) → resolve ด้วยหลักฐาน → VERIFIED_SUCCESS → **G1-04 Yes**; G1-03 ผ่าน 1/2 รุ่น
+- Findings: `input tap` ทะลุ bottom sheet ไปเปิด Shop → ใช้ press 120ms + ตรวจ screenshot ทุกขั้น; uiautomator dump ค้างหลังเปลี่ยน activity; ปุ่ม "Story ของคุณ" โพสต์ทันที — ห้ามกด (`docs/runbooks/tiktok-posting-poc.md`)
+- โทรศัพท์สะอาด (ลบไฟล์ทดสอบ), IME คืนเป็น Gboard; โพสต์ทดสอบยังอยู่ (Agent ไม่ลบ — ผู้ใช้ลบเองได้)
+- Gates: G0 5/5 technical (sign-off pending), G1 4/6 (G1-03 รุ่นที่ 2, G1-06 deferred)
+
+### Previous slice (2026-10-07 19:3x) — first real phone
+- PO: G1-02 ภาพ+ข้อความไทย okay → **G1-02 Yes**; อนุมัติ PRD v1.1 (ปิยศักดิ์ สุทธิประภา, 7/10/2026) → **G0-01 Yes**; D01 แบรนด์ = punpun, โดเมนรอ; owner/งบ/เวลา walkthrough ยังไม่ได้รับ
+- โทรศัพท์ 25078PC3EG (Android 15, TikTok trill 40.0.0): `doctor` ผ่าน; `dry-run` ส่งไฟล์+SHA-256+Gallery ผ่าน (68 MB 9s / 158 MB 14s)
+- Fault tests จริงก่อน Submit: ADB หลุด → RETRYABLE_FAILED; Agent crash → `agent.cli recover` (ใหม่) → RETRYABLE_FAILED
+- BUG แก้ (E-20): `adb push` orphan เขียนไฟล์ที่ไม่ได้ตรวจ hash ลงโฟลเดอร์ Gallery → push ผ่าน staging `.incoming/*.part` + rename หลังตรวจ hash; ทดสอบซ้ำบนเครื่องจริงผ่าน
+- ยังไม่ได้ทำ (รออนุญาต): ติดตั้ง helper พิมพ์ไทย, โพสต์ทดสอบจริง/ตรวจบัญชี; ยังไม่มีโทรศัพท์รุ่นที่ 2
+- Gates: G0 3/5, G1 3/6 — ทั้งคู่ No; tests 78 passed
+
+### Previous slice (2026-10-07 night)
+- PO: Q-15 = ข2 (ดาวน์โหลด/วิเคราะห์/render บน Agent), Q-17 ฟังก์ชันไฟล์ที่ลูกค้าโหลดมาเอง, G1-02 "เสียง okay", G1-03/04 รอเครื่อง QA, G1-06 เลื่อน (Q-18); P0 sign-off/D01/owner/งบ — ยังไม่ได้รับข้อมูล
+- ใหม่: `produce --file` (`local_source.py`: ffprobe validation, 8 GB cap, SHA-256 source ID, ไม่เก็บ path, sidecar .srt) — ทดสอบจริง 3/3 จากไฟล์ 61 นาที
+- ใหม่: `SOURCE_RATE_LIMITED` + cool-down ต่อแพลตฟอร์ม (`cooldown.py`, 1→2→4→6 ชม.) — แก้บั๊ก bot check (apostrophe โค้ง) ที่ถูกรายงานเป็น "เข้าถึงไม่ได้"
+- BUG แก้: ต้นฉบับแนวตั้งถูกดาวน์โหลดที่ 480×852 (กรองด้วย height) → จำกัดด้านสั้นแทน; ตรวจจริงทั้ง 3 orientation
+- YouTube ใช้ได้อีกครั้งหลัง ~2.5 ชม.: PBES5k67dhI 3/3 คลิป 3–5 นาที
+- Tests: 78 passed; G1 = 2/6 (No)
+
+### Previous slice (2026-10-07 evening, after commit 483714f)
+- Network ใช้ได้อีกครั้ง (proxy หาย): link set 2 อ่านได้ 5/5 → รวม 10/10 → **G1-01 Yes**
+- D02 จากต้นฉบับจริง: Bilibili 3/3 (183–244s), YouTube 2/3 (191s, 262s)
+- BUG พบและแก้: range download ที่ไม่ครบ (33s แทน 231s) ไม่มี error และถูกรายงานว่าสำเร็จ → เพิ่มการตรวจความยาว range (±1s, retry 1 ครั้ง) และ render (±0.5s, RENDER_MISMATCH); ทดสอบกับไฟล์เสียจริงแล้ว; +1 unit test (65 passed)
+- ความเสี่ยงใหม่ R-01: YouTube bot check หลังดาวน์โหลดหลายครั้งจาก IP เดียว — รอ PO ตัดสินใจ
+- Bash tool ใน session นี้หา `grep/git/env` ไม่เจอ — ใช้ PowerShell แทน
+
+### Previous slice (2026-10-07, after commit 5ed272e)
 - PO answers recorded: Q-05/Q-06 confirmed (parallel across devices, queue per device), D02 = random 3–5 min clips per link, Q-12 subtitle toggle, Q-13 phone helper install on QA machine, Q-14 terms review waived + rights accepted once at signup (user override, PO owns the risk)
 - Defaults changed: clip length 180–300s; source resource cap 4h (E-17)
 - Bug fixed: download errors containing "page" were misclassified as SOURCE_NOT_ACCESSIBLE (bare marker "age"); network/proxy errors now DOWNLOADER_ERROR "retryable"; ANSI colour codes stripped from user-facing details (+4 regression tests)

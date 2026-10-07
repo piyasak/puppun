@@ -36,7 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     p_dry.add_argument("--serial", required=True)
     p_dry.add_argument("--file", required=True, type=Path)
     p_dry.add_argument("--cleanup", action="store_true", help="delete the pushed test file afterwards")
+    sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
     args = parser.parse_args(argv)
+
+    if args.cmd == "recover":
+        return recover_all()
 
     try:
         adb = Adb(default_runner())
@@ -54,11 +58,34 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+def recover_all() -> int:
+    """Run on Agent start: unfinished attempts become RETRYABLE_FAILED or UNKNOWN (never resubmitted)."""
+    journal = AttemptJournal(JOURNAL)
+    ids = []
+    if JOURNAL.exists():
+        for line in JOURNAL.read_text(encoding="utf-8").splitlines():
+            try:
+                attempt_id = json.loads(line)["attempt_id"]
+            except (json.JSONDecodeError, KeyError):
+                continue
+            if attempt_id not in ids:
+                ids.append(attempt_id)
+    results = {}
+    for attempt_id in ids:
+        before = journal.current(attempt_id)
+        after = journal.recover(attempt_id)
+        if before != after:
+            results[attempt_id] = {"was": before, "now": after, "may_retry": journal.may_retry(attempt_id)}
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+    return 0
+
+
 def dry_run(adb: Adb, serial: str, clip: Path, cleanup: bool) -> int:
     report = adb.doctor(serial)
     if not report.ready:
         print(json.dumps({"ready": False, "problems": report.problems}, ensure_ascii=False))
         return 1
+    adb.clean_staging(report.serial)  # leftovers of pushes interrupted by an earlier crash
     journal = AttemptJournal(JOURNAL)
     attempt_id = f"dryrun-{uuid.uuid4()}"
     journal.begin(attempt_id)

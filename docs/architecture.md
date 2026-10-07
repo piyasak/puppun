@@ -20,6 +20,13 @@ Scheduler (services/scheduler): DB polling, materializes due ScheduleItems → d
 Customer Windows Agent (agent/) ──ADB/UIAutomator2──► Android device ──► TikTok app
 ```
 
+**เปลี่ยนตาม Q-15 (ข2, 2026-10-07):** การดาวน์โหลด การวิเคราะห์ และการ render ย้ายไปทำบน Agent ที่เครื่องลูกค้า (แก้ปัญหา YouTube bot check จาก IP เดียว — R-01); แหล่งที่มามี 3 ชนิด: YouTube, Bilibili, ไฟล์ที่ลูกค้าโหลดมาเอง (Q-17). Server ยังเป็นเจ้าของ Job state, quota (reserve ก่อน Agent เริ่ม), approval, schedule และเก็บคลิปที่ Agent อัปโหลด (sha256 ต้องตรงกับ render version ที่ Agent รายงาน) เพื่อ preview/approve/audit
+
+```
+Agent (เครื่องลูกค้า): claim render job → download/อ่านไฟล์ → analyze → render → upload clip + sha256
+Server: Job/quota/approval/schedule → Agent claim publish job → ใช้ไฟล์ local ที่ hash ตรง → Android
+```
+
 กฎ: Postgres คือความจริงของสถานะ (claim, lease, ledger, attempt) — Redis เป็นเพียงตัวปลุก/คิวงาน Render ที่ทำซ้ำได้อย่างปลอดภัย (ดู E-02 ใน decisions.md)
 
 ## 2. Identity & permission model (G0-03)

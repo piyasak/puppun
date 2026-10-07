@@ -39,7 +39,9 @@ class SourceErrorCode(StrEnum):
     UNSUPPORTED_URL = "UNSUPPORTED_URL"
     NOT_FOUND = "SOURCE_NOT_FOUND"
     NOT_ACCESSIBLE = "SOURCE_NOT_ACCESSIBLE"  # private, login, geo, age or membership restricted
+    RATE_LIMITED = "SOURCE_RATE_LIMITED"  # platform bot check / 429: temporary, retry after a cool-down
     LIMIT_EXCEEDED = "SOURCE_LIMIT_EXCEEDED"
+    UNSUPPORTED_FILE = "UNSUPPORTED_FILE"  # customer-provided file is not a readable video
     DOWNLOADER_ERROR = "DOWNLOADER_ERROR"
 
 
@@ -95,12 +97,15 @@ _NETWORK_MARKERS = (
     "proxy", "unable to connect", "timed out", "connection reset", "connection refused",
     "name resolution", "getaddrinfo", "network is unreachable", "ssl:",
 )
+# Temporary platform throttling. Checked before the "sign in" access markers because
+# YouTube's bot check says "Sign in to confirm you’re not a bot" (curly apostrophe).
+_RATE_LIMIT_MARKERS = ("not a bot", "too many requests", "http error 429", "rate limit", "rate-limit")
 _NOT_FOUND_MARKERS = ("video unavailable", "does not exist", "http error 404", "not found", "has been removed")
 # Phrases, not bare words: a bare "age" matched "page" and misreported a proxy error (P1, 2026-10-07).
 _NOT_ACCESSIBLE_MARKERS = (
     "private video", "sign in", "login", "members-only", "age-restricted", "confirm your age",
     "inappropriate for some users", "geo-restricted", "geo restricted", "not available in your country",
-    "premium", "copyright", "confirm you're not a bot", "confirm you are not a bot",
+    "premium", "copyright",
 )
 
 
@@ -112,6 +117,8 @@ def _classify_download_error(exc: Exception) -> SourceError:
     message = exc.lower()
     if any(m in message for m in _NETWORK_MARKERS):
         return SourceError(SourceErrorCode.DOWNLOADER_ERROR, f"network error (retryable): {exc}")
+    if any(m in message for m in _RATE_LIMIT_MARKERS):
+        return SourceError(SourceErrorCode.RATE_LIMITED, str(exc))
     if any(m in message for m in _NOT_ACCESSIBLE_MARKERS):
         return SourceError(SourceErrorCode.NOT_ACCESSIBLE, str(exc))
     if any(m in message for m in _NOT_FOUND_MARKERS):
@@ -167,6 +174,16 @@ def _probe_duration(info: dict) -> int | None:
         return None
 
 
+def format_options(max_short_side: int = DEFAULT_MAX_HEIGHT) -> dict:
+    """Best video+audio whose *shorter* side is at most `max_short_side`.
+
+    Filtering on height (`height<=1080`) picked 480x852 for vertical 720x1280 and
+    1080x1920 sources, which were then upscaled to 1080x1920 (P1, 2026-10-07).
+    yt-dlp's `res` is the smaller dimension, so this works for both orientations.
+    """
+    return {"format": "bv*+ba/b", "format_sort": [f"res:{max_short_side}"]}
+
+
 def inspect(url: str) -> SourceInfo:
     platform = classify_platform(url)
     try:
@@ -220,7 +237,7 @@ def download(
     stem = f"{info.platform}_{info.source_id}"
     opts = {
         **_base_opts(),
-        "format": f"bv*[height<={max_height}]+ba/b[height<={max_height}]/b",
+        **format_options(max_height),
         "merge_output_format": "mp4",
         "max_filesize": max_filesize,
         "outtmpl": str(dest_dir / f"{stem}.%(ext)s"),

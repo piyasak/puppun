@@ -12,6 +12,7 @@ import hashlib
 import shutil
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -19,6 +20,7 @@ from typing import Callable
 # TikTok ships under different package names per region (global / Asia builds).
 TIKTOK_PACKAGES = ("com.zhiliaoapp.musically", "com.ss.android.ugc.trill")
 REMOTE_DIR = "/sdcard/Movies/ClipFlow"
+STAGING_DIR = ".incoming"  # hidden + .nomedia: never indexed by MediaStore
 
 Runner = Callable[[list[str]], str]
 
@@ -130,17 +132,31 @@ class Adb:
         return report
 
     def push_verified(self, serial: str, local: Path, remote_dir: str = REMOTE_DIR) -> str:
-        """Push a file and verify its SHA-256 on the device; delete it again on mismatch."""
+        """Push to a hidden staging name, verify SHA-256 on the device, then rename into place.
+
+        P1 real-device fault test: killing the Agent mid-push left `adb push` running
+        as an orphan, which finished writing an unverified file under the final name
+        in a Gallery-indexed folder. Staging under `.incoming/` (with `.nomedia`, and a
+        unique name per push) means the Gallery and TikTok only ever see verified files;
+        the rename is atomic on the same filesystem.
+        """
         expected = hashlib.sha256(local.read_bytes()).hexdigest()
+        staging_dir = f"{remote_dir}/{STAGING_DIR}"
+        staging = f"{staging_dir}/{uuid.uuid4().hex}.part"
         remote = f"{remote_dir}/{local.name}"
-        self.shell(serial, f"mkdir -p '{remote_dir}'")
-        self._run(["-s", serial, "push", str(local), remote])
-        output = self.shell(serial, f"sha256sum '{remote}'").split()
+        self.shell(serial, f"mkdir -p '{staging_dir}' && touch '{staging_dir}/.nomedia'")
+        self._run(["-s", serial, "push", str(local), staging])
+        output = self.shell(serial, f"sha256sum '{staging}'").split()
         actual = output[0] if output else ""
         if actual.lower() != expected:
-            self.shell(serial, f"rm -f '{remote}'")
+            self.shell(serial, f"rm -f '{staging}'")
             raise AdbError(f"hash mismatch after push: expected {expected}, device has {actual}")
+        self.shell(serial, f"mv -f '{staging}' '{remote}'")
         return remote
+
+    def clean_staging(self, serial: str, remote_dir: str = REMOTE_DIR) -> None:
+        """Remove leftovers of interrupted pushes (run on Agent start, before any new push)."""
+        self.shell(serial, f"rm -f '{remote_dir}/{STAGING_DIR}/'*.part")
 
     def scan_and_find(self, serial: str, remote: str, timeout_s: float = 20.0) -> bool:
         """Ask the media scanner to index the file, then wait until MediaStore lists it."""
