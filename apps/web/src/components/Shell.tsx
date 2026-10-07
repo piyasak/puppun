@@ -7,6 +7,7 @@ const NAV = [
   { to: '/environments', label: 'Environments' },
   { to: '/agent-tokens', label: 'Agent Token' },
   { to: '/agents', label: 'Agent' },
+  { to: '/devices', label: 'โทรศัพท์' },
 ]
 
 export function Shell({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {

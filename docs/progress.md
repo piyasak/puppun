@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 01:xx) — P2.5 Agent sessions
+### Latest slice (2026-10-08 02:xx) — P2.6 device registration
+- Current phase: P2
+- Implemented: migration 0004 (devices + partial unique index on active serial); `/v1/agent/devices/register|report`; `/v1/devices` list/edit (ชื่อเรียก, บัญชี TikTok ที่คาดหวัง)/unbind; in_use.device_limit; Agent: `agent/device_registry.py` (hardware serial ผ่าน getprop, ไม่ใช้ id ของ Wi-Fi ADB), `python -m agent.cli register-devices`; เว็บ: เมนูโทรศัพท์ (สถานะพร้อม/ยังไม่อนุญาต/ไม่พบ/Agent ออฟไลน์ + วิธีแก้, แก้ไข, ยกเลิกการผูกพร้อม dialog)
+- **โทรศัพท์จริง**: POCO 25078PC3EG ลงทะเบียนผ่าน Agent → HTTP → API สำเร็จ, ซ้ำ idempotent, Workspace อื่นผูกไม่ได้ (`CLIPFLOW_REAL_DEVICE=1`, อ่าน getprop เท่านั้น)
+- Commands: `py tasks.py test-integration` → 84 passed, 3 skipped (opt-in live/real-device); real-device test → 1 passed; `py tasks.py test-unit` → 111 passed; `py tasks.py test-e2e` → 5 passed; build + bundle check ผ่าน; `alembic check` no drift; dev DB → 0004
+- Gates: **G2-04 → Yes**; G2: 3/5 (G2-02, G2-03, G2-04); เหลือ G2-01 (dashboard/E-28/SMTP) และ G2-05 (CI/staging)
+- Next: P2.7 — CI (lint/typecheck/test/build) + staging deploy/rollback (G2-05); ต้องการการตัดสินใจเรื่องที่ตั้ง staging
+
+### Previous slice (2026-10-08 01:xx) — P2.5 Agent sessions
 - Current phase: P2
 - Implemented: migration 0003 (agent_installations, agent_sessions); `/v1/agent/authenticate|heartbeat|session/end` (E-31); `/v1/agents` list + deregister; revoke/rotate token จบ session ทันที; `/v1/workspace/usage.in_use`; ลด limit ต่ำกว่าที่ใช้ไม่ได้; rate limit sign-in ของ Agent; Agent: `agent/identity.py` (installation_id, process lock), `agent/server_client.py`, `python -m agent.cli connect` (token จาก env/prompt ไม่ผ่าน argv); เว็บ: เมนู Agent (สถานะออนไลน์/ขาดการติดต่อ/ออฟไลน์, ยกเลิกทะเบียนพร้อม dialog), Environments แสดง "ใช้อยู่"
 - Commands: `py tasks.py test-integration` → 65 passed, 2 skipped (live Supabase opt-in); race 5 installs ×3 ผ่าน; `py tasks.py test-unit` → 108 passed; `py tasks.py test-e2e` → 4 passed; `alembic check` no drift; dev DB → 0003

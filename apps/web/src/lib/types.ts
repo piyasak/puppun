@@ -10,7 +10,7 @@ export type Usage = {
   plan: { code: string; version: number; name: string; is_demo: boolean; status: string }
   caps: Limits
   allocated: Limits
-  in_use: Pick<Limits, 'registered_agent_limit' | 'concurrent_session_limit'>
+  in_use: Limits
 }
 
 export type AgentToken = {

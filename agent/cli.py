@@ -5,6 +5,7 @@
     python -m agent.cli dry-run --serial <serial> --file <clip.mp4> [--cleanup] [--no-power-saving]
     python -m agent.cli power --serial <serial> status|on|off
     python -m agent.cli connect --server https://<host> --username <name> [--seconds N]
+    python -m agent.cli register-devices --server https://<host> --username <name> [--serial S]
 
 `dry-run` exercises transfer -> SHA-256 check -> Gallery discovery and records
 every step in the attempt journal, then stops before any TikTok UI action. There
@@ -49,12 +50,19 @@ def main(argv: list[str] | None = None) -> int:
     p_con.add_argument("--username", required=True)
     p_con.add_argument("--seconds", type=float, default=None, help="stop after N seconds (default: run until stopped)")
     p_con.add_argument("--data-dir", type=Path, default=None)
+    p_reg = sub.add_parser("register-devices", help="register the ready phones on this PC with the server (P2.6)")
+    p_reg.add_argument("--server", required=True)
+    p_reg.add_argument("--username", required=True)
+    p_reg.add_argument("--serial", default=None, help="only this phone (ADB or hardware serial)")
+    p_reg.add_argument("--data-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
     if args.cmd == "recover":
         return recover_all()
     if args.cmd == "connect":
         return connect(args.server, args.username, args.seconds, args.data_dir)
+    if args.cmd == "register-devices":
+        return register_devices(args.server, args.username, args.serial, args.data_dir)
 
     try:
         adb = Adb(default_runner())
@@ -102,6 +110,39 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
         return 2
     except (OSError, ValueError) as exc:
         print(f"cannot reach server: {exc}")
+        return 2
+
+
+def register_devices(server: str, username: str, only: str | None, data_dir: Path | None) -> int:
+    """Sign in, register ready phones, report the state of all phones, sign out."""
+    import getpass
+    import os
+
+    from agent.device_registry import discover, register_ready
+    from agent.identity import AlreadyRunning, ProcessLock, default_data_dir, load_or_create_installation_id
+    from agent.server_client import ServerClient, ServerError
+
+    data_dir = data_dir or default_data_dir()
+    token = os.environ.get("CLIPFLOW_AGENT_TOKEN") or getpass.getpass("Agent token: ")
+    try:
+        with ProcessLock(data_dir):
+            client = ServerClient(server)
+            session = client.authenticate(username, token, load_or_create_installation_id(data_dir))
+            try:
+                results = register_ready(client, session, discover(Adb(default_runner())), only)
+            finally:
+                client.end(session)
+            print(json.dumps(results, ensure_ascii=False, indent=2))
+            ok = {"REGISTERED", "ALREADY_REGISTERED"}
+            return 0 if results and all(r["outcome"] in ok for r in results) else 1
+    except AlreadyRunning as exc:
+        print(f"Agent is already running on this install: {exc}")
+        return 3
+    except ServerError as exc:
+        print(f"server refused: {exc.code} — {exc.message}")
+        return 2
+    except (OSError, ValueError, AdbError) as exc:
+        print(f"error: {exc}")
         return 2
 
 

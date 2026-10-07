@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from api_test_agents import Agent
 from api_test_tokens import SIGNING_KEY, SUPABASE_URL
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
@@ -18,28 +19,6 @@ from sqlalchemy import func, select, update
 from clipflow_api.app import create_app
 from clipflow_api.config import Settings
 from clipflow_api.models import AgentInstallation, AgentSession, AgentToken
-
-
-class Agent:
-    """A simulated Agent process: its own installation_id and current session."""
-
-    def __init__(self, client: TestClient, username: str, token: str, installation_id: str | None = None):
-        self.client, self.username, self.token = client, username, token
-        self.installation_id = installation_id or str(uuid.uuid4())
-        self.session = None
-        self.generation = None
-
-    def auth(self, **extra):
-        resp = self.client.post("/v1/agent/authenticate", json={
-            "username": self.username, "token": self.token, "installation_id": self.installation_id,
-            "agent_version": "0.1.0"} | extra)
-        if resp.status_code == 200:
-            self.session, self.generation = resp.json()["session_token"], resp.json()["generation"]
-        return resp
-
-    def heartbeat(self, generation=None):
-        return self.client.post("/v1/agent/heartbeat", json={"generation": generation or self.generation},
-                                headers={"Authorization": f"Bearer {self.session}"})
 
 
 @pytest.fixture
@@ -233,4 +212,4 @@ def test_simultaneous_new_installations_cannot_overshoot_the_limit(setup, app):
         codes = sorted(pool.map(connect, range(5)))
     assert codes == [200, 200, 409, 409, 409]
     usage = setup.get("/v1/workspace/usage").json()["in_use"]
-    assert usage == {"registered_agent_limit": 2, "concurrent_session_limit": 2}
+    assert usage == {"registered_agent_limit": 2, "concurrent_session_limit": 2, "device_limit": 0}

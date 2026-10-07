@@ -61,7 +61,7 @@ def _name_taken() -> ApiError:
 def workspace_usage(auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
     """Authoritative plan caps and how much of them the Environments have allocated.
 
-    in_use counts registered Agents and live sessions; devices arrive with P2.6.
+    `in_use` counts registered Agents, live sessions and bound devices.
     """
     ent = entitlement(db, auth.workspace_id)
     return {

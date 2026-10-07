@@ -78,6 +78,15 @@ class ServerClient:
     def heartbeat(self, session: Session) -> dict:
         return self._post("/v1/agent/heartbeat", {"generation": session.generation}, bearer=session.token)
 
+    def register_device(self, session: Session, serial: str, adb_state: str, model: str | None,
+                        android_version: str | None) -> dict:
+        return self._post("/v1/agent/devices/register", {
+            "serial": serial, "adb_state": adb_state, "model": model, "android_version": android_version,
+        }, bearer=session.token)
+
+    def report_devices(self, session: Session, states: dict[str, str]) -> dict:
+        return self._post("/v1/agent/devices/report", {"devices": states}, bearer=session.token)
+
     def end(self, session: Session) -> None:
         try:
             self._post("/v1/agent/session/end", {}, bearer=session.token)

@@ -7,6 +7,9 @@ the tests are skipped, and a skip is never counted as gate evidence.
 from __future__ import annotations
 
 import os
+import socket
+import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -15,6 +18,7 @@ from alembic import command
 from alembic.config import Config
 from api_test_tokens import SIGNING_KEY, SUPABASE_URL, mint, new_identity
 from fastapi.testclient import TestClient
+import uvicorn
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
@@ -107,3 +111,21 @@ def onboard(client):
         return Account(client, user_id, email, resp.json())
 
     return _onboard
+
+
+# Real HTTP server on 127.0.0.1 for tests that use the Agent's own client.
+@pytest.fixture(scope="session")
+def server_url(app):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=5)

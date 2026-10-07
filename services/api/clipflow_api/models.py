@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -208,3 +208,33 @@ class AgentSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     end_reason: Mapped[str | None] = mapped_column(String(32))
+
+
+class Device(Base):
+    """An Android phone bound to an Environment (FR-15, architecture §2.4).
+
+    The serial identifies the phone; it is never proof of ownership. At most one active
+    binding per serial across all Workspaces (partial unique index on `serial_key`), and a
+    conflicting binding is refused, never moved silently.
+    """
+
+    __tablename__ = "devices"
+    __table_args__ = (
+        Index("uq_devices_active_serial", "serial_key", unique=True,
+              postgresql_where=text("unbound_at IS NULL")),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"), index=True)
+    serial: Mapped[str] = mapped_column(String(64))  # as reported (case preserved)
+    serial_key: Mapped[str] = mapped_column(String(64))  # normalized for comparison
+    model: Mapped[str | None] = mapped_column(String(64))
+    android_version: Mapped[str | None] = mapped_column(String(16))
+    display_name: Mapped[str | None] = mapped_column(String(60))
+    expected_account: Mapped[str | None] = mapped_column(String(64))  # TikTok handle the phone must post as
+    registered_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_installations.id", ondelete="SET NULL"))
+    last_state: Mapped[str | None] = mapped_column(String(16))  # device | unauthorized | offline | missing
+    last_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+    unbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

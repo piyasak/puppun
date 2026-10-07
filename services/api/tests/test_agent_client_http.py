@@ -6,34 +6,13 @@ Supabase identities. It proves client + server work together; it is not a field 
 
 from __future__ import annotations
 
-import socket
 import subprocess
 import sys
-import threading
-import time
 
 import pytest
-import uvicorn
 
 from agent.identity import load_or_create_installation_id
 from agent.server_client import ServerClient, ServerError, run_connection
-
-
-@pytest.fixture(scope="module")
-def server_url(app):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(100):
-        if server.started:
-            break
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=5)
 
 
 @pytest.fixture

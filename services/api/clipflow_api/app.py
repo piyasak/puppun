@@ -18,7 +18,7 @@ from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
 from .ratelimit import SlidingWindow
-from .routers import agent, agent_tokens, agents, auth, environments
+from .routers import agent, agent_tokens, agents, auth, devices, environments
 
 log = logging.getLogger("clipflow.api")
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
@@ -64,6 +64,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(agent_tokens.router)
     app.include_router(agents.router)
     app.include_router(agent.router)
+    app.include_router(devices.agent_router)
+    app.include_router(devices.web_router)
 
     @app.get("/healthz")
     def healthz():
