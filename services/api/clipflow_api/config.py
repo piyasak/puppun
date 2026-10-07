@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     # Agent sign-in attempts per client address per minute (token guessing, PRD §14).
     agent_auth_rate_per_minute: int = 20
 
+    # Clip storage (P3.2). With an endpoint set, S3/MinIO is used; otherwise files go under
+    # `storage_dir` and previews are served by the API's signed /v1/media route.
+    object_storage_endpoint: str = ""
+    object_storage_bucket: str = "clipflow-media"
+    object_storage_access_key: str = ""
+    object_storage_secret_key: str = ""
+    storage_dir: str = "var/storage"
+    public_api_base: str = "http://127.0.0.1:8000"  # how browsers reach this API (local-storage previews)
+    media_signing_key: str = ""  # HMAC key for local preview links; random per process when empty
+    preview_ttl_s: int = 300
+    max_clip_bytes: int = 512 * 1024 * 1024
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

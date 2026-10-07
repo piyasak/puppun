@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,17 +20,28 @@ from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
 from .ratelimit import SlidingWindow
-from .routers import agent, agent_tokens, agents, auth, devices, environments, jobs
+from .routers import agent, agent_tokens, agents, auth, clips, devices, environments, jobs
+from .storage import LocalStorage, S3Storage, Storage
 
 log = logging.getLogger("clipflow.api")
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
-def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | None = None) -> FastAPI:
+def _storage(settings: Settings) -> Storage:
+    if settings.object_storage_endpoint:
+        return S3Storage(settings.object_storage_endpoint, settings.object_storage_bucket,
+                         settings.object_storage_access_key, settings.object_storage_secret_key)
+    key = settings.media_signing_key.encode() or secrets.token_bytes(32)
+    return LocalStorage(Path(settings.storage_dir), settings.public_api_base, key)
+
+
+def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | None = None,
+               storage: Storage | None = None) -> FastAPI:
     settings = settings or get_settings()
     app = FastAPI(title="ClipFlow API", version="0.1.0")
     app.state.settings = settings
     app.state.db = Database(settings.database_url)
+    app.state.storage = storage or _storage(settings)
     if resolve_key is None:
         if not settings.supabase_url:
             raise RuntimeError("SUPABASE_URL is not set (see .env.example)")
@@ -68,6 +81,9 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(devices.web_router)
     app.include_router(jobs.web_router)
     app.include_router(jobs.agent_router)
+    app.include_router(clips.web_router)
+    app.include_router(clips.agent_router)
+    app.include_router(clips.media_router)
 
     @app.get("/healthz")
     def healthz():

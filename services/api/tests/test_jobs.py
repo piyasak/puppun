@@ -21,8 +21,12 @@ from clipflow_api.models import Job, QuotaLedger
 URL = "https://www.youtube.com/watch?v=PBES5k67dhI"
 
 
+def content(i: int) -> bytes:
+    return f"clip-{i}".encode()  # stand-in file; real media is covered in test_clips.py
+
+
 def sha(i: int) -> str:
-    return hashlib.sha256(f"clip-{i}".encode()).hexdigest()
+    return hashlib.sha256(content(i)).hexdigest()
 
 
 class Worker(Agent):
@@ -35,10 +39,18 @@ class Worker(Agent):
         return self.post(f"/v1/agent/jobs/{job_id}/events",
                          json={"event_id": event_id or uuid.uuid4().hex, "type": type_, **payload})
 
-    def clip(self, job_id, index, event_id=None, digest=None, duration_ms=200_000):
-        return self.event(job_id, "clip_rendered", event_id, index=index, start_ms=index * 400_000,
+    def clip(self, job_id, index, event_id=None, digest=None, duration_ms=200_000, upload=True):
+        """Report a rendered clip and (by default) upload its file, as the real Agent does."""
+        resp = self.event(job_id, "clip_rendered", event_id, index=index, start_ms=index * 400_000,
                           end_ms=index * 400_000 + duration_ms, duration_ms=duration_ms, sha256=digest or sha(index),
-                          size_bytes=50_000_000, template_version="tpl-default-v2", title=f"คลิป {index}")
+                          size_bytes=len(content(index)), template_version="tpl-default-v2", title=f"คลิป {index}")
+        if upload and resp.status_code == 200:
+            self.upload(job_id, index)
+        return resp
+
+    def upload(self, job_id, index, body=None):
+        return self.client.put(f"/v1/agent/jobs/{job_id}/clips/{index}/file", content=body or content(index),
+                               headers={"Authorization": f"Bearer {self.session}", "Content-Type": "video/mp4"})
 
     def run_to_rendering(self, job_id, possible=5):
         assert self.event(job_id, "source_validated", duration_s=3600, possible_clips=possible).status_code == 200

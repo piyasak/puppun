@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 06:xx) — Q-25 phone check on Agent start
+### Latest slice (2026-10-08 07:xx) — P3.2 clip delivery, checks, preview, metadata, approval
+- Implemented: migration 0006 (clip file/check/approval columns, clip_metadata); `storage.py` (S3/MinIO + local), `mediacheck.py` (ffprobe), `clips.py` (accept_upload, metadata versions, approve/unapprove, auto policy); routes: `PUT /v1/agent/jobs/{id}/clips/{n}/file`, `/v1/clips/{id}` (detail + history), `/media` (ลิงก์ 5 นาที), `PATCH /metadata`, `/approve`, `/unapprove`, `/v1/media/...` (local signed); โควตาหักเมื่อไฟล์ถึงและ hash ตรง; `completed` ต้องอัปโหลดครบ (E-36)
+- Commands: integration 128 passed, 4 skipped (opt-in); clip tests 11 ผ่านด้วยไฟล์ 1080×1920 H.264/AAC จริงจาก ffmpeg; MinIO presigned test ผ่าน (private bucket ปฏิเสธลิงก์ไม่ลงชื่อ 403); unit 114; ruff ผ่าน; dev DB → 0006; API (8000) ใช้ MinIO แล้ว
+- Gates: G3 0/5 Yes — G3-03, G3-05 บางส่วนเพิ่ม
+- Next: P3.3 Agent job runner (claim → ดาวน์โหลด/ไฟล์ → วิเคราะห์ → render → อัปโหลด) ด้วย pipeline P1 + ทดสอบกับต้นฉบับจริง
+
+### Previous slice (2026-10-08 06:xx) — Q-25 phone check on Agent start
 - PO: เมื่อเปิด Agent ให้ตรวจ serial โทรศัพท์ ส่งไปเช็กที่ Server ถ้าไม่มีให้ลงทะเบียน และแจ้งให้ไปใส่รายละเอียดในระบบหลังบ้าน
 - Implemented: `agent/device_registry.py` `DeviceSync` + `describe()` (ข้อความไทย), `run_connection(on_session=…)` เรียกตอนเข้าระบบและทุก 60s, `agent.cli connect` เปิดใช้เป็นค่าเริ่มต้น (`--no-phone-check` ปิด); API register ตอบ `missing_details` + `details_url`; `/v1/devices` มี `missing_details`; เว็บ: ป้าย "ต้องใส่รายละเอียด", `?edit=<id>` เปิดฟอร์ม
 - โทรศัพท์จริง (POCO 25078PC3EG): เปิด Agent loop → "ลงทะเบียนโทรศัพท์ 25078PC3EG (TST8…) แล้ว — กรุณาไปใส่รายละเอียด … ที่ http://localhost:5173/devices?edit=…" ✓

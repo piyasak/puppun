@@ -21,7 +21,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import quota
+from . import clips, quota
 from .agent_sessions import AgentContext
 from .errors import ApiError
 from .models import Clip, Environment, Job, JobEvent, RightsAcceptance
@@ -138,6 +138,19 @@ def _locked_job(db: Session, ctx: AgentContext, job_id: uuid.UUID) -> Job:
     return job
 
 
+def lease_holder_job(db: Session, ctx: AgentContext, job_id: uuid.UUID) -> Job:
+    """Locked job for a clip upload: still rendering and leased to this session."""
+    job = _locked_job(db, ctx, job_id)
+    if job.state in TERMINAL:
+        raise ApiError(409, "JOB_NOT_ACTIVE", "งานนี้จบแล้วหรือถูกยกเลิก หยุดทำงานนี้", {"state": job.state})
+    if job.lease_session_id != ctx.session_id or job.lease_expires_at is None or job.lease_expires_at <= now():
+        raise ApiError(409, "LEASE_LOST", "งานนี้ไม่ได้อยู่กับ Agent นี้แล้ว หยุดทำงานนี้")
+    if job.state != "RENDERING":
+        raise ApiError(409, "BAD_EVENT_ORDER", "อัปโหลดคลิปได้เฉพาะระหว่าง RENDERING", {"state": job.state})
+    job.lease_expires_at = now() + timedelta(seconds=LEASE_S)  # an upload counts as activity
+    return job
+
+
 def apply_event(db: Session, ctx: AgentContext, job_id: uuid.UUID, event: dict) -> tuple[Job, bool]:
     """Apply one Agent event. Returns (job, duplicate)."""
     job = _locked_job(db, ctx, job_id)
@@ -220,19 +233,26 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
         if existing.render_sha256 != sha:
             raise ApiError(409, "CLIP_CONFLICT", "คลิปลำดับนี้ถูกรายงานแล้วด้วยไฟล์อื่น")
         return
-    db.add(Clip(
+    clip = Clip(
         workspace_id=job.workspace_id, job_id=job.id, clip_index=index, start_ms=int(e["start_ms"]),
         end_ms=int(e["end_ms"]), seed=job.seed, template_version=str(e["template_version"])[:40],
         render_sha256=sha, size_bytes=int(e["size_bytes"]), duration_ms=duration_ms,
-        title=(e.get("title") or "")[:200] or None,
-    ))
-    quota.settle_clip(db, job.workspace_id, job.id, job.quota_period, index)
+        title=(e.get("title") or "")[:200] or None, metadata_version=1,
+    )
+    db.add(clip)
+    db.flush()
+    db.add(clips.first_metadata(clip, e.get("caption"), e.get("hashtags")))
+    # Quota is settled when the file arrives and matches this hash (clips.accept_upload).
 
 
 def _completed(db: Session, job: Job, e: dict, at: datetime) -> None:
     if job.state != "RENDERING":
         raise _bad_order(job, e["type"])
-    delivered = db.scalars(select(Clip.id).where(Clip.job_id == job.id)).all()
+    reported = db.scalars(select(Clip).where(Clip.job_id == job.id)).all()
+    waiting = [c.clip_index for c in reported if c.uploaded_at is None]
+    if waiting:
+        raise ApiError(409, "CLIPS_NOT_UPLOADED", "ยังอัปโหลดคลิปไม่ครบ", {"clip_indexes": waiting})
+    delivered = reported
     if not delivered:
         _finish(db, job, "FAILED", code="RENDER_FAILED", detail="ไม่มีคลิปที่ผลิตสำเร็จ", reason="render_failed")
         return
@@ -243,8 +263,8 @@ def _completed(db: Session, job: Job, e: dict, at: datetime) -> None:
 
 def _failed(db: Session, job: Job, e: dict, at: datetime) -> None:
     code = str(e.get("code") or "AGENT_ERROR")[:40]
-    delivered = db.scalars(select(Clip.id).where(Clip.job_id == job.id)).first()
-    if delivered is not None:  # keep what was delivered; the rest is released
+    delivered = db.scalars(select(Clip.id).where(Clip.job_id == job.id, Clip.uploaded_at.is_not(None))).first()
+    if delivered is not None:  # keep what was delivered (uploaded); the rest is released
         job.notice = "PARTIAL_RENDER"
         _finish(db, job, "READY_FOR_REVIEW", code=code, detail=e.get("detail"), reason="job_failed_partial")
     else:

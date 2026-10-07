@@ -21,6 +21,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -335,7 +336,35 @@ class Clip(Base):
     render_sha256: Mapped[str] = mapped_column(String(64))
     size_bytes: Mapped[int] = mapped_column(Integer)
     duration_ms: Mapped[int] = mapped_column(Integer)
-    title: Mapped[str | None] = mapped_column(String(200))
+    title: Mapped[str | None] = mapped_column(String(200))  # burned into the video: changing it means a re-render
+    created_at: Mapped[datetime] = _created()
+    # P3.2: the uploaded file, server-side checks, metadata version and approval.
+    storage_key: Mapped[str | None] = mapped_column(String(300))
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_status: Mapped[str | None] = mapped_column(String(8))  # passed | failed | skipped
+    check_results: Mapped[dict | None] = mapped_column(JSONB)
+    metadata_version: Mapped[int] = mapped_column(Integer, default=1)
+    approved_metadata_version: Mapped[int | None] = mapped_column(Integer)
+    approved_sha256: Mapped[str | None] = mapped_column(String(64))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approval_mode: Mapped[str | None] = mapped_column(String(8))  # manual | auto
+
+
+class ClipMetadata(Base):
+    """Posting text for a clip, one row per version (FR-07, PRD §F). Editing creates a new
+    version; an approval names the version it approved, so an edit voids it automatically."""
+
+    __tablename__ = "clip_metadata"
+    __table_args__ = (UniqueConstraint("clip_id", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    caption: Mapped[str] = mapped_column(String(2200))  # TikTok caption limit
+    hashtags: Mapped[list] = mapped_column(JSONB)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = _created()
 
 

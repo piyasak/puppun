@@ -72,12 +72,10 @@ def job_out(db: Session, job: Job, *, with_clips: bool = False) -> dict:
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
     }
     if with_clips:
-        clips = db.scalars(select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)).all()
-        out["clips"] = [{
-            "id": str(c.id), "index": c.clip_index, "start_ms": c.start_ms, "end_ms": c.end_ms,
-            "duration_ms": c.duration_ms, "seed": c.seed, "template_version": c.template_version,
-            "render_sha256": c.render_sha256, "size_bytes": c.size_bytes, "title": c.title,
-        } for c in clips]
+        from .clips import clip_out  # clip detail shape is owned by the clips router
+
+        rows = db.scalars(select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)).all()
+        out["clips"] = [clip_out(db, c, job) for c in rows]
     return out
 
 
