@@ -110,6 +110,15 @@ Render 300 วินาทีจากวิดีโอสังเคราะ
 | POCO 25078PC3EG (Xiaomi HyperOS 2.0, product dew_p_global) | 15 (SDK 35) | com.ss.android.ugc.trill 40.0.0 | OK — 68 MB 9s, 158 MB 14s | OK (MediaStore) | OK — ADBKeyboard B64: ไทย + 🎬 + hashtag ตรงตามที่อนุมัติ | OK — 1 โพสต์ "เฉพาะฉัน", ตรวจด้วย marker บนโปรไฟล์ (runbook) | 2026-10-07 |
 | รุ่นที่ 2 | — | — | — | — | — | — | ยังไม่มีเครื่อง |
 
+### Power saving (Q-23) บนเครื่องจริง, 2026-10-07
+| Run | เริ่มจาก | ผล |
+|---|---|---|
+| A | Wi-Fi เปิด, TikTok ทำงาน | prepare: online แล้ว → dry-run → CANCELLED → release: TikTok force-stop (ไม่มี pid), Wi-Fi ปิด — 12s |
+| B | Wi-Fi ปิด | prepare: เปิด Wi-Fi + รอ VALIDATED → dry-run → release: ปิดแอป + Wi-Fi — 14s |
+| BUG (แก้แล้ว) | Wi-Fi ปิด | ตัวตรวจ online เดิมรายงาน online=true ขณะ Wi-Fi ปิด เพราะ "Transports: WIFI ... VALIDATED" อยู่ในส่วน Network Requests/Offers ของ dumpsys → อ่านเฉพาะ "Current Networks:" |
+
+หลังทดสอบ: เปิด Wi-Fi คืนตามสถานะเดิมของโทรศัพท์
+
 ### Fault tests บนเครื่องจริง (G1-04 — ก่อน Submit เท่านั้น), 2026-10-07
 | Test | วิธี | ผล |
 |---|---|---|

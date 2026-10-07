@@ -30,6 +30,7 @@
 | FR-21 | P0 | Quota ledger atomic, idempotent | api/ledger | test_ledger_concurrent_reserve (T21), test_refund_once (T10) | G3-04, G6-03 | P3/P6 | — |
 | FR-22 | P0 | Admin/Audit พร้อมเหตุผล before/after | api/admin, web/admin | test_admin_audit, test_admin_permission | G6-05 | P6 | — |
 | FR-23 | P0 | Alert/Support อ้าง Job ID | api/notifications, web/notifications | test_notifications | G7-04 | P6/P7 | — |
+| FR-25 | P0 (PO add, Q-23) | ประหยัดพลังงานโทรศัพท์: เปิด Wi-Fi ก่อนงาน, ปิดแอป+Wi-Fi หลังผลยืนยัน | agent/power.py, agent/adb.py | tests/unit/test_power.py (12 tests), real-device runs A/B | G5-02 | P1/P5 | WIP — ทำงานบนเครื่องจริง (dry-run); ต่อกับ flow โพสต์จริงใน P5 |
 | FR-24 | P1 | Team/Premium (หลัง MVP) | — | — | — | Post-MVP | Out of MVP |
 
 ## Non-functional requirements

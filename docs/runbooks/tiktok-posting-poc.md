@@ -13,6 +13,17 @@ Screenshots are kept locally in `var/evidence/phone/` (gitignored). They contain
 | Xiaomi: **USB debugging (Security settings)** | Inject taps/text into other apps | Taps ignored or rejected |
 | ADBKeyboard (`senzhk/ADBKeyBoard` master APK, SHA-256 `E698ADEA…CDC59`) enabled (not default) | Thai/emoji text entry | `input text` cannot type Thai |
 
+## Power saving (Q-23)
+
+`PowerSaver.prepare()` runs before any step: switch Wi-Fi on, then wait until the
+"Current Networks" block of `dumpsys connectivity` shows a VALIDATED Wi-Fi network.
+If it isn't online within 45 s, the attempt goes to NEEDS_ACTION.
+
+`PowerSaver.release(state)` runs after the attempt. It does `am force-stop` on TikTok
+and switches Wi-Fi off, but only for VERIFIED_SUCCESS, RETRYABLE_FAILED, NEEDS_ACTION
+or CANCELLED. It never runs during SUBMITTING, VERIFYING or UNKNOWN, and never when
+ADB itself runs over Wi-Fi.
+
 ## Flow that worked
 
 1. Read the logged-in account on Profile (`@patsy4404`). Record a baseline of the private-videos tab: no videos, only a Story archive tile.

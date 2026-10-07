@@ -9,6 +9,7 @@ those tests are logic checks, not evidence of device compatibility.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import subprocess
 import time
@@ -43,6 +44,33 @@ class DeviceEntry:
 def normalize_serial(serial: str) -> str:
     """Serials compare case-insensitively and without surrounding whitespace (architecture §2.4)."""
     return serial.strip().lower()
+
+
+_VALIDATED_CAP = re.compile(r"Capabilities: \S*(?<![A-Z_])VALIDATED")
+
+
+def wifi_online_from_dumpsys(dump: str) -> bool:
+    """True when the "Current Networks:" block lists a Wi-Fi network with the VALIDATED capability.
+
+    Only that block counts. "Transports: WIFI" and "VALIDATED" also appear in the
+    Network Requests and Network Offers sections while Wi-Fi is off. Matching the
+    whole dump reported "online" on a phone with Wi-Fi disabled (QA phone, 2026-10-07).
+    """
+    in_current = False
+    for line in dump.splitlines():
+        if line.startswith("Current Networks:"):
+            in_current = True
+            continue
+        if in_current and line and not line[0].isspace():
+            break  # next top-level section
+        if in_current and "NetworkAgentInfo{" in line and "Transports: WIFI" in line and _VALIDATED_CAP.search(line):
+            return True
+    return False
+
+
+def is_wireless_serial(serial: str) -> bool:
+    """ADB over Wi-Fi (ip:port or mDNS tls-connect); turning Wi-Fi off would cut the Agent off."""
+    return ":" in serial or "_adb-tls-connect" in serial
 
 
 def parse_devices(output: str) -> list[DeviceEntry]:
@@ -153,6 +181,35 @@ class Adb:
             raise AdbError(f"hash mismatch after push: expected {expected}, device has {actual}")
         self.shell(serial, f"mv -f '{staging}' '{remote}'")
         return remote
+
+    # --- Wi-Fi and app control (power saving, Q-23) ---------------------------------
+
+    def wifi_state(self, serial: str) -> tuple[bool, bool]:
+        """(enabled, online): online = a *current* Wi-Fi network Android has VALIDATED for internet.
+
+        Only booleans are returned; SSID, BSSID and IP are never logged.
+        """
+        enabled = self.shell(serial, "settings get global wifi_on").strip() not in ("", "0")
+        online = enabled and wifi_online_from_dumpsys(self.shell(serial, "dumpsys connectivity"))
+        return enabled, online
+
+    def set_wifi(self, serial: str, enabled: bool) -> None:
+        state = "enabled" if enabled else "disabled"
+        out = self.shell(serial, f"cmd wifi set-wifi-enabled {state} 2>&1")
+        if "Exception" in out or "Unknown command" in out:
+            self.shell(serial, f"svc wifi {'enable' if enabled else 'disable'}")
+
+    def wait_wifi_online(self, serial: str, timeout_s: float = 45.0, poll_s: float = 2.0) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            if self.wifi_state(serial)[1]:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(poll_s)
+
+    def force_stop(self, serial: str, package: str) -> None:
+        self.shell(serial, f"am force-stop {package}")
 
     def clean_staging(self, serial: str, remote_dir: str = REMOTE_DIR) -> None:
         """Remove leftovers of interrupted pushes (run on Agent start, before any new push)."""

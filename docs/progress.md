@@ -4,7 +4,12 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-07 20:4x) — P2 authorized
+### Latest slice (2026-10-07 21:xx) — power saving (Q-23)
+- ใหม่ `agent/power.py`: เปิด Wi-Fi + รอ VALIDATED ก่อนงาน; ปิดแอป + Wi-Fi หลังผลจบ (ไม่ปิดระหว่าง SUBMITTING/VERIFYING/UNKNOWN หรือเมื่อ ADB ผ่าน Wi-Fi); `agent.cli power status|on|off`; dry-run ใช้ power saving เป็นค่าเริ่มต้น
+- BUG แก้: ตัวตรวจ online อ่านทั้ง dumpsys → online=true ขณะ Wi-Fi ปิด → อ่านเฉพาะ Current Networks (+ regression test จากข้อความจริง)
+- เครื่องจริง: run A (เริ่มเปิด) และ run B (เริ่มปิด) ผ่าน; Wi-Fi เปิดคืนหลังทดสอบ; tests 92 passed
+
+### Previous slice (2026-10-07 20:4x) — P2 authorized
 - PO override Q-22: เริ่ม P2 ได้ แม้ G1-06 (ต้นทุน) ยังเป็น No — G1 ยังบันทึกเป็น No
 - Next: P2 slice แรก — FastAPI + SQLAlchemy/Alembic บน Docker Postgres, Auth/Workspace + tenant repository + cross-tenant tests (FR-01, NF-01, G2-01)
 
