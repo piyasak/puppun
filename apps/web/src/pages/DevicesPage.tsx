@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Shell } from '../components/Shell'
 import { Alert, Field } from '../components/ui'
@@ -16,6 +17,7 @@ type Device = {
   readiness: 'ready' | 'unauthorized' | 'offline' | 'missing' | 'agent_offline' | 'unknown' | 'unbound'
   last_reported_at: string | null
   unbound_at: string | null
+  missing_details: ('display_name' | 'expected_account')[]
 }
 
 const READINESS: Record<Device['readiness'], { text: string; badge: string; help?: string }> = {
@@ -70,14 +72,22 @@ export function DevicesPage() {
   const [editing, setEditing] = useState<string | null>(null)
   const [target, setTarget] = useState<Device | null>(null)
   const [busy, setBusy] = useState(false)
+  // The Agent links here after registering a phone: /devices?edit=<id> opens its form (Q-25).
+  const [params, setParams] = useSearchParams()
 
   const load = useCallback(async () => {
     try {
-      setItems((await api<{ items: Device[] }>('/v1/devices')).items)
+      const list = (await api<{ items: Device[] }>('/v1/devices')).items
+      setItems(list)
+      const wanted = params.get('edit')
+      if (wanted && list.some((d) => d.id === wanted && !d.unbound_at)) {
+        setEditing(wanted)
+        setParams({}, { replace: true })
+      }
     } catch (err) {
       setError((err as ApiError).message)
     }
-  }, [])
+  }, [params, setParams])
 
   useEffect(() => {
     void load()
@@ -123,6 +133,11 @@ export function DevicesPage() {
                     <div className="row-main">
                       <strong>{d.display_name || d.model || d.serial}</strong>
                       <span className={`badge badge-${r.badge}`}>{r.text}</span>
+                      {d.missing_details.length > 0 && (
+                        <span className="badge badge-warn" data-testid="needs-details">
+                          ต้องใส่รายละเอียด: {d.missing_details.map((m) => (m === 'expected_account' ? 'บัญชี TikTok' : 'ชื่อเรียกเครื่อง')).join(', ')}
+                        </span>
+                      )}
                       <span className="muted">
                         {d.model ?? '—'} • Android {d.android_version ?? '—'} • <code>{d.serial}</code> • {d.environment.name}
                       </span>

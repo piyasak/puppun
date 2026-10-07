@@ -21,6 +21,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -116,6 +117,7 @@ class Plan(Base):
     max_registered_agents: Mapped[int] = mapped_column(Integer)
     max_concurrent_sessions: Mapped[int] = mapped_column(Integer)
     max_devices: Mapped[int] = mapped_column(Integer)
+    clips_per_month: Mapped[int] = mapped_column(Integer)  # quota unit = one rendered clip (FR-21)
     created_at: Mapped[datetime] = _created()
 
 
@@ -249,3 +251,143 @@ class Device(Base):
     last_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
     unbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Job(Base):
+    """A request to make clips from one source (FR-02..FR-05). Rendering happens on the
+    customer's Agent (Q-15); the server owns state, quota and approval.
+
+    States: RECEIVED -> SOURCE_VALIDATED -> DOWNLOADING -> ANALYZING -> RENDERING ->
+    READY_FOR_REVIEW, or FAILED / NEEDS_ACTION / CANCELLED. Agent work is leased: only the
+    session holding the current lease (and its generation) may report events.
+    """
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "idempotency_key"),
+        Index("ix_jobs_claimable", "environment_id", "state", "created_at"),
+        CheckConstraint("requested_clips BETWEEN 1 AND 20", name="ck_jobs_requested_clips"),
+        CheckConstraint("clip_min_s >= 15 AND clip_max_s <= 600 AND clip_min_s <= clip_max_s",
+                        name="ck_jobs_clip_bounds"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    source_kind: Mapped[str] = mapped_column(String(16))  # youtube | bilibili | local_file
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_label: Mapped[str | None] = mapped_column(String(200))  # file name for local_file; no full path
+    rights_acceptance_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("rights_acceptances.id"))
+    requested_clips: Mapped[int] = mapped_column(Integer)
+    planned_clips: Mapped[int | None] = mapped_column(Integer)
+    clip_min_s: Mapped[int] = mapped_column(Integer)
+    clip_max_s: Mapped[int] = mapped_column(Integer)
+    subtitles: Mapped[bool] = mapped_column(Boolean)
+    review_mode: Mapped[str] = mapped_column(String(8))  # review | auto
+    seed: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(24))
+    state_version: Mapped[int] = mapped_column(Integer)
+    notice: Mapped[str | None] = mapped_column(String(32))  # e.g. INSUFFICIENT_SOURCE
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    error_detail: Mapped[str | None] = mapped_column(String(500))
+    source_duration_s: Mapped[int | None] = mapped_column(Integer)
+    quota_period: Mapped[str | None] = mapped_column(String(7))  # YYYY-MM (Asia/Bangkok) of the reservation
+    lease_session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_sessions.id", ondelete="SET NULL"))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class JobEvent(Base):
+    """Agent events, deduplicated by the Agent's event id (redelivery is harmless)."""
+
+    __tablename__ = "job_events"
+    __table_args__ = (UniqueConstraint("job_id", "event_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[str] = mapped_column(String(64))
+    type: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = _created()
+
+
+class Clip(Base):
+    """One rendered clip as reported by the Agent (PRD §F: interval, seed, template, hash).
+
+    The file itself is uploaded and checked against `render_sha256` in P3.2.
+    """
+
+    __tablename__ = "clips"
+    __table_args__ = (UniqueConstraint("job_id", "clip_index"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    clip_index: Mapped[int] = mapped_column(Integer)
+    start_ms: Mapped[int] = mapped_column(Integer)
+    end_ms: Mapped[int] = mapped_column(Integer)
+    seed: Mapped[int] = mapped_column(Integer)
+    template_version: Mapped[str] = mapped_column(String(40))
+    render_sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str | None] = mapped_column(String(200))  # burned into the video: changing it means a re-render
+    created_at: Mapped[datetime] = _created()
+    # P3.2: the uploaded file, server-side checks, metadata version and approval.
+    storage_key: Mapped[str | None] = mapped_column(String(300))
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_status: Mapped[str | None] = mapped_column(String(8))  # passed | failed | skipped
+    check_results: Mapped[dict | None] = mapped_column(JSONB)
+    metadata_version: Mapped[int] = mapped_column(Integer, default=1)
+    approved_metadata_version: Mapped[int | None] = mapped_column(Integer)
+    approved_sha256: Mapped[str | None] = mapped_column(String(64))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approval_mode: Mapped[str | None] = mapped_column(String(8))  # manual | auto
+
+
+class ClipMetadata(Base):
+    """Posting text for a clip, one row per version (FR-07, PRD §F). Editing creates a new
+    version; an approval names the version it approved, so an edit voids it automatically."""
+
+    __tablename__ = "clip_metadata"
+    __table_args__ = (UniqueConstraint("clip_id", "version"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    caption: Mapped[str] = mapped_column(String(2200))  # TikTok caption limit
+    hashtags: Mapped[list] = mapped_column(JSONB)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+
+
+class QuotaLedger(Base):
+    """Append-only quota trail in integer clip units (FR-21, PRD §F).
+
+    reserve: units held for a job; settle: a held unit became a delivered clip; release: a
+    held unit returned. Every entry has a unique idempotency key, so a repeated event can
+    never charge or refund twice (T10). Used = reserve - release; available = quota - used.
+    """
+
+    __tablename__ = "quota_ledger"
+    __table_args__ = (
+        CheckConstraint("units > 0", name="ck_quota_ledger_units_positive"),
+        Index("ix_quota_ledger_ws_period", "workspace_id", "period"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"), index=True)
+    period: Mapped[str] = mapped_column(String(7))
+    entry: Mapped[str] = mapped_column(String(8))  # reserve | settle | release
+    units: Mapped[int] = mapped_column(Integer)
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    reason: Mapped[str | None] = mapped_column(String(40))
+    created_at: Mapped[datetime] = _created()

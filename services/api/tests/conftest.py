@@ -24,6 +24,7 @@ from sqlalchemy.engine import make_url
 
 from clipflow_api.app import create_app
 from clipflow_api.config import Settings
+from clipflow_api.storage import LocalStorage
 
 API_DIR = Path(__file__).resolve().parents[1]
 ADMIN_URL = os.environ.get(
@@ -68,11 +69,16 @@ def migrated_url(database_url):
 
 
 @pytest.fixture(scope="session")
-def app(migrated_url):
+def storage(tmp_path_factory):
+    return LocalStorage(tmp_path_factory.mktemp("storage"), "http://testserver", b"test-media-signing-key")
+
+
+@pytest.fixture(scope="session")
+def app(migrated_url, storage):
     # Agent sign-in rate limit is tested on its own app (test_agent_sessions); keep it out of the way here.
     settings = Settings(app_env="test", database_url=migrated_url, supabase_url=SUPABASE_URL,
                         agent_auth_rate_per_minute=10_000)
-    return create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key())
+    return create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key(), storage=storage)
 
 
 @pytest.fixture

@@ -171,3 +171,14 @@ def test_web_and_agent_credentials_do_not_cross(owner, client):
                        json={"serial": SERIAL, "adb_state": "device"})
     assert resp.status_code == 401
     assert client.get("/v1/devices", headers={"Authorization": f"Bearer {owner.agent.session}"}).status_code == 401
+
+
+def test_register_answer_says_what_details_are_missing_and_where(owner):
+    first = register(owner.agent).json()
+    assert first["missing_details"] == ["display_name", "expected_account"]
+    assert first["details_url"] == f"http://localhost:5173/devices?edit={first['id']}"
+    owner.patch(f"/v1/devices/{first['id']}", json={"display_name": "POCO", "expected_account": "@shop1"})
+    again = register(owner.agent).json()
+    assert again["created"] is False and again["missing_details"] == []
+    assert again["expected_account"] == "shop1"
+    assert owner.get("/v1/devices").json()["items"][0]["missing_details"] == []

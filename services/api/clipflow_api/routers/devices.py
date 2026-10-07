@@ -63,6 +63,7 @@ def _out(d: Device, env_name: str, agent_online: bool) -> dict:
         "last_reported_at": d.last_reported_at.isoformat() if d.last_reported_at else None,
         "created_at": d.created_at.isoformat(),
         "unbound_at": d.unbound_at.isoformat() if d.unbound_at else None,
+        "missing_details": devices.missing_details(d) if d.unbound_at is None else [],
     }
 
 
@@ -73,8 +74,13 @@ def register(body: RegisterIn, request: Request, ctx: AgentContext = Depends(age
     if created:
         audit.record(db, request, "device.register", workspace_id=ctx.workspace_id, target_id=device.id)
     db.commit()
+    # Tells the Agent what to say: where in the web app the owner finishes the setup (Q-25).
+    origin = request.app.state.settings.web_origin.rstrip("/")
     return {"id": str(device.id), "serial": device.serial, "created": created,
-            "environment_id": str(device.environment_id)}
+            "environment_id": str(device.environment_id),
+            "display_name": device.display_name, "expected_account": device.expected_account,
+            "missing_details": devices.missing_details(device),
+            "details_url": f"{origin}/devices?edit={device.id}"}
 
 
 @agent_router.post("/report")

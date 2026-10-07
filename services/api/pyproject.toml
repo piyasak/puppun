@@ -16,6 +16,7 @@ dependencies = [
     "pyjwt[crypto]>=2.10",
     "pydantic-settings>=2.10",
     "uvicorn>=0.37",
+    "boto3>=1.40",
 ]
 
 [project.optional-dependencies]

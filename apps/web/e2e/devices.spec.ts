@@ -39,20 +39,28 @@ test('register, edit, protect and unbind a phone', async ({ page, browser, reque
   const session = await agentSession(page, request, owner.username)
 
   expect((await registerPhone(request, session, serial, 'unauthorized')).status()).toBe(409)
-  expect((await registerPhone(request, session, serial)).status()).toBe(200)
+  const registered = await registerPhone(request, session, serial)
+  expect(registered.status()).toBe(200)
+  const { details_url: detailsUrl, missing_details: missing } = await registered.json()
+  expect(missing).toEqual(['display_name', 'expected_account'])
 
   await page.getByRole('link', { name: 'โทรศัพท์' }).click()
   const row = page.getByTestId('device-row')
   await expect(row).toHaveCount(1)
   await expect(row).toContainText('พร้อมใช้งาน')
   await expect(row).toContainText(serial)
+  await expect(row.getByTestId('needs-details')).toHaveText('ต้องใส่รายละเอียด: ชื่อเรียกเครื่อง, บัญชี TikTok')
 
-  await row.getByRole('button', { name: 'แก้ไข' }).click()
+  // The link the Agent prints (Q-25) opens this phone's form directly.
+  await page.goto(new URL(detailsUrl).pathname + new URL(detailsUrl).search)
+  await expect(page.getByLabel('บัญชี TikTok ที่ต้องโพสต์')).toBeVisible()
+  await expect(page).toHaveURL(/\/devices$/)
   await page.getByLabel('ชื่อเรียกเครื่อง').fill('POCO หน้าร้าน')
   await page.getByLabel('บัญชี TikTok ที่ต้องโพสต์').fill('@Shop.Test_1')
   await page.getByRole('button', { name: 'บันทึก' }).click()
   await expect(row).toContainText('POCO หน้าร้าน')
   await expect(row).toContainText('บัญชี TikTok: @shop.test_1')
+  await expect(row.getByTestId('needs-details')).toHaveCount(0)
   await page.screenshot({ path: '../../var/evidence/e2e/devices.png', fullPage: true })
 
   // Agent reports the phone as unauthorized -> web shows the fix

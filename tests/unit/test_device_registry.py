@@ -57,3 +57,63 @@ def test_register_ready_reports_outcome_per_phone():
 def test_register_only_one_phone():
     results = register_ready(FakeClient(), object(), discover(Adb(runner)), only="tst8yd89gi8xcie6")
     assert [r["outcome"] for r in results] == ["REGISTERED"]
+
+
+class RecordingClient(FakeClient):
+    """Server stand-in that remembers registrations like the real one."""
+
+    def __init__(self):
+        super().__init__()
+        self.known = {}
+
+    def register_device(self, session, serial, state, model, version):
+        if state != "device":
+            raise ServerError(409, "DEVICE_NOT_READY", "ยังไม่พร้อม", {"adb_state": state})
+        created = serial not in self.known
+        self.known.setdefault(serial, {"display_name": None, "expected_account": None})
+        info = self.known[serial]
+        missing = [k for k in ("display_name", "expected_account") if not info[k]]
+        return {"id": "dev-1", "created": created, **info, "missing_details": missing,
+                "details_url": "http://web.example/devices?edit=dev-1"}
+
+
+def test_phone_check_on_start_registers_and_points_to_the_web():
+    from agent.device_registry import DeviceSync
+
+    logs, client = [], RecordingClient()
+    sync = DeviceSync(lambda: Adb(runner), log=logs.append)
+    sync(client, object())
+    registered = [m for m in logs if "TST8YD89GI8XCIE6" in m]
+    assert registered == ["ลงทะเบียนโทรศัพท์ 25078PC3EG (TST8YD89GI8XCIE6) แล้ว — กรุณาไปใส่รายละเอียด "
+                          "(ชื่อเรียกเครื่อง, บัญชี TikTok) ที่ http://web.example/devices?edit=dev-1"]
+    assert any("R58M123ABC" in m and "ยังไม่พร้อม" in m for m in logs)
+    assert any("Wi-Fi" in m for m in logs)
+
+    # Next periodic check: nothing changed -> nothing new is printed.
+    before = len(logs)
+    sync(client, object())
+    assert len(logs) == before
+
+    # Owner filled in the details -> one "ready" line.
+    client.known["TST8YD89GI8XCIE6"] = {"display_name": "POCO หน้าร้าน", "expected_account": "shop1"}
+    sync(client, object())
+    assert logs[-1] == "โทรศัพท์ POCO หน้าร้าน (TST8YD89GI8XCIE6) พร้อมใช้งาน (บัญชี TikTok @shop1)"
+
+
+def test_phone_check_without_phones_or_adb_says_so_once():
+    from agent.adb import AdbError
+    from agent.device_registry import DeviceSync
+
+    logs = []
+    empty = DeviceSync(lambda: Adb(lambda args: "List of devices attached\n"), log=logs.append)
+    empty(FakeClient(), object())
+    empty(FakeClient(), object())
+    assert logs == ["ไม่พบโทรศัพท์ — เสียบสาย USB และเปิด USB debugging"]
+
+    def no_adb():
+        raise AdbError("adb not found on PATH")
+
+    logs.clear()
+    missing = DeviceSync(no_adb, log=logs.append)
+    assert missing(FakeClient(), object()) == [] and missing(FakeClient(), object()) == []
+    assert logs == ["อ่านโทรศัพท์ผ่าน ADB ไม่ได้: adb not found on PATH"]
