@@ -4,50 +4,9 @@
  * shows progress, server checks and a playable preview, then caption edits and approvals,
  * including "edit after approval needs a new approval".
  */
-import { expect, test, type APIRequestContext } from '@playwright/test'
-import { execFileSync } from 'node:child_process'
-import { createHash, randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { API, agentSession, signUpAndOnboard } from './helpers'
-
-function sampleClip(seconds: number): Buffer {
-  const out = join(mkdtempSync(join(tmpdir(), 'clipflow-e2e-')), 'clip.mp4')
-  execFileSync('ffmpeg', [
-    '-y', '-v', 'error', '-f', 'lavfi', '-i', `testsrc2=size=1080x1920:rate=25:duration=${seconds}`,
-    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out,
-  ])
-  return readFileSync(out)
-}
-
-class FakeAgent {
-  constructor(private request: APIRequestContext, private session: string) {}
-  private headers() { return { Authorization: `Bearer ${this.session}` } }
-  async event(jobId: string, type: string, payload: Record<string, unknown> = {}) {
-    const resp = await this.request.post(`${API}/v1/agent/jobs/${jobId}/events`, {
-      headers: this.headers(), data: { event_id: randomUUID().replace(/-/g, ''), type, ...payload },
-    })
-    expect(resp.status(), await resp.text()).toBe(200)
-  }
-  async claim() {
-    const resp = await this.request.post(`${API}/v1/agent/jobs/claim`, { headers: this.headers(), data: {} })
-    return (await resp.json()).job as { id: string; seed: number }
-  }
-  async deliver(jobId: string, index: number, body: Buffer, durationMs: number) {
-    await this.event(jobId, 'clip_rendered', {
-      index, start_ms: index * 60_000, end_ms: index * 60_000 + durationMs, duration_ms: durationMs,
-      sha256: createHash('sha256').update(body).digest('hex'), size_bytes: body.length,
-      template_version: 'tpl-default-v2', title: `ตอนพิเศษ ${index}`,
-      caption: `ตอนพิเศษ — ตอนที่ ${index}/2`, hashtags: ['#คลิปสั้น'],
-    })
-    const resp = await this.request.put(`${API}/v1/agent/jobs/${jobId}/clips/${index}/file`, {
-      headers: { ...this.headers(), 'Content-Type': 'video/mp4' }, data: body,
-    })
-    expect(resp.status(), await resp.text()).toBe(200)
-  }
-}
+import { expect, test } from '@playwright/test'
+import { FakeAgent, sampleClip } from './agentSim'
+import { agentSession, signUpAndOnboard } from './helpers'
 
 test('create a job, watch it progress, preview, edit and approve clips', async ({ page, request }) => {
   test.setTimeout(120_000)

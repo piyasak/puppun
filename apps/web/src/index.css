@@ -168,3 +168,17 @@ a.btn { display: inline-block; text-decoration: none; }
   .clip-card { grid-template-columns: 1fr; }
   .preview { max-width: 280px; width: 100%; margin: 0 auto; }
 }
+
+/* P4.2: schedules */
+.btn-small { padding: 4px 10px; font-size: 0.875rem; }
+.table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.95rem; }
+.table th, .table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 500; }
+.schedule-preview, .series-list { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.schedule-preview h3, .series-list h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.series { margin: 12px 0 20px; }
+.series .card-head .btn { margin-left: auto; }
+@media (max-width: 720px) {
+  .table { display: block; overflow-x: auto; }
+}
+.grid-wide { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }

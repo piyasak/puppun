@@ -1,10 +1,17 @@
 # Progress
 
-## Current phase: P3 — Video production (PO override Q-24; G2 = No 3/5). G0 = Yes, G1 = No (5/6), G2 = No (3/5).
+## Current phase: P4 — Scheduler (G3 = Yes 2026-10-08; P4 started under Q-26). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = No (1/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 11:xx) — G3-01: SSRF guard (T08) + render resource limits
+### Latest slice (2026-10-08 12:xx) — P4.1/P4.2 schedules (Q-26) + G3-05
+- Implemented: `slots.py` (คำนวณเวลา, E-39), migration 0007 (`schedule_series`, `schedule_items` ผูกเวอร์ชันที่อนุมัติ), `schedules.py` (preview/create/cancel, ผูกเวอร์ชัน, sync เมื่อการอนุมัติเปลี่ยน, `dispatchable`), routes `/v1/schedules/preview`, `/v1/schedules` (+idempotency), `/v1/schedules/{id}`, `/cancel`, `/v1/schedule-items/{id}/cancel`; hook ใน clips (แก้/อนุมัติ/ยกเลิกอนุมัติ) และ devices (ยกเลิกการผูก → NEEDS_ACTION); เว็บ: ส่วน "ตั้งเวลาโพสต์" ในหน้ารายละเอียดงาน (preview จาก Server, ยืนยัน, ตาราง, ยกเลิก); `e2e/agentSim.ts`
+- Commands: unit 147 passed (ใหม่ 21 `test_slots.py`), integration 152 passed / 5 skipped (ใหม่ 15 `test_schedules.py` รวมสองโทรศัพท์แย่งคลิปพร้อมกันผ่าน HTTP จริง), E2E 8 passed (ใหม่ `schedule.spec.ts`), ruff/oxlint/tsc/build ผ่าน
+- Found: preview เคยจัดคิวรายการใหม่ไว้ก่อนรายการเดิมเมื่อเวลาเท่ากัน — แก้ให้รายการที่ตั้งไว้ก่อนได้ก่อน
+- Gates: **G3 = Yes** — PO ปิยศักดิ์ อนุมัติในแชท 2026-10-08 (5/5); G4 1/5 Yes (G4-01)
+- Next: P4.3 Agent claim + device lock (เรียก `dispatchable`, dry-run), P4.4 pause/resume/offline, P4.5–P4.6
+
+### Previous slice (2026-10-08 11:xx) — G3-01: SSRF guard (T08) + render resource limits
 - Implemented: `clipflow_worker/netguard.py` (E-38: guard ต่อ thread ที่ตรวจทุกการ resolve ชื่อโฮสต์ระหว่างดาวน์โหลดต้นฉบับ รวม redirect); `source.inspect/download`, `pipeline.plan/fetch_part` ใช้ guard; URL ที่ส่งให้ ffmpeg ตรวจก่อน; error ใหม่ `SOURCE_BLOCKED_ADDRESS` (+ ข้อความไทยบนเว็บ); `render.RenderLimits` (thread ≤ ครึ่ง CPU, priority ต่ำบน Windows, timeout); สแกนเสียง timeout 30 นาที
 - Commands: worker + unit 126 passed (ใหม่ 12 ใน `test_netguard.py`: redirect ผ่าน yt-dlp จริง → ปลายทางภายในได้ 0 request, guard ต่อ thread, URL สำหรับ ffmpeg, pipeline.plan ถูก guard, render timeout/threads); YouTube จริงใต้ guard: plan + range download ผ่าน (116 วินาที); ruff/oxlint/tsc ผ่าน
 - Integration 137 passed, 5 skipped (opt-in) — รวม T08 ผ่าน job runner: งานลิงก์ที่ต้นฉบับพาไปที่อยู่ภายใน → FAILED `SOURCE_BLOCKED_ADDRESS`, เซิร์ฟเวอร์ภายในได้ 0 request, ไม่จองโควตา (Docker Desktop เคยหยุดระหว่าง session; PO เปิดใหม่แล้ว)

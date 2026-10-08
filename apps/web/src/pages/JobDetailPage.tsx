@@ -9,6 +9,7 @@ import {
   type Clip, type JobDetail,
 } from '../lib/jobs'
 import { formatDate } from '../lib/types'
+import { SchedulePanel } from './SchedulePanel'
 
 function Timeline({ job }: { job: JobDetail }) {
   const reached = STEPS.findIndex((s) => s.state === job.state)
@@ -262,6 +263,11 @@ export function JobDetailPage() {
               ))}
             </ul>
           </section>
+
+          {job.state === 'READY_FOR_REVIEW' && (
+            <SchedulePanel job={job}
+              refresh={job.clips.map((c) => `${c.metadata.version}:${c.approval.approved}`).join(',')} />
+          )}
         </>
       )}
       <ConfirmDialog open={confirmCancel} busy={busy} danger title="ยกเลิกงานนี้?" confirmLabel="ยกเลิกงาน"

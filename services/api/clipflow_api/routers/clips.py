@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import audit, clips, jobs
+from .. import audit, clips, jobs, schedules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
 from ..errors import ApiError, not_found
@@ -127,6 +127,7 @@ def patch_metadata(clip_id: uuid.UUID, body: MetadataPatch, request: Request, au
         raise ApiError(409, "RERENDER_REQUIRED", "ชื่อคลิปอยู่ในวิดีโอ ต้องสร้างคลิปใหม่เพื่อเปลี่ยนชื่อ")
     clip, job = _owned(db, auth, clip_id, lock=True)
     clips.edit_metadata(db, job, clip, auth.user_id, body.expected_version, body.caption, body.hashtags)
+    schedules.sync_clip_items(db, clip)  # scheduled posts follow only an approved version (G3-05)
     audit.record(db, request, "clip.metadata.edit", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=clip.id)
     db.commit()
@@ -138,6 +139,7 @@ def approve_clip(clip_id: uuid.UUID, body: ApproveIn, request: Request, auth: We
                  db: Session = Depends(get_db)):
     clip, job = _owned(db, auth, clip_id, lock=True)
     clips.approve(clip, job, auth.user_id, body.metadata_version)
+    schedules.sync_clip_items(db, clip)
     audit.record(db, request, "clip.approve", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=clip.id)
     db.commit()
@@ -149,6 +151,7 @@ def unapprove_clip(clip_id: uuid.UUID, request: Request, auth: WebAuth = Depends
                    db: Session = Depends(get_db)):
     clip, job = _owned(db, auth, clip_id, lock=True)
     clips.revoke_approval(clip)
+    schedules.sync_clip_items(db, clip)
     audit.record(db, request, "clip.unapprove", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=clip.id)
     db.commit()

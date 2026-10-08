@@ -391,3 +391,71 @@ class QuotaLedger(Base):
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
     reason: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = _created()
+
+
+class ScheduleSeries(Base):
+    """One posting plan: the approved clips of a job, one phone, every X hours inside a daily
+    window (FR-09..FR-11, PRD §5/§G). States: ACTIVE, PAUSED, CANCELLED, COMPLETED."""
+
+    __tablename__ = "schedule_series"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "idempotency_key"),
+        CheckConstraint("interval_hours BETWEEN 1 AND 168", name="ck_series_interval"),
+        CheckConstraint("window_start_min >= 0 AND window_end_min <= 1440 AND window_start_min < window_end_min",
+                        name="ck_series_window"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    timezone: Mapped[str] = mapped_column(String(64))
+    window_start_min: Mapped[int] = mapped_column(Integer)
+    window_end_min: Mapped[int] = mapped_column(Integer)
+    interval_hours: Mapped[int] = mapped_column(Integer)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    offline_policy: Mapped[str] = mapped_column(String(8))  # defer | skip (Q-06)
+    state: Mapped[str] = mapped_column(String(12))
+    version: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _created()
+
+
+class ScheduleItem(Base):
+    """One clip at one time on one phone. It names the exact approved version it may post
+    (metadata version + file hash), never "the latest" (PRD §F). Scheduled, claimed, started,
+    submitted and verified times are kept apart (PRD §G.8).
+
+    States so far: SCHEDULED, NEEDS_ACTION (approval no longer matches), CANCELLED, SKIPPED;
+    the publish states (CLAIMED ... VERIFIED_SUCCESS / UNKNOWN) arrive with dispatch.
+    """
+
+    __tablename__ = "schedule_items"
+    __table_args__ = (
+        UniqueConstraint("series_id", "seq"),
+        # A clip is in at most one live item: never posted twice by two series (G4-02).
+        Index("uq_schedule_items_live_clip", "clip_id", unique=True,
+              postgresql_where=text("state NOT IN ('CANCELLED', 'SKIPPED')")),
+        Index("ix_schedule_items_device_time", "device_id", "scheduled_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    series_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schedule_series.id", ondelete="CASCADE"), index=True)
+    clip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"))
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    metadata_version: Mapped[int] = mapped_column(Integer)
+    clip_sha256: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(20))
+    state_version: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(String(40))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _created()
