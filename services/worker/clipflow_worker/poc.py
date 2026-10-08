@@ -37,6 +37,7 @@ from clipflow_worker.source import (
     SourceInfo,
     _base_opts,
     _classify_download_error,
+    assert_public_media_url,
     classify_platform,
     format_options,
     inspect,
@@ -69,10 +70,14 @@ def fetch_captions(url: str, info: SourceInfo, dest: Path) -> Path | None:
     return found[0] if found else None
 
 
+AUDIO_SCAN_TIMEOUT_S = 30 * 60  # per ffmpeg pass over the audio (resource limit, E-38)
+
+
 def _ffmpeg_audio_log(audio: Path, audio_filter: str) -> str:
     result = subprocess.run(
         [binary("ffmpeg"), "-hide_banner", "-nostats", "-i", str(audio), "-af", audio_filter, "-f", "null", "-"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
+        timeout=AUDIO_SCAN_TIMEOUT_S,
     )
     return result.stderr
 
@@ -144,7 +149,13 @@ def _download_range_once(url: str, start: float, end: float, dest: Path, max_hei
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.extract_info(url, download=True)
+            # Range downloads run in ffmpeg, which resolves names itself: check the selected media
+            # URLs here before handing them over (E-38).
+            info = ydl.extract_info(url, download=False)
+            for fmt in info.get("requested_formats") or [info]:
+                if fmt.get("url"):
+                    assert_public_media_url(fmt["url"])
+            ydl.process_ie_result(info, download=True)
     except DownloadError as exc:
         raise _classify_download_error(exc) from exc
     path = out.with_suffix(".mp4")

@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 10:xx) — P3.4 web: create job, job list, job detail, preview, text edit, approval
+### Latest slice (2026-10-08 11:xx) — G3-01: SSRF guard (T08) + render resource limits
+- Implemented: `clipflow_worker/netguard.py` (E-38: guard ต่อ thread ที่ตรวจทุกการ resolve ชื่อโฮสต์ระหว่างดาวน์โหลดต้นฉบับ รวม redirect); `source.inspect/download`, `pipeline.plan/fetch_part` ใช้ guard; URL ที่ส่งให้ ffmpeg ตรวจก่อน; error ใหม่ `SOURCE_BLOCKED_ADDRESS` (+ ข้อความไทยบนเว็บ); `render.RenderLimits` (thread ≤ ครึ่ง CPU, priority ต่ำบน Windows, timeout); สแกนเสียง timeout 30 นาที
+- Commands: worker + unit 126 passed (ใหม่ 12 ใน `test_netguard.py`: redirect ผ่าน yt-dlp จริง → ปลายทางภายในได้ 0 request, guard ต่อ thread, URL สำหรับ ffmpeg, pipeline.plan ถูก guard, render timeout/threads); YouTube จริงใต้ guard: plan + range download ผ่าน (116 วินาที); ruff/oxlint/tsc ผ่าน
+- Integration 137 passed, 5 skipped (opt-in) — รวม T08 ผ่าน job runner: งานลิงก์ที่ต้นฉบับพาไปที่อยู่ภายใน → FAILED `SOURCE_BLOCKED_ADDRESS`, เซิร์ฟเวอร์ภายในได้ 0 request, ไม่จองโควตา (Docker Desktop เคยหยุดระหว่าง session; PO เปิดใหม่แล้ว)
+- Gates: G3 4/5 Yes (G3-01 Yes); G3-05 รอ P4
+- Next: P4 scheduler (G3-05) — G3 ยัง No จนกว่า G3-05 + sign-off
+
+### Previous slice (2026-10-08 10:xx) — P3.4 web: create job, job list, job detail, preview, text edit, approval
 - Implemented: `/create` (3 ขั้น: ต้นฉบับ → รูปแบบ → ตรวจและสร้าง; ตรวจ input ทีละขั้น, idempotency key ต่อฟอร์ม, auto mode ต้องติ๊กยืนยัน, แสดงโควตาที่จะใช้; ขั้นเลือกเครื่อง/เวลา = P4), `/jobs` (แท็บ ทั้งหมด/กำลังผลิต/รอตรวจ/ต้องดำเนินการ/ล้มเหลว, refresh 5 วินาทีขณะมีงานกำลังผลิต), `/jobs/:id` (timeline, ข้อผิดพลาดพร้อมวิธีแก้ภาษาไทย, notice, โควตาจอง/ใช้/คืน, seed, ยกเลิกงานพร้อมยืนยัน; ต่อคลิป: preview ลิงก์ 5 นาที, ผลตรวจไฟล์, ช่วงต้นฉบับ, ชื่อในวิดีโอ (แก้ไม่ได้), แก้ caption/hashtags แบบมีเวอร์ชัน, อนุมัติ/ยกเลิกอนุมัติ); `e2e/helpers.ts` มี `agentSession`; CI e2e ติดตั้ง ffmpeg
 - Fixed: ผลตรวจไฟล์ที่เปิดไม่ได้เคยส่งข้อความ ffprobe ที่มี path ชั่วคราวของ Server (มีชื่อผู้ใช้ Windows ของ Server) ไปให้ลูกค้า → ตอนนี้ส่งข้อความกลาง (`mediacheck.py`, test ใน `test_clips.py`)
 - Commands: E2E 7 passed (ใหม่ 2: สร้างงานผ่าน wizard → Agent จำลองส่งคลิปจริง 1080×1920 + ไฟล์เสีย → preview เล่นได้ใน Edge ยาว 35 วินาที → แก้ข้อความ → อนุมัติ → แก้อีกครั้งการอนุมัติหลุด → อนุมัติใหม่; ลิงก์ผิด/ยกเลิกงาน); clip tests 11 passed; tsc + build + bundle check ผ่าน; ruff/oxlint ไม่มี error

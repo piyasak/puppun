@@ -22,6 +22,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadError
 
 from clipflow_worker.media import binary
+from clipflow_worker.netguard import BLOCKED_MESSAGE, BlockedAddress, check_url, public_only
 
 PLATFORM_HOSTS = {
     "youtube": {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"},
@@ -42,6 +43,7 @@ class SourceErrorCode(StrEnum):
     RATE_LIMITED = "SOURCE_RATE_LIMITED"  # platform bot check / 429: temporary, retry after a cool-down
     LIMIT_EXCEEDED = "SOURCE_LIMIT_EXCEEDED"
     UNSUPPORTED_FILE = "UNSUPPORTED_FILE"  # customer-provided file is not a readable video
+    BLOCKED_ADDRESS = "SOURCE_BLOCKED_ADDRESS"  # a download or redirect pointed at a non-public address (T08)
     DOWNLOADER_ERROR = "DOWNLOADER_ERROR"
 
 
@@ -115,6 +117,8 @@ _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 def _classify_download_error(exc: Exception) -> SourceError:
     exc = _ANSI.sub("", str(exc))  # yt-dlp colours "ERROR:"; details are shown to users
     message = exc.lower()
+    if BLOCKED_MESSAGE in message:  # before the network markers: this is a refusal, not an outage
+        return SourceError(SourceErrorCode.BLOCKED_ADDRESS, "the source pointed to a private or internal address")
     if any(m in message for m in _NETWORK_MARKERS):
         return SourceError(SourceErrorCode.DOWNLOADER_ERROR, f"network error (retryable): {exc}")
     if any(m in message for m in _RATE_LIMIT_MARKERS):
@@ -144,16 +148,12 @@ def _base_opts() -> dict:
 
 def assert_public_media_url(media_url: str) -> None:
     """SSRF guard for adapter-returned media URLs (NF-03): http(s) to public addresses only."""
-    parts = urlsplit(media_url)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise SourceError(SourceErrorCode.DOWNLOADER_ERROR, "media URL has an unsupported scheme")
     try:
-        addresses = {ai[4][0] for ai in socket.getaddrinfo(parts.hostname, parts.port or 443)}
+        check_url(media_url)
+    except BlockedAddress as exc:
+        raise SourceError(SourceErrorCode.BLOCKED_ADDRESS, "media URL is not a public http(s) address") from exc
     except socket.gaierror as exc:
         raise SourceError(SourceErrorCode.DOWNLOADER_ERROR, f"media host does not resolve: {exc}") from exc
-    for address in addresses:
-        if not ipaddress.ip_address(address.split("%", 1)[0]).is_global:
-            raise SourceError(SourceErrorCode.DOWNLOADER_ERROR, "media URL resolves to a non-public address")
 
 
 def _probe_duration(info: dict) -> int | None:
@@ -187,13 +187,14 @@ def format_options(max_short_side: int = DEFAULT_MAX_HEIGHT) -> dict:
 def inspect(url: str) -> SourceInfo:
     platform = classify_platform(url)
     try:
-        with yt_dlp.YoutubeDL({**_base_opts(), "skip_download": True}) as ydl:
+        with public_only(), yt_dlp.YoutubeDL({**_base_opts(), "skip_download": True}) as ydl:
             info = ydl.extract_info(url, download=False)
     except DownloadError as exc:
         raise _classify_download_error(exc) from exc
     if info is None or info.get("_type") == "playlist":
         raise SourceError(SourceErrorCode.UNSUPPORTED_URL, "playlists are not supported; use one video URL")
-    duration = info.get("duration") or _probe_duration(info)
+    with public_only():
+        duration = info.get("duration") or _probe_duration(info)
     return SourceInfo(
         platform=platform,
         source_id=str(info.get("id")),
@@ -246,7 +247,7 @@ def download(
         "subtitlesformat": "srt/vtt/best",
     }
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with public_only(), yt_dlp.YoutubeDL(opts) as ydl:
             ydl.extract_info(url, download=True)
     except DownloadError as exc:
         raise _classify_download_error(exc) from exc

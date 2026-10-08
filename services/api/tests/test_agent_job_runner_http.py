@@ -8,6 +8,7 @@ pauses. Linked sources (YouTube/Bilibili) need the network: test_real_source_job
 from __future__ import annotations
 
 import subprocess
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -51,10 +52,11 @@ class Shop:
         self.logs = []
         self.runner = JobRunner(data_dir, media_dir, log=self.logs.append, keepalive_s=1.0, retry_wait_s=0.1)
 
-    def job(self, file_name="source.mp4", clips=2):
+    def job(self, file_name="source.mp4", clips=2, url=None):
+        source = {"kind": "url", "url": url} if url else {"kind": "local_file", "file_name": file_name}
         resp = self.owner.post("/v1/jobs", json={
             "idempotency_key": uuid.uuid4().hex, "environment_id": self.env["id"],
-            "source": {"kind": "local_file", "file_name": file_name},
+            "source": source,
             "requested_clips": clips, "clip_min_s": 15, "clip_max_s": 25})
         assert resp.status_code == 201, resp.text
         return resp.json()["id"]
@@ -167,3 +169,45 @@ def test_restart_mid_job_resumes_without_double_charge(shop, app, monkeypatch):
     assert [c["render_sha256"] for c in job["clips"]][0] == first["clips"][0]["render_sha256"]
     assert job["quota"] == {"reserved": 2, "settled": 2, "released": 0, "outstanding": 0}
     assert any("ไฟล์เดิม" in line for line in shop.logs)  # clip 2 reused, not re-rendered
+
+
+def test_source_pointing_at_an_internal_address_is_refused(shop, monkeypatch):  # T08 through the Agent flow
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    import yt_dlp
+    from yt_dlp.utils import DownloadError
+
+    from clipflow_worker.source import _base_opts, _classify_download_error
+
+    hits = []
+
+    class Internal(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            hits.append(self.path)
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    internal = ThreadingHTTPServer(("127.0.0.1", 0), Internal)
+    threading.Thread(target=internal.serve_forever, daemon=True).start()
+
+    def inspect_that_lands_on_internal(url):
+        # Stands in for a platform page whose media/redirect points at an internal service.
+        try:
+            with yt_dlp.YoutubeDL({**_base_opts(), "skip_download": True}) as ydl:
+                ydl.extract_info(f"http://127.0.0.1:{internal.server_address[1]}/meta-data", download=False)
+        except DownloadError as exc:
+            raise _classify_download_error(exc) from exc
+
+    monkeypatch.setattr(pipeline, "inspect", inspect_that_lands_on_internal)
+    try:
+        job_id = shop.job(url="https://www.youtube.com/watch?v=PBES5k67dhI")
+        assert shop.run() == "FAILED"
+    finally:
+        internal.shutdown()
+    job = shop.detail(job_id)
+    assert job["error"]["code"] == "SOURCE_BLOCKED_ADDRESS"
+    assert hits == []  # refused before any connection
+    assert job["quota"]["reserved"] == 0

@@ -9,11 +9,13 @@ Network steps raise SourceError; a render that does not match the request raises
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
 from clipflow_worker import segments as seg
 from clipflow_worker.local_source import inspect_local, sidecar_captions
+from clipflow_worker.netguard import public_only
 from clipflow_worker.poc import analyze_pauses, clip_text, detect_pauses, download_range, fetch_captions
 from clipflow_worker.render import RenderResult, Template, render_clip
 from clipflow_worker.source import DEFAULT_MAX_DURATION_S, SourceInfo, check_limits, inspect
@@ -38,6 +40,13 @@ def plan(*, work: Path, count: int, seed: int, min_len: float, max_len: float, u
     """Everything needed before any clip is cut. Exactly one of `url` / `local`; `info` if already inspected."""
     if bool(url) == bool(local):
         raise ValueError("plan needs exactly one of url or local")
+    # Every network step of a linked source runs under the SSRF guard (T08, E-38).
+    with nullcontext() if local else public_only():
+        return _plan(work=work, count=count, seed=seed, min_len=min_len, max_len=max_len, url=url, local=local,
+                     captions=captions, max_duration=max_duration, info=info)
+
+
+def _plan(*, work, count, seed, min_len, max_len, url, local, captions, max_duration, info) -> Plan:
     info = info or (inspect_local(local) if local else inspect(url))
     check_limits(info, max_duration)
     work.mkdir(parents=True, exist_ok=True)
@@ -59,7 +68,8 @@ def fetch_part(p: Plan, segment: seg.Segment, max_height: int = 1080) -> tuple[P
     """(file, offset of the segment inside it). The customer's file is cut directly."""
     if p.local:
         return p.local, segment.start
-    return download_range(p.url, segment.start, segment.end, p.work, max_height), 0.0
+    with public_only():
+        return download_range(p.url, segment.start, segment.end, p.work, max_height), 0.0
 
 
 def render(p: Plan, index: int, segment: seg.Segment, part: Path, offset: float, out: Path,
