@@ -62,6 +62,7 @@ cd apps/web && npm run build             # needs VITE_SUPABASE_URL/_PUBLISHABLE_
 CLIPFLOW_REAL_SOURCE_URL=<corpus url> .venv/Scripts/python -m pytest services/api/tests/test_real_source_job.py   # opt-in, network: real source through the job runner
 .venv/Scripts/python -m agent.cli register-devices --server http://127.0.0.1:8000 --username U       # registers ready phones by ro.serialno
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_registration.py   # opt-in, phone on USB
+CLIPFLOW_LOAD=1 .venv/Scripts/python -m pytest services/api/tests/test_dispatch_load.py -s   # opt-in, ~5 min: 150 phones / 300 posts, p95 dispatch latency (G4-05)
 ```
 
 Rules for gates and commands:

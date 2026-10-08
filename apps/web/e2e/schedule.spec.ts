@@ -95,6 +95,22 @@ test('schedule approved clips, follow an edit, cancel the series', async ({ page
   await expect(panel.getByRole('alert')).toHaveCount(0)  // the earlier refusal is gone
   await page.screenshot({ path: '../../var/evidence/e2e/schedule.png', fullPage: true })
 
+  // The week calendar shows the post with its planned time (tomorrow may fall in next week)
+  const jobUrl = page.url()
+  await page.getByRole('link', { name: 'ตารางโพสต์' }).click()
+  const tomorrowIsMonday = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Bangkok', weekday: 'short' })
+    .format(new Date(Date.now() + 24 * 60 * 60 * 1000)) === 'Mon'
+  if (tomorrowIsMonday) await page.getByRole('button', { name: 'สัปดาห์ถัดไป →' }).click()
+  const chip = page.getByTestId('cal-item')
+  await expect(chip).toHaveCount(1)
+  await expect(chip).toContainText('20:30')
+  await expect(chip).toContainText('POCO หน้าร้าน')
+  await page.getByRole('tab', { name: 'รายการ' }).click()
+  await expect(page.getByTestId('cal-row')).toContainText('@shop1')
+  await expect(page.getByTestId('cal-row')).toContainText('รอเวลาโพสต์')
+  await page.screenshot({ path: '../../var/evidence/e2e/calendar.png', fullPage: true })
+  await page.goto(jobUrl)
+
   await panel.getByRole('button', { name: 'ยกเลิกทั้งตาราง' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'ยกเลิกทั้งตาราง' }).click()
   await expect(item).toContainText('ยกเลิกแล้ว')

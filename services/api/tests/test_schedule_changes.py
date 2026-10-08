@@ -99,3 +99,29 @@ def test_edit_respects_the_window_and_the_claim_boundary(shop, app):
     resp = shop.acc.patch(f"/v1/schedule-items/{item['id']}", json={
         "expected_state_version": claimed["state_version"], "scheduled_local": local(late - timedelta(hours=2))})
     assert resp.status_code == 409 and resp.json()["code"] == "ITEM_NOT_EDITABLE"
+
+
+def calendar(acc, start, end):
+    return acc.get("/v1/schedule-items", params={"start": start.isoformat(), "end": end.isoformat()})
+
+
+def test_calendar_shows_planned_and_actual_times_and_the_phone_queue(shop, app, onboard):  # G4-05 UI data
+    first = schedule(shop, clips=1)
+    second = schedule(shop, clips=1)  # same phone, same slot: queued behind the first (Q-05)
+    t = datetime.fromisoformat(first["items"][0]["scheduled_at"])
+    rows = calendar(shop.acc, t - timedelta(hours=1), t + timedelta(hours=1)).json()["items"]
+    assert [r["series_id"] for r in rows] == [first["id"], second["id"]]
+    assert [r["queued_behind"] for r in rows] == [False, True]
+    assert rows[0]["device_name"] == "POCO" and rows[0]["account"] == "handle0" and rows[0]["job"]["source"]
+
+    set_times(app, first["id"], [-1])
+    claim(shop.w, [shop.serial])
+    now = datetime.now(UTC)
+    row = calendar(shop.acc, now - timedelta(hours=1), now + timedelta(hours=1)).json()["items"][0]
+    assert row["state"] == "CLAIMED" and row["claimed_at"] and 0 <= row["delay_s"] <= 120
+    assert row["scheduled_at"] != row["claimed_at"]  # plan and reality side by side
+
+    stranger = onboard()
+    assert calendar(stranger, now - timedelta(days=7), now + timedelta(days=7)).json()["items"] == []
+    bad = calendar(shop.acc, now, now - timedelta(hours=1))
+    assert bad.status_code == 422 and bad.json()["code"] == "RANGE_INVALID"

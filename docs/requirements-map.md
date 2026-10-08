@@ -40,7 +40,7 @@
 | NF-01 | Tenant isolation | api (repository layer), media access | cross-tenant suite ทุก resource + media (T01) | G2-01, G7-03 | P2→P7 | WIP — `tenancy.py` (scoped/get_owned), cross-tenant tests ของ Environments (404 แยกไม่ออกจากไม่มีจริง), meta test: ทุกตารางลูกค้ามี `workspace_id` NOT NULL |
 | NF-02 | Credential protection | api/agent_tokens, logging, agent/credentials | token entropy test, log/URL scan | G2-02 | P2 | WIP — รหัสผ่านไม่อยู่ในระบบเรา (Supabase); API ถือแค่ public key; access token รับเฉพาะ header และไม่ลง log (test); Agent token = P2.4 |
 | NF-03 | URL/file safety, SSRF, resource limits | worker/source, worker sandbox | test_ssrf_redirect (T08), resource limit test | G3-01 | P3 | WIP — allowlist (Server + Agent), `netguard.public_only()` ตรวจทุก resolve รวม redirect ระหว่างดาวน์โหลด (T08 ผ่านด้วย yt-dlp จริง), URL ของ ffmpeg ตรวจก่อน, ต้นฉบับ ≤4 ชม./ไฟล์ ≤8 GB/คลิป ≤512 MB, render thread ≤ ครึ่ง CPU + priority ต่ำ + timeout (`render.RenderLimits`); เหลือ: redirect ภายใน ffmpeg (E-38) |
-| NF-04 | P95 < 1s CRUD @50 users | api | load test report | G7-04 | P7 | — |
+| NF-04 | P95 < 1s CRUD @50 users | api | load test report | G7-04 | P7 | WIP — dispatch load test (150 เครื่อง/300 โพสต์): claim request p95 77 ms, 100% ภายใน 60 วินาที (E-41); load test CRUD @50 users = P7 |
 | NF-05 | Dispatch 95% ≤ 60s | scheduler | load test | G4-05 | P4 | — |
 | NF-06 | Retention/lifecycle, ไม่ลบไฟล์ที่ใช้อยู่ | worker/retention | test_retention_active_job (T23) | G6-05 | P6 | — |
 | NF-07 | Backup/restore RPO ≤24h RTO ≤4h | ops | restore drill (T24) | G8-02 | P8 | — |

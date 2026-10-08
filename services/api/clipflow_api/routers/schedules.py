@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
@@ -13,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from .. import audit, schedules, slots
 from ..deps import WebAuth, get_db, web_auth
-from ..models import Clip, Device, ScheduleItem, ScheduleSeries
+from ..errors import ApiError
+from ..models import Clip, Device, Job, ScheduleItem, ScheduleSeries
 from ..tenancy import get_owned, scoped
 
 web_router = APIRouter(prefix="/v1/schedules")
@@ -176,3 +178,34 @@ def edit_item(item_id: uuid.UUID, body: ItemPatch, request: Request, auth: WebAu
                  target_id=item.id)
     db.commit()
     return item_out(item)
+
+
+@items_router.get("")
+def list_items(start: datetime, end: datetime, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
+    """Posts in [start, end) across all series: the calendar (P4.6). Scheduled and actual times
+    are returned separately; `queued_behind` tells why a post on a busy phone starts later (Q-05)."""
+    if end <= start or end - start > timedelta(days=42):
+        raise ApiError(422, "RANGE_INVALID", "ช่วงวันที่ต้องไม่เกิน 6 สัปดาห์")
+    rows = db.execute(
+        select(ScheduleItem, Clip.clip_index, Job.id, Job.source_url, Job.source_label, ScheduleSeries.timezone,
+               ScheduleSeries.state, Device.display_name, Device.model, Device.expected_account)
+        .join(Clip, Clip.id == ScheduleItem.clip_id).join(Job, Job.id == Clip.job_id)
+        .join(ScheduleSeries, ScheduleSeries.id == ScheduleItem.series_id)
+        .join(Device, Device.id == ScheduleItem.device_id)
+        .where(ScheduleItem.workspace_id == auth.workspace_id, ScheduleItem.scheduled_at >= start,
+               ScheduleItem.scheduled_at < end)
+        .order_by(ScheduleItem.scheduled_at, ScheduleItem.seq).limit(1000)).all()
+    out, last_on_phone = [], {}
+    for item, clip_index, job_id, url, label, tz, series_state, dname, model, account in rows:
+        busy_until = last_on_phone.get(item.device_id)
+        queued = busy_until is not None and item.state in schedules.PENDING and item.scheduled_at < busy_until
+        if item.state not in ("CANCELLED", "SKIPPED"):
+            begin = max(item.scheduled_at, busy_until) if busy_until else item.scheduled_at
+            last_on_phone[item.device_id] = begin + schedules.POST_SLOT
+        out.append(item_out(item, clip_index) | {
+            "job": {"id": str(job_id), "source": url or label}, "timezone": tz, "series_state": series_state,
+            "device_name": dname or model, "account": account,
+            "queued_behind": queued,
+            "delay_s": round((item.claimed_at - item.scheduled_at).total_seconds()) if item.claimed_at else None,
+        })
+    return {"items": out}
