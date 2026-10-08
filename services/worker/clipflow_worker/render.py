@@ -9,7 +9,9 @@ exactly which render it is (PRD section F).
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,6 +43,30 @@ class Template:
     ending_size: int = 76
     ending_chars: int = 18
     ending_seconds: float = 2.5
+
+
+@dataclass(frozen=True)
+class RenderLimits:
+    """Resource limits for one render on the customer's PC (NF-03, G3-01, E-38).
+
+    The encoder gets at most half of the CPU threads and runs below normal priority on
+    Windows, so posting, the browser and the Agent's heartbeats stay responsive. A render
+    that takes longer than `seconds_per_clip_second` x clip length (plus a floor) is killed.
+    """
+
+    threads: int = max(1, (os.cpu_count() or 2) // 2)
+    seconds_per_clip_second: float = 4.0
+    min_timeout_s: float = 120.0
+    low_priority: bool = True
+
+    def timeout_for(self, duration_s: float) -> float:
+        return max(self.min_timeout_s, duration_s * self.seconds_per_clip_second)
+
+
+def _priority_flags(limits: RenderLimits) -> int:
+    if limits.low_priority and sys.platform == "win32":
+        return subprocess.BELOW_NORMAL_PRIORITY_CLASS
+    return 0
 
 
 @dataclass
@@ -111,7 +137,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def render_clip(
-    source: Path, start: float, duration: float, text: ClipText, out_path: Path, tpl: Template = Template()  # noqa: B008 - frozen dataclass, safe to share
+    source: Path, start: float, duration: float, text: ClipText, out_path: Path, tpl: Template = Template(),  # noqa: B008 - frozen dataclass, safe to share
+    limits: RenderLimits = RenderLimits(),  # noqa: B008 - frozen dataclass, safe to share
 ) -> RenderResult:
     """Cut [start, start+duration) from `source` and render a vertical clip."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,11 +160,18 @@ def render_clip(
         "-filter_complex", graph, "-map", "[v]", "-map", "0:a:0?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
         "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-threads", str(limits.threads), "-filter_complex_threads", str(limits.threads),
         "-movflags", "+faststart", out_path.name,
     ]
     # Run inside the output folder so the subtitles filter gets a plain relative path
     # (Windows drive-letter colons would otherwise need filtergraph escaping).
-    subprocess.run(cmd, cwd=out_path.parent, check=True, capture_output=True, text=True, encoding="utf-8")
+    timeout = limits.timeout_for(duration)
+    try:
+        subprocess.run(cmd, cwd=out_path.parent, check=True, capture_output=True, text=True, encoding="utf-8",
+                       timeout=timeout, creationflags=_priority_flags(limits))
+    except subprocess.TimeoutExpired as exc:
+        out_path.unlink(missing_ok=True)
+        raise RenderError(f"{out_path.name}: render took longer than {timeout:.0f}s and was stopped") from exc
 
     info = probe(out_path)
     problems = duration_gaps(info, duration, DURATION_TOLERANCE_S)

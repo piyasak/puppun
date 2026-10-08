@@ -4,7 +4,7 @@
     python -m agent.cli doctor --serial <serial>
     python -m agent.cli dry-run --serial <serial> --file <clip.mp4> [--cleanup] [--no-power-saving]
     python -m agent.cli power --serial <serial> status|on|off
-    python -m agent.cli connect --server https://<host> --username <name> [--seconds N]
+    python -m agent.cli connect --server https://<host> --username <name> [--seconds N] [--media-dir D] [--no-jobs]
     python -m agent.cli register-devices --server https://<host> --username <name> [--serial S]
 
 `dry-run` exercises transfer -> SHA-256 check -> Gallery discovery and records
@@ -51,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     p_con.add_argument("--seconds", type=float, default=None, help="stop after N seconds (default: run until stopped)")
     p_con.add_argument("--data-dir", type=Path, default=None)
     p_con.add_argument("--no-phone-check", action="store_true", help="skip the phone check on start (Q-25)")
+    p_con.add_argument("--media-dir", type=Path, default=None,
+                       help="folder with the customer's own video files for local-file jobs (Q-17)")
+    p_con.add_argument("--no-jobs", action="store_true", help="do not claim clip jobs (P3.3)")
     p_reg = sub.add_parser("register-devices", help="register the ready phones on this PC with the server (P2.6)")
     p_reg.add_argument("--server", required=True)
     p_reg.add_argument("--username", required=True)
@@ -61,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "recover":
         return recover_all()
     if args.cmd == "connect":
-        return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check)
+        return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check,
+                       None if args.no_jobs else (args.media_dir or Path.cwd()))
     if args.cmd == "register-devices":
         return register_devices(args.server, args.username, args.serial, args.data_dir)
 
@@ -84,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def connect(server: str, username: str, seconds: float | None, data_dir: Path | None,
-            phone_check: bool = True) -> int:
+            phone_check: bool = True, media_dir: Path | None = None) -> int:
     """The token comes from CLIPFLOW_AGENT_TOKEN or a hidden prompt, never from argv (visible to other
     processes). Windows Credential Manager storage arrives with the installer (P5)."""
     import getpass
@@ -103,7 +107,12 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
 
             # Q-25: on start, read the phones' serials, register new ones and say where to finish setup.
             sync = DeviceSync(lambda: Adb(default_runner())) if phone_check else None
-            result = run_connection(ServerClient(server), username, token, installation_id, seconds, on_session=sync)
+            # P3.3: claim clip jobs and make them on this PC (one at a time).
+            from agent.job_runner import JobRunner
+
+            worker = JobRunner(data_dir, media_dir) if media_dir else None
+            result = run_connection(ServerClient(server), username, token, installation_id, seconds,
+                                    on_session=sync, worker=worker)
             print(json.dumps({"heartbeats": result.heartbeats, "stopped_because": result.stopped_because},
                              ensure_ascii=False))
             return 0 if result.stopped_because == "duration_elapsed" else 1

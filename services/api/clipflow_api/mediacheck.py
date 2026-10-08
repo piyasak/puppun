@@ -28,8 +28,10 @@ def check(path: Path, *, reported_duration_ms: int, clip_min_s: int, clip_max_s:
         capture_output=True, text=True, timeout=60,
     )
     if proc.returncode != 0:
+        # ffprobe's message names the server's temp file (and so the server's user name): keep it out
+        # of the result the customer sees.
         return {"status": "failed", "reason": "not_a_media_file", "checks": [
-            {"name": "readable", "ok": False, "detail": (proc.stderr or "").strip()[:200]}]}
+            {"name": "readable", "ok": False, "detail": "not a readable video file"}]}
     info = json.loads(proc.stdout or "{}")
     streams = info.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)

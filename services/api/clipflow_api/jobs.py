@@ -228,10 +228,18 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
         raise ApiError(422, "VALIDATION_ERROR", "sha256 ไม่ถูกต้อง")
     if not job.clip_min_s * 1000 - 1000 <= duration_ms <= job.clip_max_s * 1000 + 1000:
         raise ApiError(422, "CLIP_DURATION_OUT_OF_RANGE", "ความยาวคลิปไม่อยู่ในช่วงที่กำหนด")
-    existing = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)).first()
+    existing = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)
+                          .with_for_update()).first()
     if existing is not None:
-        if existing.render_sha256 != sha:
+        if existing.render_sha256 == sha:
+            return
+        if existing.uploaded_at is not None:  # delivered files are never swapped
             raise ApiError(409, "CLIP_CONFLICT", "คลิปลำดับนี้ถูกรายงานแล้วด้วยไฟล์อื่น")
+        # Reported but never delivered: an Agent that restarted mid-job rendered it again (E-37).
+        existing.start_ms, existing.end_ms, existing.duration_ms = int(e["start_ms"]), int(e["end_ms"]), duration_ms
+        existing.render_sha256, existing.size_bytes = sha, int(e["size_bytes"])
+        existing.template_version = str(e["template_version"])[:40]
+        existing.title = (e.get("title") or "")[:200] or None
         return
     clip = Clip(
         workspace_id=job.workspace_id, job_id=job.id, clip_index=index, start_ms=int(e["start_ms"]),
@@ -271,7 +279,12 @@ def _failed(db: Session, job: Job, e: dict, at: datetime) -> None:
         _finish(db, job, "FAILED", code=code, detail=e.get("detail"), reason="job_failed")
 
 
+def _progress(db: Session, job: Job, e: dict, at: datetime) -> None:
+    """Keep-alive while a long step runs (analysis, download, render): renews the lease only."""
+
+
 HANDLERS = {
+    "progress": _progress,
     "source_validated": _source_validated,
     "stage": _stage,
     "clip_rendered": _clip_rendered,

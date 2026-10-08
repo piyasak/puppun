@@ -127,8 +127,12 @@ class EventIn(BaseModel):
     type: str = Field(max_length=32)
 
 
-def _spec(job: Job, env_name: str) -> dict:
+def _spec(db: Session, job: Job, env_name: str) -> dict:
+    # Clips already reported let a restarted Agent resume instead of starting over (E-37).
+    reported = db.scalars(select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)).all()
     return {
+        "clips": [{"index": c.clip_index, "sha256": c.render_sha256, "uploaded": c.uploaded_at is not None}
+                  for c in reported],
         "id": str(job.id), "state": job.state, "state_version": job.state_version,
         "environment": {"id": str(job.environment_id), "name": env_name},
         "source": {"kind": job.source_kind, "url": job.source_url, "file_name": job.source_label},
@@ -144,7 +148,7 @@ def claim_job(ctx: AgentContext = Depends(agent_context), db: Session = Depends(
     db.commit()
     if job is None:
         return {"job": None}
-    return {"job": _spec(job, db.get(Environment, job.environment_id).name)}
+    return {"job": _spec(db, job, db.get(Environment, job.environment_id).name)}
 
 
 @agent_router.post("/{job_id}/events")
@@ -156,4 +160,4 @@ def job_event(job_id: uuid.UUID, body: EventIn, ctx: AgentContext = Depends(agen
         db.rollback()
         raise ApiError(422, "VALIDATION_ERROR", "ข้อมูล event ไม่ครบหรือไม่ถูกต้อง", {"missing_or_bad": str(exc)}) from None
     db.commit()
-    return {"duplicate": duplicate, "job": _spec(job, db.get(Environment, job.environment_id).name)}
+    return {"duplicate": duplicate, "job": _spec(db, job, db.get(Environment, job.environment_id).name)}

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import agent_sessions, audit, devices
+from .. import agent_sessions, audit, devices, schedules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
 from ..models import AgentSession, Device, Environment
@@ -129,12 +129,13 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, request: Request, aut
 def unbind(device_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
     """Release the phone so it can be registered again (here or by its new owner). Idempotent.
 
-    Outstanding scheduled posts for this phone do not exist yet; P4/P5 must handle them here
-    explicitly (cancel or reassign with the user's choice) before the phone is released.
+    Posts still scheduled on this phone are parked in NEEDS_ACTION (DEVICE_UNBOUND): they never
+    run on a released phone, and the owner cancels them or schedules the clips again elsewhere.
     """
     d = get_owned(db, Device, device_id, auth.workspace_id, for_update=True)
     if d.unbound_at is None:
         d.unbound_at = agent_sessions.now()
+        schedules.park_device_items(db, d.id, "DEVICE_UNBOUND")
         audit.record(db, request, "device.unbind", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                      target_id=d.id)
     db.commit()

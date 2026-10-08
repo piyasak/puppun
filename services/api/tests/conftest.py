@@ -7,7 +7,9 @@ the tests are skipped, and a skip is never counted as gate evidence.
 from __future__ import annotations
 
 import os
+import shutil
 import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -135,3 +137,22 @@ def server_url(app):
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def real_clip(tmp_path_factory) -> bytes:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg not installed")
+    out = tmp_path_factory.mktemp("media") / "clip.mp4"
+    subprocess.run([ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=1080x1920:r=10:d=16",
+                    "-f", "lavfi", "-i", "sine=frequency=440:duration=16", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out)], check=True, timeout=120)
+    return out.read_bytes()
+
+
+@pytest.fixture
+def shop(onboard, client, real_clip):
+    from api_test_shop import Shop
+
+    return Shop(onboard(), client, real_clip)

@@ -1,10 +1,52 @@
 # Progress
 
-## Current phase: P3 — Video production (PO override Q-24; G2 = No 3/5). G0 = Yes, G1 = No (5/6), G2 = No (3/5).
+## Current phase: P4 — Scheduler (G3 = Yes 2026-10-08; P4 started under Q-26). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = No (1/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 07:xx) — P3.2 clip delivery, checks, preview, metadata, approval
+### Latest slice (2026-10-08 14:xx) — P4.4 pause/resume (server preview) + edit unstarted posts
+- Implemented: `schedules.shift_plan/apply_shift` (เลื่อนรักษาระยะ — ใช้ร่วมกับนโยบายออฟไลน์), `pause`, `resume_plan`/`resume` (expected_version), `edit_item` (version, อนาคต, Window, คงลำดับคลิป); routes `/v1/schedules/{id}/pause`, `/resume/preview`, `/resume`, `PATCH /v1/schedule-items/{id}`; เว็บ: ปุ่มหยุดชั่วคราว/ทำงานต่อ (dialog แสดงการเลื่อนจาก Server), แก้เวลารายการ; test helpers ย้ายไป `conftest.py` (`real_clip`, `shop`) และ `api_test_shop.py`
+- Commands: integration 166 passed / 5 skipped (ใหม่ 5 `test_schedule_changes.py`), E2E 8 passed (schedule journey + pause/resume/แก้เวลา), ruff/oxlint/tsc ผ่าน
+- Found: ข้อความ error เก่าค้างหลังแก้เวลาสำเร็จ (เห็นใน screenshot) — แก้ให้ล้างเมื่อสำเร็จ + E2E ตรวจ
+- Gates: G4 4/5 Yes (G4-01..G4-04); เหลือ G4-05
+- Next: P4.5 load test dispatch (95% ≤ 60 วินาที) + P4.6 หน้าตารางรายสัปดาห์/รายการ แสดงเวลานัดเทียบเวลาจริง
+
+### Previous slice (2026-10-08 13:xx) — P4.3 claims, device lock, leases, late-post policy (dry-run)
+- Implemented: migration 0008 (lease/attempts/evidence + `schedule_item_events`), `posts.py` (E-40: expire leases, offline defer/skip สำหรับโพสต์ที่พลาด, claim ทีละเครื่อง + `dispatchable`, state machine CLAIMED→…→DRY_RUN_DONE / SUBMITTING→VERIFYING→VERIFIED_SUCCESS|UNKNOWN, ตรวจการอนุมัติซ้ำก่อน SUBMITTING, หลักฐานผลโพสต์), routes `/v1/agent/posts/claim`, `/v1/agent/posts/{id}/events`; `create_app(posting_mode=...)` — Server ที่รันจริงเป็น dry-run เสมอ ไม่มี env เปิด live; เว็บแสดงสถานะโพสต์ภาษาไทย
+- Commands: integration 161 passed / 5 skipped (ใหม่ 9 `test_posts.py`: ทีละเครื่อง, 2 Agent แย่งกันผ่าน HTTP จริง, lease หลุดก่อน/หลัง Submit, แก้ข้อความระหว่างเตรียม → ปฏิเสธตอน Submit, หลักฐาน, defer/skip โพสต์ที่พลาด); ruff/tsc ผ่าน
+- Found: เทสต์ยืนยันว่า Agent ใหม่บน installation เดิมทำให้ session เก่าหมด (fencing ตามออกแบบ) — ปรับลำดับในเทสต์
+- Gates: G4 2/5 Yes (G4-01, G4-03)
+- Next: P4.4 pause/resume + แก้รายการ, P4.5 load test, P4.6 หน้าปฏิทิน; Agent ฝั่งโพสต์ (dry-run บนโทรศัพท์จริง) = P5
+
+### Previous slice (2026-10-08 12:xx) — P4.1/P4.2 schedules (Q-26) + G3-05
+- Implemented: `slots.py` (คำนวณเวลา, E-39), migration 0007 (`schedule_series`, `schedule_items` ผูกเวอร์ชันที่อนุมัติ), `schedules.py` (preview/create/cancel, ผูกเวอร์ชัน, sync เมื่อการอนุมัติเปลี่ยน, `dispatchable`), routes `/v1/schedules/preview`, `/v1/schedules` (+idempotency), `/v1/schedules/{id}`, `/cancel`, `/v1/schedule-items/{id}/cancel`; hook ใน clips (แก้/อนุมัติ/ยกเลิกอนุมัติ) และ devices (ยกเลิกการผูก → NEEDS_ACTION); เว็บ: ส่วน "ตั้งเวลาโพสต์" ในหน้ารายละเอียดงาน (preview จาก Server, ยืนยัน, ตาราง, ยกเลิก); `e2e/agentSim.ts`
+- Commands: unit 147 passed (ใหม่ 21 `test_slots.py`), integration 152 passed / 5 skipped (ใหม่ 15 `test_schedules.py` รวมสองโทรศัพท์แย่งคลิปพร้อมกันผ่าน HTTP จริง), E2E 8 passed (ใหม่ `schedule.spec.ts`), ruff/oxlint/tsc/build ผ่าน
+- Found: preview เคยจัดคิวรายการใหม่ไว้ก่อนรายการเดิมเมื่อเวลาเท่ากัน — แก้ให้รายการที่ตั้งไว้ก่อนได้ก่อน
+- Gates: **G3 = Yes** — PO ปิยศักดิ์ อนุมัติในแชท 2026-10-08 (5/5); G4 1/5 Yes (G4-01)
+- Next: P4.3 Agent claim + device lock (เรียก `dispatchable`, dry-run), P4.4 pause/resume/offline, P4.5–P4.6
+
+### Previous slice (2026-10-08 11:xx) — G3-01: SSRF guard (T08) + render resource limits
+- Implemented: `clipflow_worker/netguard.py` (E-38: guard ต่อ thread ที่ตรวจทุกการ resolve ชื่อโฮสต์ระหว่างดาวน์โหลดต้นฉบับ รวม redirect); `source.inspect/download`, `pipeline.plan/fetch_part` ใช้ guard; URL ที่ส่งให้ ffmpeg ตรวจก่อน; error ใหม่ `SOURCE_BLOCKED_ADDRESS` (+ ข้อความไทยบนเว็บ); `render.RenderLimits` (thread ≤ ครึ่ง CPU, priority ต่ำบน Windows, timeout); สแกนเสียง timeout 30 นาที
+- Commands: worker + unit 126 passed (ใหม่ 12 ใน `test_netguard.py`: redirect ผ่าน yt-dlp จริง → ปลายทางภายในได้ 0 request, guard ต่อ thread, URL สำหรับ ffmpeg, pipeline.plan ถูก guard, render timeout/threads); YouTube จริงใต้ guard: plan + range download ผ่าน (116 วินาที); ruff/oxlint/tsc ผ่าน
+- Integration 137 passed, 5 skipped (opt-in) — รวม T08 ผ่าน job runner: งานลิงก์ที่ต้นฉบับพาไปที่อยู่ภายใน → FAILED `SOURCE_BLOCKED_ADDRESS`, เซิร์ฟเวอร์ภายในได้ 0 request, ไม่จองโควตา (Docker Desktop เคยหยุดระหว่าง session; PO เปิดใหม่แล้ว)
+- Gates: G3 4/5 Yes (G3-01 Yes); G3-05 รอ P4
+- Next: P4 scheduler (G3-05) — G3 ยัง No จนกว่า G3-05 + sign-off
+
+### Previous slice (2026-10-08 10:xx) — P3.4 web: create job, job list, job detail, preview, text edit, approval
+- Implemented: `/create` (3 ขั้น: ต้นฉบับ → รูปแบบ → ตรวจและสร้าง; ตรวจ input ทีละขั้น, idempotency key ต่อฟอร์ม, auto mode ต้องติ๊กยืนยัน, แสดงโควตาที่จะใช้; ขั้นเลือกเครื่อง/เวลา = P4), `/jobs` (แท็บ ทั้งหมด/กำลังผลิต/รอตรวจ/ต้องดำเนินการ/ล้มเหลว, refresh 5 วินาทีขณะมีงานกำลังผลิต), `/jobs/:id` (timeline, ข้อผิดพลาดพร้อมวิธีแก้ภาษาไทย, notice, โควตาจอง/ใช้/คืน, seed, ยกเลิกงานพร้อมยืนยัน; ต่อคลิป: preview ลิงก์ 5 นาที, ผลตรวจไฟล์, ช่วงต้นฉบับ, ชื่อในวิดีโอ (แก้ไม่ได้), แก้ caption/hashtags แบบมีเวอร์ชัน, อนุมัติ/ยกเลิกอนุมัติ); `e2e/helpers.ts` มี `agentSession`; CI e2e ติดตั้ง ffmpeg
+- Fixed: ผลตรวจไฟล์ที่เปิดไม่ได้เคยส่งข้อความ ffprobe ที่มี path ชั่วคราวของ Server (มีชื่อผู้ใช้ Windows ของ Server) ไปให้ลูกค้า → ตอนนี้ส่งข้อความกลาง (`mediacheck.py`, test ใน `test_clips.py`)
+- Commands: E2E 7 passed (ใหม่ 2: สร้างงานผ่าน wizard → Agent จำลองส่งคลิปจริง 1080×1920 + ไฟล์เสีย → preview เล่นได้ใน Edge ยาว 35 วินาที → แก้ข้อความ → อนุมัติ → แก้อีกครั้งการอนุมัติหลุด → อนุมัติใหม่; ลิงก์ผิด/ยกเลิกงาน); clip tests 11 passed; tsc + build + bundle check ผ่าน; ruff/oxlint ไม่มี error
+- Gates: G3 3/5 Yes — G3-03 = Yes: PO ดูและฟังคลิปจริง 2 คลิปแล้ว "okay" (2026-10-08); G3-05 ยังรอ P4
+- Next: T08 + render limits (G3-01); P4 scheduler (G3-05; หลัง G3 หรือ override)
+
+### Previous slice (2026-10-08 09:xx) — P3.3 Agent job runner
+- Implemented: `agent/job_runner.py` (E-37: claim → วิเคราะห์ → source_validated → ดาวน์โหลดช่วง → render → clip_rendered → อัปโหลด → completed; keep-alive `progress`; หยุดเมื่อ LEASE_LOST/JOB_NOT_ACTIVE; resume หลัง restart), `clipflow_worker/pipeline.py` (P1 pipeline เป็นขั้นตอนที่ใช้ซ้ำ; POC CLI ใช้ตัวเดียวกัน), ServerClient: claim/event/upload; `agent.cli connect --media-dir/--no-jobs`; Server: event `progress`, spec มีรายการคลิปที่รายงานแล้ว, คลิปที่ยังไม่อัปโหลดรายงานใหม่ได้
+- Commands: integration 136 passed, 5 skipped (opt-in) — ใหม่ 6 tests ของ runner บนไฟล์วิดีโอจริงที่ ffmpeg สร้าง (หยุดเสียงทุก 10 วินาที → ตัดตรงกลางช่วงเงียบ); opt-in YouTube จริง (P1 corpus `PBES5k67dhI`, 101 นาที): READY_FOR_REVIEW 2 คลิป 3:51/4:06 ผ่านการตรวจ, โควตา 2/2, 9.8 นาที — สรุปใน var/evidence/p33_real_source.json; unit 114; ruff ผ่าน; POC `produce --file` ยังทำงาน
+- Found: เทสต์ที่เรียก runner โดยไม่มี heartbeat ทำให้ session หมดอายุ 90 วินาทีระหว่างดาวน์โหลดเสียง — ของจริงใช้ heartbeat แยก thread (`run_connection`); ต้นฉบับที่มีซับฝังในภาพ ต้องสร้างงานด้วย subtitles=false
+- Gates: G3 2/5 Yes (G3-02, G3-04); G3-03 รอ PO ดูคลิปจริง (var/evidence/p33_real_clips/)
+- Next: P3.4 หน้าเว็บ สร้างงาน/รายการงาน/รายละเอียด + preview + แก้ข้อความ + อนุมัติ; T08 + render limits (G3-01)
+
+### Previous slice (2026-10-08 07:xx) — P3.2 clip delivery, checks, preview, metadata, approval
 - Implemented: migration 0006 (clip file/check/approval columns, clip_metadata); `storage.py` (S3/MinIO + local), `mediacheck.py` (ffprobe), `clips.py` (accept_upload, metadata versions, approve/unapprove, auto policy); routes: `PUT /v1/agent/jobs/{id}/clips/{n}/file`, `/v1/clips/{id}` (detail + history), `/media` (ลิงก์ 5 นาที), `PATCH /metadata`, `/approve`, `/unapprove`, `/v1/media/...` (local signed); โควตาหักเมื่อไฟล์ถึงและ hash ตรง; `completed` ต้องอัปโหลดครบ (E-36)
 - Commands: integration 128 passed, 4 skipped (opt-in); clip tests 11 ผ่านด้วยไฟล์ 1080×1920 H.264/AAC จริงจาก ffmpeg; MinIO presigned test ผ่าน (private bucket ปฏิเสธลิงก์ไม่ลงชื่อ 403); unit 114; ruff ผ่าน; dev DB → 0006; API (8000) ใช้ MinIO แล้ว
 - Gates: G3 0/5 Yes — G3-03, G3-05 บางส่วนเพิ่ม

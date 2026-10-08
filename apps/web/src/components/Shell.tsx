@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 
 const NAV = [
   { to: '/', label: 'แดชบอร์ด', end: true },
+  { to: '/create', label: 'สร้างงาน' },
+  { to: '/jobs', label: 'งานผลิตคลิป' },
   { to: '/environments', label: 'Environments' },
   { to: '/agent-tokens', label: 'Agent Token' },
   { to: '/agents', label: 'Agent' },

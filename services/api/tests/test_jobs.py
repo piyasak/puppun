@@ -219,6 +219,24 @@ def test_clip_with_a_different_file_for_the_same_index_is_refused(ws):
     assert ws.w.clip(job_id, 1, digest=sha(99)).json()["code"] == "CLIP_CONFLICT"
 
 
+def test_clip_reported_but_not_delivered_can_be_rendered_again(ws):  # E-37: Agent restarted mid-job
+    job_id = ws.new_job().json()["id"]
+    ws.w.claim()
+    ws.w.run_to_rendering(job_id)
+    assert ws.w.clip(job_id, 1, digest=sha(99), upload=False).status_code == 200
+    assert ws.w.claim() is None  # still leased to this Agent
+    assert ws.w.clip(job_id, 1).status_code == 200  # new render, then delivered
+    clip = ws.get(f"/v1/jobs/{job_id}").json()["clips"][0]
+    assert clip["render_sha256"] == sha(1) and clip["uploaded"]
+
+
+def test_progress_event_keeps_the_lease(ws):
+    job_id = ws.new_job().json()["id"]
+    ws.w.claim()
+    assert ws.w.event(job_id, "progress").status_code == 200
+    assert ws.w.event(job_id, "source_validated", duration_s=3600, possible_clips=1).status_code == 200
+
+
 @pytest.mark.parametrize("duration_ms", [60_000, 400_000])
 def test_clip_outside_the_length_range_is_refused(ws, duration_ms):
     job_id = ws.new_job().json()["id"]
