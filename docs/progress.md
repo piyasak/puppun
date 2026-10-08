@@ -4,7 +4,21 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 12:xx) — P4.1/P4.2 schedules (Q-26) + G3-05
+### Latest slice (2026-10-08 14:xx) — P4.4 pause/resume (server preview) + edit unstarted posts
+- Implemented: `schedules.shift_plan/apply_shift` (เลื่อนรักษาระยะ — ใช้ร่วมกับนโยบายออฟไลน์), `pause`, `resume_plan`/`resume` (expected_version), `edit_item` (version, อนาคต, Window, คงลำดับคลิป); routes `/v1/schedules/{id}/pause`, `/resume/preview`, `/resume`, `PATCH /v1/schedule-items/{id}`; เว็บ: ปุ่มหยุดชั่วคราว/ทำงานต่อ (dialog แสดงการเลื่อนจาก Server), แก้เวลารายการ; test helpers ย้ายไป `conftest.py` (`real_clip`, `shop`) และ `api_test_shop.py`
+- Commands: integration 166 passed / 5 skipped (ใหม่ 5 `test_schedule_changes.py`), E2E 8 passed (schedule journey + pause/resume/แก้เวลา), ruff/oxlint/tsc ผ่าน
+- Found: ข้อความ error เก่าค้างหลังแก้เวลาสำเร็จ (เห็นใน screenshot) — แก้ให้ล้างเมื่อสำเร็จ + E2E ตรวจ
+- Gates: G4 4/5 Yes (G4-01..G4-04); เหลือ G4-05
+- Next: P4.5 load test dispatch (95% ≤ 60 วินาที) + P4.6 หน้าตารางรายสัปดาห์/รายการ แสดงเวลานัดเทียบเวลาจริง
+
+### Previous slice (2026-10-08 13:xx) — P4.3 claims, device lock, leases, late-post policy (dry-run)
+- Implemented: migration 0008 (lease/attempts/evidence + `schedule_item_events`), `posts.py` (E-40: expire leases, offline defer/skip สำหรับโพสต์ที่พลาด, claim ทีละเครื่อง + `dispatchable`, state machine CLAIMED→…→DRY_RUN_DONE / SUBMITTING→VERIFYING→VERIFIED_SUCCESS|UNKNOWN, ตรวจการอนุมัติซ้ำก่อน SUBMITTING, หลักฐานผลโพสต์), routes `/v1/agent/posts/claim`, `/v1/agent/posts/{id}/events`; `create_app(posting_mode=...)` — Server ที่รันจริงเป็น dry-run เสมอ ไม่มี env เปิด live; เว็บแสดงสถานะโพสต์ภาษาไทย
+- Commands: integration 161 passed / 5 skipped (ใหม่ 9 `test_posts.py`: ทีละเครื่อง, 2 Agent แย่งกันผ่าน HTTP จริง, lease หลุดก่อน/หลัง Submit, แก้ข้อความระหว่างเตรียม → ปฏิเสธตอน Submit, หลักฐาน, defer/skip โพสต์ที่พลาด); ruff/tsc ผ่าน
+- Found: เทสต์ยืนยันว่า Agent ใหม่บน installation เดิมทำให้ session เก่าหมด (fencing ตามออกแบบ) — ปรับลำดับในเทสต์
+- Gates: G4 2/5 Yes (G4-01, G4-03)
+- Next: P4.4 pause/resume + แก้รายการ, P4.5 load test, P4.6 หน้าปฏิทิน; Agent ฝั่งโพสต์ (dry-run บนโทรศัพท์จริง) = P5
+
+### Previous slice (2026-10-08 12:xx) — P4.1/P4.2 schedules (Q-26) + G3-05
 - Implemented: `slots.py` (คำนวณเวลา, E-39), migration 0007 (`schedule_series`, `schedule_items` ผูกเวอร์ชันที่อนุมัติ), `schedules.py` (preview/create/cancel, ผูกเวอร์ชัน, sync เมื่อการอนุมัติเปลี่ยน, `dispatchable`), routes `/v1/schedules/preview`, `/v1/schedules` (+idempotency), `/v1/schedules/{id}`, `/cancel`, `/v1/schedule-items/{id}/cancel`; hook ใน clips (แก้/อนุมัติ/ยกเลิกอนุมัติ) และ devices (ยกเลิกการผูก → NEEDS_ACTION); เว็บ: ส่วน "ตั้งเวลาโพสต์" ในหน้ารายละเอียดงาน (preview จาก Server, ยืนยัน, ตาราง, ยกเลิก); `e2e/agentSim.ts`
 - Commands: unit 147 passed (ใหม่ 21 `test_slots.py`), integration 152 passed / 5 skipped (ใหม่ 15 `test_schedules.py` รวมสองโทรศัพท์แย่งคลิปพร้อมกันผ่าน HTTP จริง), E2E 8 passed (ใหม่ `schedule.spec.ts`), ruff/oxlint/tsc/build ผ่าน
 - Found: preview เคยจัดคิวรายการใหม่ไว้ก่อนรายการเดิมเมื่อเวลาเท่ากัน — แก้ให้รายการที่ตั้งไว้ก่อนได้ก่อน

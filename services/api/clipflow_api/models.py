@@ -457,5 +457,25 @@ class ScheduleItem(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # P4.3: the Agent session holding the post, its lease, delivery count and result evidence.
+    lease_session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_sessions.id", ondelete="SET NULL"))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    evidence: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _created()
+
+
+class ScheduleItemEvent(Base):
+    """Agent events for a post, deduplicated by the Agent's event id."""
+
+    __tablename__ = "schedule_item_events"
+    __table_args__ = (UniqueConstraint("item_id", "event_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schedule_items.id", ondelete="CASCADE"), index=True)
+    event_id: Mapped[str] = mapped_column(String(64))
+    type: Mapped[str] = mapped_column(String(24))
+    detail: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = _created()

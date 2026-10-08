@@ -20,12 +20,47 @@ type Preview = {
   window: string; timezone: string; interval_hours: number
 }
 type Item = {
-  id: string; seq: number; clip_index: number; state: string; reason: string | null; metadata_version: number
+  id: string; seq: number; clip_index: number; state: string; reason: string | null; metadata_version: number; state_version: number
   scheduled_at: string; claimed_at: string | null; verified_at: string | null
 }
 type Series = {
   id: string; state: string; device: { name: string | null; account: string | null }; window: string
-  timezone: string; interval_hours: number; offline_policy: 'defer' | 'skip'; items: Item[]
+  timezone: string; interval_hours: number; offline_policy: 'defer' | 'skip'; items: Item[]; version: number
+}
+type ResumePreview = { series_version: number; moves: { seq: number; from: string; to: string }[] }
+
+function toLocalInput(iso: string): string {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(new Date(iso)).reduce<Record<string, string>>((acc, x) => ({ ...acc, [x.type]: x.value }), {})
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`
+}
+
+const EDIT_ERRORS: Record<string, string> = {
+  OUTSIDE_WINDOW: 'เวลาอยู่นอกช่วงที่โพสต์ได้', START_IN_PAST: 'เวลาต้องอยู่ในอนาคต',
+  ITEM_ORDER: 'เวลาใหม่ต้องอยู่ระหว่างโพสต์ก่อนหน้าและถัดไป (คงลำดับคลิป)', VERSION_CONFLICT: 'รายการถูกเปลี่ยนไปแล้ว โหลดใหม่',
+  ITEM_NOT_EDITABLE: 'รายการนี้เริ่มส่งแล้ว แก้ไม่ได้',
+}
+
+function ItemTimeEditor({ item, onDone }: { item: Item; onDone: (msg?: string) => void }) {
+  const [value, setValue] = useState(toLocalInput(item.scheduled_at))
+  const [busy, setBusy] = useState(false)
+  async function save() {
+    setBusy(true)
+    try {
+      await api(`/v1/schedule-items/${item.id}`, { method: 'PATCH', body: { expected_state_version: item.state_version, scheduled_local: value } })
+      onDone()
+    } catch (err) {
+      const ae = err as ApiError
+      onDone(EDIT_ERRORS[ae.code] ?? ae.message)
+    }
+  }
+  return (
+    <span className="inline-edit">
+      <input type="datetime-local" aria-label={`เวลาใหม่ของโพสต์ ${item.seq}`} value={value} onChange={(e) => setValue(e.target.value)} />
+      <button type="button" className="btn btn-primary btn-small" onClick={save} disabled={busy}>บันทึก</button>
+      <button type="button" className="btn btn-secondary btn-small" onClick={() => onDone()} disabled={busy}>ยกเลิก</button>
+    </span>
+  )
 }
 
 const INTERVALS = [1, 2, 3, 6, 12, 24]
@@ -38,10 +73,25 @@ const ITEM_STATE: Record<string, { text: string; badge: string }> = {
   NEEDS_ACTION: { text: 'ต้องดำเนินการ', badge: 'warn' },
   CANCELLED: { text: 'ยกเลิกแล้ว', badge: 'expired' },
   SKIPPED: { text: 'ข้ามแล้ว', badge: 'expired' },
+  CLAIMED: { text: 'Agent รับงานแล้ว', badge: 'stale' },
+  TRANSFERRING: { text: 'กำลังส่งไฟล์เข้าโทรศัพท์', badge: 'stale' },
+  PREPARING: { text: 'กำลังเตรียมโพสต์', badge: 'stale' },
+  SUBMITTING: { text: 'กำลังโพสต์', badge: 'stale' },
+  VERIFYING: { text: 'กำลังตรวจผล', badge: 'stale' },
+  VERIFIED_SUCCESS: { text: 'โพสต์สำเร็จ (ยืนยันแล้ว)', badge: 'online' },
+  UNKNOWN: { text: 'ไม่ทราบผล', badge: 'revoked' },
+  DRY_RUN_DONE: { text: 'ทดสอบเสร็จ (ไม่ได้โพสต์จริง)', badge: 'expired' },
 }
 const REASON: Record<string, string> = {
   APPROVAL_CHANGED: 'ข้อความเปลี่ยนหลังตั้งเวลา — อนุมัติข้อความล่าสุดของคลิปนี้เพื่อให้โพสต์ต่อ',
   DEVICE_UNBOUND: 'โทรศัพท์ถูกยกเลิกการผูก — ยกเลิกรายการนี้แล้วตั้งเวลาใหม่กับเครื่องอื่น',
+  NOT_APPROVED: 'คลิปนี้ยังไม่ได้อนุมัติเวอร์ชันล่าสุด — ตรวจและอนุมัติแล้วรายการจะกลับมารอโพสต์',
+  AGENT_LOST: 'Agent หยุดตอบหลายครั้งก่อนเริ่มโพสต์ — ตรวจเครื่อง Windows แล้วตั้งเวลาใหม่',
+  AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ จึงไม่รู้ว่าโพสต์ขึ้นหรือไม่ — ตรวจในแอป TikTok ก่อน ระบบจะไม่ลองโพสต์ซ้ำเอง',
+  DEFERRED: 'เครื่องออฟไลน์ตอนถึงเวลา — เลื่อนออกไปโดยรักษาระยะห่างเดิม',
+  MISSED_SLOT: 'เครื่องออฟไลน์ตอนถึงเวลา — ข้ามรอบนี้ตามที่ตั้งไว้',
+  REDELIVERY: 'Agent ก่อนหน้าหยุดก่อนเริ่มโพสต์ — ส่งให้ทำใหม่',
+  ACCOUNT_MISMATCH: 'บัญชี TikTok บนโทรศัพท์ไม่ตรงกับที่ตั้งไว้ — ระบบจึงไม่โพสต์',
 }
 const SERIES_STATE: Record<string, string> = { ACTIVE: 'กำลังใช้งาน', PAUSED: 'หยุดชั่วคราว', CANCELLED: 'ยกเลิกแล้ว', COMPLETED: 'ครบแล้ว' }
 
@@ -70,6 +120,8 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
   const [preview, setPreview] = useState<Preview | null>(null)
   const [busy, setBusy] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<Series | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [resumeFor, setResumeFor] = useState<{ series: Series; preview: ResumePreview } | null>(null)
   // One key per previewed plan: a double click on "confirm" never makes two series.
   const [key, setKey] = useState(() => crypto.randomUUID().replace(/-/g, ''))
 
@@ -135,6 +187,38 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
       await load()
     } catch (err) {
       setError((err as ApiError).message)
+    }
+  }
+
+  async function pause(s: Series) {
+    try {
+      await api(`/v1/schedules/${s.id}/pause`, { method: 'POST' })
+      await load()
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
+  async function askResume(s: Series) {
+    try {
+      setResumeFor({ series: s, preview: await api<ResumePreview>(`/v1/schedules/${s.id}/resume/preview`, { method: 'POST' }) })
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
+  async function resume() {
+    if (!resumeFor) return
+    setBusy(true)
+    try {
+      await api(`/v1/schedules/${resumeFor.series.id}/resume`, { method: 'POST', body: { expected_version: resumeFor.preview.series_version } })
+      setResumeFor(null)
+      await load()
+    } catch (err) {
+      setError((err as ApiError).code === 'VERSION_CONFLICT' ? 'ตารางเปลี่ยนไปแล้ว ลองดูผลอีกครั้ง' : (err as ApiError).message)
+      setResumeFor(null)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -256,9 +340,17 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
                 <strong>{s.device.name} (@{s.device.account})</strong>
                 <span className={`badge badge-${s.state === 'ACTIVE' ? 'active' : 'expired'}`}>{SERIES_STATE[s.state] ?? s.state}</span>
                 <span className="muted">ทุก {s.interval_hours} ชม. • {s.window} • ออฟไลน์: {s.offline_policy === 'defer' ? 'เลื่อน' : 'ข้าม'}</span>
-                {s.state === 'ACTIVE' && (
-                  <button type="button" className="btn btn-danger-outline btn-small" onClick={() => setCancelTarget(s)}>ยกเลิกทั้งตาราง</button>
-                )}
+                <span className="series-actions">
+                  {s.state === 'ACTIVE' && (
+                    <button type="button" className="btn btn-secondary btn-small" onClick={() => pause(s)}>หยุดชั่วคราว</button>
+                  )}
+                  {s.state === 'PAUSED' && (
+                    <button type="button" className="btn btn-primary btn-small" onClick={() => askResume(s)}>ทำงานต่อ…</button>
+                  )}
+                  {(s.state === 'ACTIVE' || s.state === 'PAUSED') && (
+                    <button type="button" className="btn btn-danger-outline btn-small" onClick={() => setCancelTarget(s)}>ยกเลิกทั้งตาราง</button>
+                  )}
+                </span>
               </div>
               <table className="table">
                 <thead><tr><th>ลำดับ</th><th>คลิป</th><th>เวลานัด</th><th>สถานะ</th><th /></tr></thead>
@@ -270,12 +362,19 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
                       <tr key={it.id} data-testid="schedule-item">
                         <td>{it.seq}</td>
                         <td>คลิป {it.clip_index} (v{it.metadata_version})</td>
-                        <td>{when(it.scheduled_at, s.timezone)}</td>
+                        <td>
+                          {editing === it.id
+                            ? <ItemTimeEditor item={it} onDone={(msg) => { setEditing(null); setError(msg ?? ''); void load() }} />
+                            : when(it.scheduled_at, s.timezone)}
+                        </td>
                         <td>
                           <span className={`badge badge-${st.badge}`}>{st.text}</span>
                           {it.reason && REASON[it.reason] && <div className="hint">{REASON[it.reason]}</div>}
                         </td>
-                        <td>{pending && <button type="button" className="btn btn-secondary btn-small" onClick={() => cancelItem(it.id)}>ยกเลิก</button>}</td>
+                        <td className="row-actions">
+                          {pending && editing !== it.id && <button type="button" className="btn btn-secondary btn-small" onClick={() => setEditing(it.id)}>แก้เวลา</button>}
+                          {pending && <button type="button" className="btn btn-secondary btn-small" onClick={() => cancelItem(it.id)}>ยกเลิก</button>}
+                        </td>
                       </tr>
                     )
                   })}
@@ -285,6 +384,20 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
           ))}
         </div>
       )}
+      <ConfirmDialog open={resumeFor !== null} busy={busy} title="ให้ตารางนี้ทำงานต่อ?" confirmLabel="ทำงานต่อ"
+        onConfirm={resume} onCancel={() => setResumeFor(null)}>
+        {resumeFor && resumeFor.preview.moves.length === 0 && <p>เวลาโพสต์ทั้งหมดยังไม่ผ่านไป ใช้เวลาเดิม</p>}
+        {resumeFor && resumeFor.preview.moves.length > 0 && (
+          <>
+            <p>โพสต์ที่เลยเวลาระหว่างหยุดจะไม่ถูกโพสต์รวดเดียว แต่เลื่อนออกไปโดยรักษาระยะห่างเดิม (คำนวณจาก Server):</p>
+            <ul data-testid="resume-moves">
+              {resumeFor.preview.moves.map((m) => (
+                <li key={m.seq}>โพสต์ {m.seq}: {when(m.from, resumeFor.series.timezone)} → {when(m.to, resumeFor.series.timezone)}</li>
+              ))}
+            </ul>
+          </>
+        )}
+      </ConfirmDialog>
       <ConfirmDialog open={cancelTarget !== null} busy={busy} danger title="ยกเลิกตารางโพสต์นี้?" confirmLabel="ยกเลิกทั้งตาราง"
         onConfirm={cancelSeries} onCancel={() => setCancelTarget(null)}>
         <p>รายการที่ยังไม่เริ่มโพสต์จะถูกยกเลิกทั้งหมด คลิปจะกลับมาตั้งเวลาใหม่ได้</p>

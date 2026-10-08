@@ -20,7 +20,7 @@ from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
 from .ratelimit import SlidingWindow
-from .routers import agent, agent_tokens, agents, auth, clips, devices, environments, jobs, schedules
+from .routers import agent, agent_tokens, agents, auth, clips, devices, environments, jobs, posts, schedules
 from .storage import LocalStorage, S3Storage, Storage
 
 log = logging.getLogger("clipflow.api")
@@ -36,10 +36,16 @@ def _storage(settings: Settings) -> Storage:
 
 
 def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | None = None,
-               storage: Storage | None = None) -> FastAPI:
+               storage: Storage | None = None, posting_mode: str = "dry_run") -> FastAPI:
+    """`posting_mode` is "dry_run" for every running server: Agents stop before Submit and the
+    server refuses SUBMITTING. "live" exists only so tests can drive the post-Submit state machine
+    with simulated Agents; no setting or env value can turn it on (PRD §C/§I, E-40)."""
+    if posting_mode not in ("dry_run", "live"):
+        raise ValueError("posting_mode must be dry_run or live")
     settings = settings or get_settings()
     app = FastAPI(title="ClipFlow API", version="0.1.0")
     app.state.settings = settings
+    app.state.posting_mode = posting_mode
     app.state.db = Database(settings.database_url)
     app.state.storage = storage or _storage(settings)
     if resolve_key is None:
@@ -86,6 +92,7 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(clips.media_router)
     app.include_router(schedules.web_router)
     app.include_router(schedules.items_router)
+    app.include_router(posts.agent_router)
 
     @app.get("/healthz")
     def healthz():

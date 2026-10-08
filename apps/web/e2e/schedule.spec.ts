@@ -73,6 +73,26 @@ test('schedule approved clips, follow an edit, cancel the series', async ({ page
   await good.getByRole('button', { name: 'อนุมัติคลิปนี้ (ข้อความเวอร์ชัน 2)' }).click()
   await expect(item).toContainText('รอเวลาโพสต์')
   await expect(item).toContainText('คลิป 1 (v2)')
+
+  // Pause, then resume through the server's preview (nothing was missed: times stay)
+  const series = panel.getByTestId('series')
+  await series.getByRole('button', { name: 'หยุดชั่วคราว' }).click()
+  await expect(series).toContainText('หยุดชั่วคราว')
+  await series.getByRole('button', { name: 'ทำงานต่อ…' }).click()
+  await expect(page.getByRole('dialog')).toContainText('ใช้เวลาเดิม')
+  await page.getByRole('dialog').getByRole('button', { name: 'ทำงานต่อ' }).click()
+  await expect(series).toContainText('กำลังใช้งาน')
+
+  // Move the unstarted post: outside the window is refused, inside is saved
+  await item.getByRole('button', { name: 'แก้เวลา' }).click()
+  await item.getByLabel('เวลาใหม่ของโพสต์ 1').fill(`${tomorrow()}T22:00`)
+  await item.getByRole('button', { name: 'บันทึก' }).click()
+  await expect(panel.getByRole('alert')).toHaveText('เวลาอยู่นอกช่วงที่โพสต์ได้')
+  await item.getByRole('button', { name: 'แก้เวลา' }).click()
+  await item.getByLabel('เวลาใหม่ของโพสต์ 1').fill(`${tomorrow()}T20:30`)
+  await item.getByRole('button', { name: 'บันทึก' }).click()
+  await expect(item).toContainText('20:30')
+  await expect(panel.getByRole('alert')).toHaveCount(0)  // the earlier refusal is gone
   await page.screenshot({ path: '../../var/evidence/e2e/schedule.png', fullPage: true })
 
   await panel.getByRole('button', { name: 'ยกเลิกทั้งตาราง' }).click()

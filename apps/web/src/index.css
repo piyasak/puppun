@@ -177,8 +177,11 @@ a.btn { display: inline-block; text-decoration: none; }
 .schedule-preview, .series-list { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .schedule-preview h3, .series-list h3 { margin: 0 0 8px; font-size: 1.05rem; }
 .series { margin: 12px 0 20px; }
-.series .card-head .btn { margin-left: auto; }
 @media (max-width: 720px) {
   .table { display: block; overflow-x: auto; }
 }
 .grid-wide { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.series-actions { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.inline-edit { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.inline-edit input { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
+.table .row-actions { gap: 6px; }

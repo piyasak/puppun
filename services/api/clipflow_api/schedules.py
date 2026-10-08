@@ -230,13 +230,103 @@ def park_device_items(db: Session, device_id: uuid.UUID, reason: str) -> int:
     return len(items)
 
 
-def dispatchable(db: Session, item: ScheduleItem) -> str | None:
+def shift_plan(db: Session, series: ScheduleSeries, from_seq: int, at: datetime, *,
+               lock: bool) -> list[tuple[ScheduleItem, datetime]]:
+    """Unstarted items from `from_seq` on, with their new times: the first at the next allowed slot
+    from `at`, each next one previous slot + X. Never earlier than planned, never all at once
+    (offline defer and resume, PRD §G.7/§G.9). Nothing is saved here."""
+    tz = slots.zone(series.timezone)
+    window = slots.Window(series.window_start_min, series.window_end_min)
+    stmt = select(ScheduleItem).where(ScheduleItem.series_id == series.id, ScheduleItem.seq >= from_seq,
+                                      ScheduleItem.state.in_(PENDING)).order_by(ScheduleItem.seq)
+    out, prev = [], None
+    for item in db.scalars(stmt.with_for_update() if lock else stmt).all():
+        proposed = slots.normalize(at if prev is None else prev + timedelta(hours=series.interval_hours), window, tz)
+        new = max(proposed, item.scheduled_at)
+        out.append((item, new))
+        prev = new
+    return out
+
+
+def apply_shift(plan: list[tuple[ScheduleItem, datetime]], reason: str, at: datetime) -> int:
+    moved = 0
+    for item, new in plan:
+        if new != item.scheduled_at:
+            item.scheduled_at, item.reason = new, reason
+            item.state_version += 1
+            item.updated_at = at
+            moved += 1
+    return moved
+
+
+def _first_missed(db: Session, series: ScheduleSeries, at: datetime) -> int | None:
+    return db.scalar(select(ScheduleItem.seq).where(
+        ScheduleItem.series_id == series.id, ScheduleItem.state.in_(PENDING), ScheduleItem.scheduled_at < at)
+        .order_by(ScheduleItem.seq).limit(1))
+
+
+def pause(series: ScheduleSeries) -> None:
+    if series.state != "ACTIVE":
+        raise ApiError(409, "SERIES_NOT_ACTIVE", "ตารางนี้ไม่ได้อยู่ในสถานะใช้งาน", {"state": series.state})
+    # Posts already handed to an Agent finish and are followed to a result (FR-19).
+    series.state, series.version, series.updated_at = "PAUSED", series.version + 1, now()
+
+
+def resume_plan(db: Session, series: ScheduleSeries, at: datetime, *, lock: bool) -> list[tuple[ScheduleItem, datetime]]:
+    """Posts that fell due during the pause move forward with their spacing; nothing catches up."""
+    if series.state != "PAUSED":
+        raise ApiError(409, "SERIES_NOT_PAUSED", "ตารางนี้ไม่ได้หยุดชั่วคราว", {"state": series.state})
+    first = _first_missed(db, series, at)
+    return [] if first is None else shift_plan(db, series, first, at, lock=lock)
+
+
+def resume(db: Session, series: ScheduleSeries, expected_version: int) -> int:
+    if series.version != expected_version:
+        raise ApiError(409, "VERSION_CONFLICT", "ตารางถูกเปลี่ยนไปแล้ว ดูตัวอย่างใหม่อีกครั้ง",
+                       {"current_version": series.version})
+    at = now()
+    moved = apply_shift(resume_plan(db, series, at, lock=True), "RESUMED", at)
+    series.state, series.version, series.updated_at = "ACTIVE", series.version + 1, at
+    return moved
+
+
+def edit_item(db: Session, item: ScheduleItem, expected_state_version: int, new_local: str) -> None:
+    """Move one unstarted post. It stays inside the window, in the future, and in clip order."""
+    if item.state not in PENDING:
+        raise ApiError(409, "ITEM_NOT_EDITABLE", "รายการนี้เริ่มส่งแล้วหรือจบแล้ว แก้ไม่ได้", {"state": item.state})
+    if item.state_version != expected_state_version:
+        raise ApiError(409, "VERSION_CONFLICT", "รายการถูกเปลี่ยนไปแล้ว โหลดใหม่ก่อนแก้",
+                       {"current_version": item.state_version})
+    series = db.get(ScheduleSeries, item.series_id)
+    if series.state in ("CANCELLED", "COMPLETED"):
+        raise ApiError(409, "SERIES_NOT_ACTIVE", "ตารางนี้จบแล้ว")
+    try:
+        tz = slots.zone(series.timezone)
+        new = slots.parse_local(new_local, tz).astimezone(UTC)
+    except slots.SlotError as exc:
+        raise _slot_error(exc) from None
+    window = slots.Window(series.window_start_min, series.window_end_min)
+    if slots.normalize(new, window, tz) != new:
+        raise ApiError(422, "OUTSIDE_WINDOW", f"เวลาต้องอยู่ในช่วงที่โพสต์ได้ {window.label()}")
+    if new < now() + START_GRACE:
+        raise ApiError(422, "START_IN_PAST", "เวลาต้องอยู่ในอนาคต")
+    neighbours = db.execute(select(ScheduleItem.seq, ScheduleItem.scheduled_at).where(
+        ScheduleItem.series_id == series.id, ScheduleItem.state.not_in(("CANCELLED", "SKIPPED")),
+        ScheduleItem.id != item.id)).all()
+    if any((seq < item.seq and at >= new) or (seq > item.seq and at <= new) for seq, at in neighbours):
+        raise ApiError(422, "ITEM_ORDER", "เวลาใหม่ต้องอยู่ระหว่างโพสต์ก่อนหน้าและถัดไป (คงลำดับคลิป)")
+    item.scheduled_at, item.reason = new, "EDITED"
+    item.state_version += 1
+    item.updated_at = now()
+
+
+def dispatchable(db: Session, item: ScheduleItem, *, expected_state: str = "SCHEDULED") -> str | None:
     """None when this exact item may be handed to an Agent now; otherwise the reason it may not.
 
     Checked immediately before dispatch (PRD §G.6, G3-05): the approval must still name the
     bound metadata version and the same file the item was scheduled with.
     """
-    if item.state != "SCHEDULED":
+    if item.state != expected_state:
         return "NOT_SCHEDULED"
     series = db.get(ScheduleSeries, item.series_id)
     if series.state != "ACTIVE":

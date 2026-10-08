@@ -34,6 +34,15 @@ class ScheduleIn(BaseModel):
         return schedules.Request(**self.model_dump())
 
 
+class ResumeIn(BaseModel):
+    expected_version: int = Field(ge=1)
+
+
+class ItemPatch(BaseModel):
+    expected_state_version: int = Field(ge=1)
+    scheduled_local: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+
+
 class CreateIn(ScheduleIn):
     idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
 
@@ -117,6 +126,53 @@ def cancel_item(item_id: uuid.UUID, request: Request, auth: WebAuth = Depends(we
     item = get_owned(db, ScheduleItem, item_id, auth.workspace_id, for_update=True)
     schedules.cancel_item(item)
     audit.record(db, request, "schedule_item.cancel", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                 target_id=item.id)
+    db.commit()
+    return item_out(item)
+
+
+@web_router.post("/{series_id}/pause")
+def pause_series(series_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth),
+                 db: Session = Depends(get_db)):
+    series = get_owned(db, ScheduleSeries, series_id, auth.workspace_id, for_update=True)
+    schedules.pause(series)
+    audit.record(db, request, "schedule.pause", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                 target_id=series.id)
+    db.commit()
+    return series_out(db, series, with_items=True)
+
+
+@web_router.post("/{series_id}/resume/preview")
+def resume_preview(series_id: uuid.UUID, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
+    """What resuming now would do, calculated on the server (PRD §E: preview before confirm)."""
+    series = get_owned(db, ScheduleSeries, series_id, auth.workspace_id)
+    plan = schedules.resume_plan(db, series, schedules.now(), lock=False)
+    tz = slots.zone(series.timezone)
+    return {
+        "series_version": series.version,
+        "moves": [{"item_id": str(item.id), "seq": item.seq, "from": item.scheduled_at.isoformat(),
+                   "to": new.isoformat(), "to_local": new.astimezone(tz).strftime("%Y-%m-%dT%H:%M")}
+                  for item, new in plan if new != item.scheduled_at],
+    }
+
+
+@web_router.post("/{series_id}/resume")
+def resume_series(series_id: uuid.UUID, body: ResumeIn, request: Request, auth: WebAuth = Depends(web_auth),
+                  db: Session = Depends(get_db)):
+    series = get_owned(db, ScheduleSeries, series_id, auth.workspace_id, for_update=True)
+    schedules.resume(db, series, body.expected_version)
+    audit.record(db, request, "schedule.resume", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                 target_id=series.id)
+    db.commit()
+    return series_out(db, series, with_items=True)
+
+
+@items_router.patch("/{item_id}")
+def edit_item(item_id: uuid.UUID, body: ItemPatch, request: Request, auth: WebAuth = Depends(web_auth),
+              db: Session = Depends(get_db)):
+    item = get_owned(db, ScheduleItem, item_id, auth.workspace_id, for_update=True)
+    schedules.edit_item(db, item, body.expected_state_version, body.scheduled_local)
+    audit.record(db, request, "schedule_item.edit", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=item.id)
     db.commit()
     return item_out(item)

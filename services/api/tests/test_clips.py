@@ -5,49 +5,14 @@ A real 16 s 1080x1920 H.264/AAC file is generated with ffmpeg so the 9:16 checks
 
 from __future__ import annotations
 
-import hashlib
-import shutil
-import subprocess
 import time
 import uuid
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from api_test_agents import Agent
+from api_test_shop import Worker
 
 URL = "https://www.bilibili.tv/en/video/4800844531374592"
-
-
-@pytest.fixture(scope="session")
-def real_clip(tmp_path_factory) -> bytes:
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        pytest.skip("ffmpeg not installed")
-    out = tmp_path_factory.mktemp("media") / "clip.mp4"
-    subprocess.run([ffmpeg, "-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=1080x1920:r=10:d=16",
-                    "-f", "lavfi", "-i", "sine=frequency=440:duration=16", "-c:v", "libx264", "-preset", "ultrafast",
-                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out)], check=True, timeout=120)
-    return out.read_bytes()
-
-
-class Worker(Agent):
-    def event(self, job_id, type_, **payload):
-        return self.post(f"/v1/agent/jobs/{job_id}/events", json={"event_id": uuid.uuid4().hex, "type": type_, **payload})
-
-    def upload(self, job_id, index, body):
-        return self.client.put(f"/v1/agent/jobs/{job_id}/clips/{index}/file", content=body,
-                               headers={"Authorization": f"Bearer {self.session}"})
-
-    def prepare(self, job_id, possible=3):
-        self.post("/v1/agent/jobs/claim")
-        self.event(job_id, "source_validated", duration_s=600, possible_clips=possible)
-        for stage in ("DOWNLOADING", "ANALYZING", "RENDERING"):
-            self.event(job_id, "stage", stage=stage)
-
-    def report(self, job_id, index, body, duration_ms=16_000, **extra):
-        return self.event(job_id, "clip_rendered", index=index, start_ms=0, end_ms=duration_ms,
-                          duration_ms=duration_ms, sha256=hashlib.sha256(body).hexdigest(), size_bytes=len(body),
-                          template_version="tpl-default-v2", title="ชื่อคลิปในวิดีโอ", **extra)
 
 
 @pytest.fixture
