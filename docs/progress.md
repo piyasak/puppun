@@ -1,10 +1,56 @@
 # Progress
 
-## Current phase: P4 done — G4 = Yes (signed off 2026-10-08); next P5. G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes.
+## Current phase: P5 done — G5 = Yes (signed off 2026-10-09); next P6. G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes.
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-08 15:xx) — P4.5 dispatch load test + P4.6 schedule calendar
+### Latest slice (2026-10-09 01:xx) — G5-06 fencing in the posting path + needs-action list (P5.7)
+- Implemented: `test_post_fencing.py` (revoke ระหว่างโอนไฟล์ → Agent หยุด + ลบไฟล์ + token ใหม่ทำต่อ; session เก่าของการติดตั้งเดียวกันถูกตัด; session หมดอายุ; revoke หลังกดโพสต์ → UNKNOWN); `GET /v1/schedule-items?attention=true` (ทุกโพสต์ที่รอคน: NEEDS_ACTION/UNKNOWN ทุกวันที่); หน้า `/schedule` มีกล่อง "ต้องดำเนินการ" พร้อมเหตุผลภาษาไทยและลิงก์ไปจัดการ; `Shop.token_id` ใน test helpers
+- Commands: integration 193 passed / 8 skipped (ใหม่ 4 fencing + 1 attention), unit 166, E2E 8, ruff/oxlint/tsc ผ่าน
+- Gates: **G5 = Yes** — PO ปิยศักดิ์ อนุมัติในแชท 2026-10-09 (6/6)
+- Next: P6 billing/admin (D05/D06 ยัง Open — sandbox เท่านั้น); G2-01/G2-05 ก่อน release
+
+### Previous slice (2026-10-09 00:xx) — authorized real post (Q-30): G5-04 + G5-05
+- PO: "อนุญาตโพสต์ใหม่ 1 ครั้ง" → Q-30; harness รับเฉพาะ decision ที่บันทึกว่า Accepted + "1 โพสต์"
+- ระหว่างทาง: คำสั่งที่บันทึก Q-30 ถูก guard ของ PowerShell บล็อกทั้งคำสั่ง จึงไม่ได้รัน แต่ผมรันเช็กด้วย Q-29 ต่อ — harness เดิมทำงานจริง เปิด TikTok แล้วหยุดที่หน้า splash ก่อนเริ่มโพสต์ (โพสต์ไม่ได้อยู่แล้ว: grant Q-29 หมด); แก้ account() ให้รอ SplashActivity
+- ผล (5 นาที 49 วินาที): โพสต์ 1 ครั้ง "เฉพาะคุณ" บน @patsy4404 → Agent จำลองดับหลังกด → Server UNKNOWN ไม่ส่งซ้ำ → ตรวจบนเครื่อง: วิดีโอส่วนตัว 1 → 2, marker `cfc6f1c8` → resolve → VERIFIED_SUCCESS; Gboard คืน, ไม่เหลือไฟล์, Q-30 ใช้แล้ว
+- Gates: G5 5/6 Yes (G5-01..G5-05); เหลือ G5-06
+- Next: G5-06 (revoke token/หมดสิทธิ์ระหว่างโพสต์ end-to-end), P5.7 หน้า needs-action ฝั่ง Agent
+
+### Previous slice (2026-10-08 22:xx) — Q-28/Q-29, authorized post attempt, P5.1/P5.6 packaging
+- PO: Q-28 (G5-03 ไม่ต้องทดสอบ login/CAPTCHA กับแอปจริง), Q-29 (อนุญาต 1 โพสต์); เพิ่มสิทธิ์ `Edit/Write(services/api/tests/**)`
+- บัญชีผิดบนแอปจริง → ACCOUNT_MISMATCH หยุดก่อนเปิดคลิป
+- โพสต์จริง (Q-29): `agent/authorization.py` (grant ครั้งเดียว บันทึกก่อนกด), `TikTokUi.submit/verify_private_post/private_count`, post runner โหมด live (+ จำลองดับหลังกดโพสต์), `test_authorized_real_post.py`. ผล: รอบ 1 อ่านบัญชีไม่ได้ (แก้: account() ลองซ้ำ), รอบ 2 หน้าจอเปลี่ยนระหว่างกด (แก้: ลองใหม่), จำนวนวิดีโอส่วนตัวอ่านครั้งแรกได้ 0 (แก้: อ่านจนสองครั้งตรงกัน), **รอบ 3 session หมดอายุระหว่างขั้น TikTok → grant ถูกใช้ก่อน Server ปฏิเสธ SUBMITTING → หยุดก่อนกดโพสต์; ไม่มีโพสต์เกิดขึ้น (วิดีโอส่วนตัวยัง = 1), สิทธิ์ Q-29 หมด** — แก้: ตรวจ session (heartbeat) ก่อนใช้ grant + test, harness มี heartbeat; ไม่ได้ reset ledger เอง (ต้องให้ PO อนุญาตใหม่)
+- P5.1/P5.6: `agent/updater.py`, `agent/credentials.py` (DPAPI), `agent/compat.py` (D03 matrix), `agent/admin.py` (login/logout/status/install/rollback + log), `agent/__main__.py`, `tools/build_agent.py`; จริงบน Windows 11: install 0.2.0 → self-update 0.2.1 → rollback 0.2.0, SHA ผิด/โพสต์ค้างถูกปฏิเสธ, exe เห็นโทรศัพท์จริง; พบและแก้ "Access is denied" หลัง smoke test (retry)
+- Commands: unit 166, integration 188 / 8 skipped (opt-in), bundle test (opt-in) ผ่าน, ruff ผ่าน
+- Gates: G5 3/6 Yes (G5-01, G5-02, G5-03); G5-04/G5-05 รอสิทธิ์โพสต์ใหม่; G5-06 บางส่วน
+- Next: PO อนุญาตโพสต์ใหม่ 1 ครั้ง → รัน `test_authorized_real_post.py`; G5-06 revoke ระหว่างโพสต์; P5.7 fault tests + หน้า needs-action
+
+### Previous slice (2026-10-08 20:xx) — P5.4 TikTok UI up to Post (Q-27)
+- PO: "อนุญาต" (Q-27) + เพิ่มสิทธิ์ `PowerShell(adb *)`, `Edit/Write(agent/**)` ใน settings (auto-mode classifier เคยปฏิเสธการเปิด TikTok และการเขียน adapter)
+- สำรวจบนเครื่องจริงทีละขั้น (Profile → share sheet → editor → post screen → visibility → caption) แล้ว force-stop; สิ่งที่พบบันทึกใน runbook
+- Implemented: `agent/tiktok_ui.py` (อ่านบัญชี, share intent, Video → ถัดไป, เฉพาะคุณ, พิมพ์ไทยผ่าน ADBKeyboard + ตรวจตรงทุกตัว + คืน IME, login/CAPTCHA/หน้าไม่รู้จัก → หยุด, ปฏิเสธโพสต์/Story/แบบร่าง/Shop ในตัว + ตรวจใต้จุดกดทุกครั้ง); `agent.cli ui-rehearsal`; post runner `--ui-rehearsal` (บัญชีผิด/CAPTCHA → NEEDS_ACTION)
+- Real device: `ui-rehearsal` บน POCO — บัญชี @patsy4404 ตรง, เฉพาะคุณ, แคปชันไทย+emoji+แฮชแท็กตรง, ไม่กดโพสต์, TikTok ปิด, Gboard คืน, ไม่เหลือไฟล์
+- Commands: unit 158 (ใหม่ 11 `test_tiktok_ui.py`), integration 182 / 7 skipped (ใหม่ 3 ซ้อม TikTok ใน post runner), ruff ผ่าน
+- Gates: G5 1/6 Yes (G5-02); G5-03 บางส่วน (ทดสอบบัญชีผิด/login/CAPTCHA กับแอปจริงต้องขออนุญาต)
+- Next: P5.1/P5.6 แพ็กเกจ/ติดตั้ง/อัปเดต Agent; ขั้น Submit จริง (P5.4 ส่วนสุดท้าย) ต้องขออนุญาตโพสต์แยก (G5-05)
+
+### Previous slice (2026-10-08 17:xx) — real-phone dry run + P5.5 reconciliation
+- Real device: `test_real_device_post.py` บน POCO 25078PC3EG / Android 15 — claim → ดาวน์โหลด + ตรวจ hash → push_verified → Gallery → DRY_RUN_DONE → ลบไฟล์ทดสอบ, 6.1 วินาที, ไม่เปิด TikTok (สรุปใน var/evidence/p5_real_device_dry_run.json)
+- Implemented: `posts.resolve` / `posts.retry` (E-43) + routes `/v1/schedule-items/{id}/resolve`, `/retry`; item ส่ง `attempts`, `evidence`; เว็บ: dialog "ยืนยันผล…" (ไม่มีตัวเลือกเริ่มต้น, ต้องมีหลักฐาน) และปุ่ม "แก้แล้ว ลองใหม่"; `ConfirmDialog` ใช้ id เฉพาะต่อ dialog (เดิมทุก dialog ใช้ id เดียวกัน) + `confirmDisabled`; fixture `live_client` ย้ายไป conftest
+- Found: เทสต์ปฏิทินพังเป็นบางครั้ง — สอง series เวลาเท่ากันไม่มีลำดับแน่นอน (calendar/claim) → เรียงตามเวลาที่สร้างเป็นตัวตัดสิน; รันซ้ำ 3 รอบผ่าน
+- Commands: integration 179 passed / 7 skipped (ใหม่ 6 `test_resolution.py`), E2E 8, ruff/oxlint/tsc ผ่าน; dialog ยืนยันผลยังไม่มี E2E (E2E server เป็น dry-run จึงสร้าง UNKNOWN ไม่ได้ — ตรรกะทดสอบผ่าน API)
+- Gates: G5 0/6 Yes — G5-02, G5-04, G5-06 บางส่วน
+- Next: P5.4 (ต้องได้รับอนุญาตแตะ UI TikTok), P5.1/P5.6 แพ็กเกจ/ติดตั้ง/อัปเดต Agent
+
+### Previous slice (2026-10-08 16:xx) — P5.2/P5.3 Agent post runner (dry-run)
+- Implemented: `agent/post_runner.py` (E-42: claim ทุก 15 วินาทีเมื่อว่าง → ไฟล์ของตัวเองหรือดาวน์โหลด+ตรวจ SHA-256 → push_verified → Gallery → DRY_RUN_DONE → ลบไฟล์ทดสอบ; journal ก่อนทุกขั้น; LEASE_LOST หยุดทันที); ServerClient `claim_post`/`post_event`/`download`; `run_connection` รับหลาย worker; `agent.cli connect` เปิด post runner โดยค่าเริ่มต้น (`--no-posts`); `Adb.push_verified(remote_name=)`; test storage ใช้พอร์ตเดียวกับ server จริง (ดาวน์โหลดผ่าน HTTP ได้จริงในเทสต์)
+- Commands: integration 173 passed / 7 skipped (ใหม่ 6 `test_agent_post_runner_http.py` กับโทรศัพท์จำลอง: ไฟล์ของตัวเอง, ดาวน์โหลด+ตรวจ hash, ไฟล์เสียระหว่างโอน, Gallery ไม่เจอ, lease หลุดระหว่างโอน, ไม่มีโทรศัพท์พร้อม); unit 147; ruff ผ่าน
+- **ยังไม่ได้รัน**: `test_real_device_post.py` (opt-in) — โทรศัพท์ QA ไม่ได้เสียบอยู่ (`adb devices` ว่าง)
+- Gates: G5 0/6 Yes — G5-02, G5-06 บางส่วน
+- Next: เสียบ POCO → รัน dry-run จริง; P5.4 (ตรวจบัญชี TikTok, ใส่ข้อความไทย, หยุดเมื่อเจอ login/CAPTCHA — ต้องได้รับอนุญาตแยกก่อนแตะ UI TikTok), P5.5 resolve UNKNOWN, P5.1/P5.6 ติดตั้ง/อัปเดต
+
+### Previous slice (2026-10-08 15:xx) — P4.5 dispatch load test + P4.6 schedule calendar
 - Implemented: `test_dispatch_load.py` (opt-in `CLIPFLOW_LOAD=1`); `GET /v1/schedule-items?start&end` (ทุก series, เวลานัด/เวลาจริงแยกกัน, `queued_behind`, `delay_s`); หน้า `/schedule` รายสัปดาห์ + รายการ (เมนู "ตารางโพสต์")
 - Commands: load test: 150 โทรศัพท์ / 300 โพสต์ → 100% ภายใน 60 วินาที, p95 14.3 วินาที, 0 error (E-41); integration 167 passed / 6 skipped (load test เป็น opt-in); unit 147; E2E 8 (schedule journey ตรวจหน้าปฏิทิน); ruff/oxlint/tsc/build ผ่าน
 - Found: load test รอบแรกมี error 356 ครั้ง — สาเหตุคือ harness ล็อกอิน Agent ตอน setup แล้วรอหลายนาทีจน session หมดอายุ (TTL 90 วินาที) ไม่ใช่ Server; แก้ให้ล็อกอินตอน Agent เริ่ม (เหมือน `agent.cli connect`)

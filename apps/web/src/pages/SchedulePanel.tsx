@@ -27,6 +27,14 @@ type Series = {
   id: string; state: string; device: { name: string | null; account: string | null }; window: string
   timezone: string; interval_hours: number; offline_policy: 'defer' | 'skip'; items: Item[]; version: number
 }
+type Decision = 'found_published' | 'confirmed_not_published' | 'still_unknown'
+const DECISIONS: { id: Decision; text: string; hint: string }[] = [
+  { id: 'found_published', text: 'พบโพสต์แล้ว', hint: 'โพสต์ขึ้นในบัญชีที่ถูกต้อง — ใส่ลิงก์โพสต์เป็นหลักฐาน' },
+  { id: 'confirmed_not_published', text: 'ยืนยันว่าไม่ได้โพสต์', hint: 'ตรวจทั้งโปรไฟล์และร่างแล้วไม่มี — ระบบจะโพสต์ใหม่ 1 ครั้งในช่วงเวลาที่อนุญาตถัดไป' },
+  { id: 'still_unknown', text: 'ยังไม่แน่ใจ', hint: 'เก็บไว้เป็นไม่ทราบผล โทรศัพท์นี้จะยังไม่โพสต์ต่อ' },
+]
+const RETRYABLE = ['AGENT_LOST', 'ACCOUNT_MISMATCH', 'TRANSFER_FAILED', 'GALLERY_NOT_FOUND', 'FILE_UNAVAILABLE',
+  'DOWNLOAD_FAILED', 'FILE_HASH_MISMATCH', 'DEVICE_NOT_CONNECTED', 'AGENT_ERROR', 'WIFI_OFFLINE']
 type ResumePreview = { series_version: number; moves: { seq: number; from: string; to: string }[] }
 
 function toLocalInput(iso: string): string {
@@ -89,6 +97,11 @@ const REASON: Record<string, string> = {
   AGENT_LOST: 'Agent หยุดตอบหลายครั้งก่อนเริ่มโพสต์ — ตรวจเครื่อง Windows แล้วตั้งเวลาใหม่',
   AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ จึงไม่รู้ว่าโพสต์ขึ้นหรือไม่ — ตรวจในแอป TikTok ก่อน ระบบจะไม่ลองโพสต์ซ้ำเอง',
   DEFERRED: 'เครื่องออฟไลน์ตอนถึงเวลา — เลื่อนออกไปโดยรักษาระยะห่างเดิม',
+  RESOLVED_PUBLISHED: 'ยืนยันแล้วว่าโพสต์ขึ้น (ตรวจโดยผู้ใช้)',
+  RESOLVED_NOT_PUBLISHED: 'ยืนยันแล้วว่าไม่ได้โพสต์ — จะโพสต์ใหม่ 1 ครั้ง',
+  RETRY_REQUESTED: 'ลองใหม่ตามที่สั่ง',
+  TRANSFER_FAILED: 'ส่งไฟล์เข้าโทรศัพท์ไม่สำเร็จ — ตรวจสาย USB แล้วกดลองใหม่',
+  GALLERY_NOT_FOUND: 'โทรศัพท์ไม่แสดงไฟล์ใน Gallery — ตรวจพื้นที่และสิทธิ์ แล้วกดลองใหม่',
   MISSED_SLOT: 'เครื่องออฟไลน์ตอนถึงเวลา — ข้ามรอบนี้ตามที่ตั้งไว้',
   REDELIVERY: 'Agent ก่อนหน้าหยุดก่อนเริ่มโพสต์ — ส่งให้ทำใหม่',
   ACCOUNT_MISMATCH: 'บัญชี TikTok บนโทรศัพท์ไม่ตรงกับที่ตั้งไว้ — ระบบจึงไม่โพสต์',
@@ -122,6 +135,9 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
   const [cancelTarget, setCancelTarget] = useState<Series | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [resumeFor, setResumeFor] = useState<{ series: Series; preview: ResumePreview } | null>(null)
+  const [resolving, setResolving] = useState<Item | null>(null)
+  const [decision, setDecision] = useState<Decision | null>(null)
+  const [evidence, setEvidence] = useState('')
   // One key per previewed plan: a double click on "confirm" never makes two series.
   const [key, setKey] = useState(() => crypto.randomUUID().replace(/-/g, ''))
 
@@ -219,6 +235,38 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
       setResumeFor(null)
     } finally {
       setBusy(false)
+    }
+  }
+
+  function openResolve(it: Item) {
+    setResolving(it)
+    setDecision(null)  // never preselected (PRD §H)
+    setEvidence('')
+  }
+
+  async function resolve() {
+    if (!resolving || !decision) return
+    setBusy(true)
+    try {
+      await api(`/v1/schedule-items/${resolving.id}/resolve`, {
+        method: 'POST', body: { decision, evidence, expected_state_version: resolving.state_version },
+      })
+      setResolving(null)
+      await load()
+    } catch (err) {
+      setError((err as ApiError).message)
+      setResolving(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function retryItem(it: Item) {
+    try {
+      await api(`/v1/schedule-items/${it.id}/retry`, { method: 'POST', body: { expected_state_version: it.state_version } })
+      await load()
+    } catch (err) {
+      setError((err as ApiError).message)
     }
   }
 
@@ -374,6 +422,10 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
                         <td className="row-actions">
                           {pending && editing !== it.id && <button type="button" className="btn btn-secondary btn-small" onClick={() => setEditing(it.id)}>แก้เวลา</button>}
                           {pending && <button type="button" className="btn btn-secondary btn-small" onClick={() => cancelItem(it.id)}>ยกเลิก</button>}
+                          {it.state === 'UNKNOWN' && <button type="button" className="btn btn-primary btn-small" onClick={() => openResolve(it)}>ยืนยันผล…</button>}
+                          {it.state === 'NEEDS_ACTION' && it.reason && RETRYABLE.includes(it.reason) && (
+                            <button type="button" className="btn btn-primary btn-small" onClick={() => retryItem(it)}>แก้แล้ว ลองใหม่</button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -384,6 +436,24 @@ export function SchedulePanel({ job, refresh }: { job: JobDetail; refresh: strin
           ))}
         </div>
       )}
+      <ConfirmDialog open={resolving !== null} busy={busy} title={`ยืนยันผลโพสต์ ${resolving?.seq ?? ''}`} confirmLabel="บันทึกผล"
+        confirmDisabled={!decision || evidence.trim().length < 5} onConfirm={resolve} onCancel={() => setResolving(null)}>
+        <p>Agent หายไปหลังกดโพสต์ จึงไม่รู้ว่าโพสต์ขึ้นหรือไม่ เปิดแอป TikTok ของบัญชีนี้แล้วตรวจก่อนเลือก ระบบจะไม่โพสต์ซ้ำเองจนกว่าจะยืนยัน</p>
+        <fieldset className="choices">
+          <legend>ผลที่ตรวจพบ</legend>
+          {DECISIONS.map((d) => (
+            <label key={d.id} className="check">
+              <input type="radio" name="decision" checked={decision === d.id} onChange={() => setDecision(d.id)} />
+              <span>{d.text}<br /><span className="hint">{d.hint}</span></span>
+            </label>
+          ))}
+        </fieldset>
+        <div className="field">
+          <label htmlFor="resolve-evidence">หลักฐาน</label>
+          <textarea id="resolve-evidence" rows={2} maxLength={500} value={evidence} onChange={(e) => setEvidence(e.target.value)}
+            placeholder="เช่น ลิงก์โพสต์ หรือสิ่งที่เห็นในแอป" />
+        </div>
+      </ConfirmDialog>
       <ConfirmDialog open={resumeFor !== null} busy={busy} title="ให้ตารางนี้ทำงานต่อ?" confirmLabel="ทำงานต่อ"
         onConfirm={resume} onCancel={() => setResumeFor(null)}>
         {resumeFor && resumeFor.preview.moves.length === 0 && <p>เวลาโพสต์ทั้งหมดยังไม่ผ่านไป ใช้เวลาเดิม</p>}

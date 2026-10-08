@@ -30,6 +30,20 @@ const STATE: Record<string, { text: string; badge: string }> = {
   DRY_RUN_DONE: { text: 'ทดสอบเสร็จ (ไม่ได้โพสต์จริง)', badge: 'expired' },
 }
 
+const WHY: Record<string, string> = {
+  AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ — ตรวจในแอป TikTok แล้วยืนยันผล',
+  VERIFY_MARKER: 'กดโพสต์แล้วแต่ยืนยันผลไม่ได้ — ตรวจในแอป TikTok แล้วยืนยันผล',
+  VERIFY_COUNT: 'กดโพสต์แล้วแต่ยืนยันผลไม่ได้ — ตรวจในแอป TikTok แล้วยืนยันผล',
+  APPROVAL_CHANGED: 'ข้อความเปลี่ยนหลังตั้งเวลา — อนุมัติข้อความล่าสุด',
+  NOT_APPROVED: 'คลิปยังไม่อนุมัติเวอร์ชันล่าสุด',
+  DEVICE_UNBOUND: 'โทรศัพท์ถูกยกเลิกการผูก — ตั้งเวลาใหม่กับเครื่องอื่น',
+  ACCOUNT_MISMATCH: 'บัญชี TikTok บนโทรศัพท์ไม่ตรงกับที่ตั้งไว้',
+  UNSUPPORTED_DEVICE: 'โทรศัพท์หรือเวอร์ชัน TikTok นี้ยังไม่ได้ทดสอบ',
+  CAPTCHA: 'TikTok ขอยืนยันตัวตน — ทำบนโทรศัพท์แล้วกดลองใหม่',
+  LOGIN_REQUIRED: 'TikTok ไม่ได้ล็อกอิน — ล็อกอินบนโทรศัพท์แล้วกดลองใหม่',
+  AGENT_LOST: 'Agent หยุดตอบหลายครั้ง — ตรวจเครื่อง Windows แล้วกดลองใหม่',
+}
+
 function ymd(d: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d)
 }
@@ -71,6 +85,7 @@ export function SchedulePage() {
   const [view, setView] = useState<'week' | 'list'>('week')
   const [items, setItems] = useState<CalItem[] | null>(null)
   const [error, setError] = useState('')
+  const [waiting, setWaiting] = useState<CalItem[]>([])
   const start = useMemo(() => weekStart(week), [week])
   const end = useMemo(() => new Date(start.getTime() + 7 * DAY_MS), [start])
   const [todayKey] = useState(() => ymd(new Date()))
@@ -78,7 +93,12 @@ export function SchedulePage() {
   const load = useCallback(async () => {
     try {
       const q = `start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
-      setItems((await api<{ items: CalItem[] }>(`/v1/schedule-items?${q}`)).items)
+      const [week, todo] = await Promise.all([
+        api<{ items: CalItem[] }>(`/v1/schedule-items?${q}`),
+        api<{ items: CalItem[] }>('/v1/schedule-items?attention=true'),
+      ])
+      setItems(week.items)
+      setWaiting(todo.items)
       setError('')
     } catch (err) {
       setError((err as ApiError).message)
@@ -93,12 +113,26 @@ export function SchedulePage() {
 
   const days = Array.from({ length: 7 }, (_, i) => new Date(start.getTime() + i * DAY_MS))
   const byDay = (d: Date) => (items ?? []).filter((it) => ymd(new Date(it.scheduled_at)) === ymd(d))
-  const attention = (items ?? []).filter((it) => it.state === 'NEEDS_ACTION' || it.state === 'UNKNOWN').length
 
   return (
     <Shell title="ตารางโพสต์">
       {error && <Alert kind="error">{error}</Alert>}
-      {attention > 0 && <Alert kind="info">มี {attention} โพสต์ในสัปดาห์นี้ที่ต้องดำเนินการหรือไม่ทราบผล</Alert>}
+      {waiting.length > 0 && (
+        <section className="card attention" aria-labelledby="attention-title" data-testid="attention">
+          <h2 id="attention-title">ต้องดำเนินการ ({waiting.length})</h2>
+          <ul className="rows">
+            {waiting.map((it) => (
+              <li key={it.id} className="row">
+                <div className="row-main">
+                  <strong>{it.state === 'UNKNOWN' ? 'ไม่ทราบผล' : 'ต้องดำเนินการ'} — คลิป {it.clip_index} • {it.device_name} (@{it.account})</strong>
+                  <span className="muted">นัด {fullFmt.format(new Date(it.scheduled_at))} • {WHY[it.reason ?? ''] ?? it.reason}</span>
+                </div>
+                <Link className="btn btn-primary btn-small" to={`/jobs/${it.job.id}`}>ไปจัดการ</Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="card">
         <div className="cal-toolbar">
           <div className="row-actions">

@@ -12,22 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import httpx
-import pytest
 from api_test_shop import Shop, Worker, claim, ev, expire, items, schedule, set_times
-from api_test_tokens import SIGNING_KEY, SUPABASE_URL
-from fastapi.testclient import TestClient
-
-from clipflow_api.app import create_app
-from clipflow_api.config import Settings
-
-
-@pytest.fixture(scope="session")
-def live_client(migrated_url, storage):
-    settings = Settings(app_env="test", database_url=migrated_url, supabase_url=SUPABASE_URL,
-                        agent_auth_rate_per_minute=10_000)
-    app = create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key(), storage=storage,
-                     posting_mode="live")
-    return TestClient(app)
 
 
 def test_claim_hands_out_due_posts_one_per_phone_in_dry_run(shop, app):

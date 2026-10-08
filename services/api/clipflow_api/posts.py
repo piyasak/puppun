@@ -26,7 +26,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from . import devices as device_rules
-from . import schedules
+from . import schedules, slots
 from .agent_sessions import AgentContext
 from .errors import ApiError
 from .models import Clip, ClipMetadata, Device, ScheduleItem, ScheduleItemEvent, ScheduleSeries
@@ -128,7 +128,7 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str]) -> ScheduleI
     due = db.scalars(select(ScheduleItem).join(Device, Device.id == ScheduleItem.device_id).where(
         Device.environment_id == ctx.environment_id, Device.unbound_at.is_(None), Device.serial_key.in_(keys),
         ScheduleItem.state == "SCHEDULED", ScheduleItem.scheduled_at <= at,
-    ).order_by(ScheduleItem.scheduled_at, ScheduleItem.seq).limit(50)
+    ).order_by(ScheduleItem.scheduled_at, ScheduleItem.created_at, ScheduleItem.seq).limit(50)  # ties: first scheduled first
         .with_for_update(of=ScheduleItem, skip_locked=True)).all()
     tried: set[uuid.UUID] = set()
     for item in due:
@@ -263,3 +263,64 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
     if item.state in FINAL:
         _maybe_complete(db, item.series_id, at)
     return item, False, refusal
+
+
+# --- reconciliation (P5.5, PRD §H) ----------------------------------------------------------------
+
+RESOLUTIONS = ("found_published", "confirmed_not_published", "still_unknown")
+# NEEDS_ACTION reasons a person may simply retry once fixed. Approval/text/phone problems are not
+# here: they are fixed by approving again (rebinds automatically) or by scheduling elsewhere.
+RETRYABLE_REASONS = ("AGENT_LOST", "ACCOUNT_MISMATCH", "TRANSFER_FAILED", "GALLERY_NOT_FOUND", "FILE_UNAVAILABLE",
+                     "DOWNLOAD_FAILED", "FILE_HASH_MISMATCH", "DEVICE_NOT_CONNECTED", "AGENT_ERROR", "WIFI_OFFLINE")
+
+
+def _next_slot(db: Session, item: ScheduleItem, at: datetime) -> datetime:
+    series = db.get(ScheduleSeries, item.series_id)
+    return slots.normalize(at, slots.Window(series.window_start_min, series.window_end_min), slots.zone(series.timezone))
+
+
+def resolve(db: Session, item: ScheduleItem, *, decision: str, evidence: str, actor: uuid.UUID,
+            expected_state_version: int) -> None:
+    """A person settles an UNKNOWN post with evidence. Nothing is preselected and nothing is retried
+    without a confirmed "not published"."""
+    if item.state != "UNKNOWN":
+        raise ApiError(409, "NOT_UNKNOWN", "ยืนยันผลได้เฉพาะโพสต์ที่ไม่ทราบผล", {"state": item.state})
+    if item.state_version != expected_state_version:
+        raise ApiError(409, "VERSION_CONFLICT", "รายการถูกเปลี่ยนไปแล้ว โหลดใหม่", {"current_version": item.state_version})
+    if decision not in RESOLUTIONS:
+        raise ApiError(422, "VALIDATION_ERROR", "ต้องเลือกผลที่ตรวจพบ")
+    note = evidence.strip()
+    if len(note) < 5:
+        raise ApiError(422, "EVIDENCE_REQUIRED", "ต้องระบุหลักฐาน เช่น ลิงก์โพสต์ หรือสิ่งที่ตรวจในแอป TikTok")
+    at = now()
+    record = {"method": "manual_resolution", "decision": decision, "value": note[:300], "resolved_by": str(actor),
+              "at": at.isoformat()}
+    if decision == "found_published":
+        item.evidence, item.verified_at = record, at
+        _move(item, "VERIFIED_SUCCESS", "RESOLVED_PUBLISHED", at)
+        _maybe_complete(db, item.series_id, at)
+    elif decision == "confirmed_not_published":
+        item.evidence = record
+        item.scheduled_at = max(item.scheduled_at, _next_slot(db, item, at))  # once, at the next allowed time
+        item.submitted_at = None
+        _move(item, "SCHEDULED", "RESOLVED_NOT_PUBLISHED", at)
+    else:
+        item.evidence = record  # stays UNKNOWN; the phone stays paused (PRD §H)
+        item.state_version += 1
+        item.updated_at = at
+    db.add(ScheduleItemEvent(workspace_id=item.workspace_id, item_id=item.id, event_id=uuid.uuid4().hex,
+                             type="RESOLVE", detail=f"{decision}: {note}"[:300]))
+
+
+def retry(db: Session, item: ScheduleItem, expected_state_version: int) -> None:
+    if item.state != "NEEDS_ACTION" or item.reason not in RETRYABLE_REASONS:
+        raise ApiError(409, "NOT_RETRYABLE", "รายการนี้ลองใหม่โดยตรงไม่ได้", {"state": item.state, "reason": item.reason})
+    if item.state_version != expected_state_version:
+        raise ApiError(409, "VERSION_CONFLICT", "รายการถูกเปลี่ยนไปแล้ว โหลดใหม่", {"current_version": item.state_version})
+    at = now()
+    reason = schedules.dispatchable(db, item, expected_state="NEEDS_ACTION")
+    if reason:
+        raise ApiError(409, "NOT_DISPATCHABLE", "คลิปหรือโทรศัพท์ยังไม่พร้อม", {"reason": reason})
+    item.scheduled_at = max(item.scheduled_at, _next_slot(db, item, at))
+    item.attempts = 0
+    _move(item, "SCHEDULED", "RETRY_REQUESTED", at)

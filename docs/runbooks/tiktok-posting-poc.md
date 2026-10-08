@@ -59,6 +59,26 @@ ADB itself runs over Wi-Fi.
 | Reconciliation | `resolve(found_published, evidence)` → `VERIFIED_SUCCESS`. Evidence: private-tab baseline vs after, plus the caption marker |
 | Exactly one post was made | Yes |
 
+## P5.4 rehearsal on the QA phone (2026-10-08, Q-27)
+
+`python -m agent.cli ui-rehearsal --serial <serial> --file <clip.mp4> --caption <text> --account <handle>`
+does every step above **except pressing Post**, then force-stops TikTok and removes the file.
+Result: account `@patsy4404` read and matched, visibility "เฉพาะคุณเท่านั้น", Thai + emoji + hashtag
+caption equal on screen, Gboard restored, nothing posted, no file left.
+
+New findings (`agent/tiktok_ui.py` handles them):
+- `uiautomator dump` fails on the For You feed ("could not get idle state"); Profile and the posting
+  screens dump fine. The adapter presses the bottom-right tab on the feed and then proves it is on
+  Profile by reading the @handle.
+- The previous dump file stays on the phone; a failed dump then "reads" an old screen (it showed the
+  P1 post screen). The dump file is deleted before every reading.
+- The share sheet can be English ("Share on TikTok" / "Video" / "Message") while the rest is Thai.
+- Choosing "เฉพาะคุณเท่านั้น" closes the sheet itself; BACK at that point would leave the post screen.
+- With the keyboard up, **"โพสต์" moves to the top-right corner**; after the keyboard closes, the
+  hashtag suggestion list stays open and covers the visibility row and the Post button. Every press
+  therefore re-reads the screen and refuses if a forbidden control is under the point; a future
+  Submit step must close the suggestion list first.
+
 ## Findings for the P5 TikTok adapter
 
 - **A plain `input tap` did not reach TikTok's share bottom sheet.** It fell through to the activity underneath and opened the **Shop** tab. A short press (`input swipe x y x y 120`) works everywhere. Any mis-tap in an app with a shop and checkout is a risk, so check the screen before and after every press.

@@ -6,6 +6,7 @@
     python -m agent.cli power --serial <serial> status|on|off
     python -m agent.cli connect --server https://<host> --username <name> [--seconds N] [--media-dir D] [--no-jobs]
     python -m agent.cli register-devices --server https://<host> --username <name> [--serial S]
+    python -m agent.cli ui-rehearsal --serial <serial> --file <clip.mp4> --caption <text> --account <handle>
 
 `dry-run` exercises transfer -> SHA-256 check -> Gallery discovery and records
 every step in the attempt journal, then stops before any TikTok UI action. There
@@ -45,15 +46,40 @@ def main(argv: list[str] | None = None) -> int:
     p_pow.add_argument("--serial", required=True)
     p_pow.add_argument("action", choices=["status", "on", "off"])
     sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
+    sub.add_parser("version", help="print the Agent version")
+    p_login = sub.add_parser("login", help="save server, username and the Agent token (encrypted for this Windows user)")
+    p_login.add_argument("--server", required=True)
+    p_login.add_argument("--username", required=True)
+    p_login.add_argument("--data-dir", type=Path, default=None)
+    p_out = sub.add_parser("logout", help="forget the stored Agent token")
+    p_out.add_argument("--data-dir", type=Path, default=None)
+    p_st = sub.add_parser("status", help="Agent version, settings, phones and posts in progress")
+    p_st.add_argument("--data-dir", type=Path, default=None)
+    p_inst = sub.add_parser("install", help="install/update from a bundle (refused while a post is being submitted)")
+    p_inst.add_argument("--bundle", required=True, type=Path)
+    p_inst.add_argument("--sha256", default=None, help="published SHA-256 of the bundle")
+    p_inst.add_argument("--install-dir", type=Path, default=None)
+    p_inst.add_argument("--data-dir", type=Path, default=None)
+    p_rb = sub.add_parser("rollback", help="go back to the previous installed version")
+    p_rb.add_argument("--install-dir", type=Path, default=None)
+    p_rb.add_argument("--data-dir", type=Path, default=None)
     p_con = sub.add_parser("connect", help="sign in to the server and send heartbeats (P2.5)")
-    p_con.add_argument("--server", required=True)
-    p_con.add_argument("--username", required=True)
+    p_con.add_argument("--server", default=None, help="default: saved by `login`")
+    p_con.add_argument("--username", default=None, help="default: saved by `login`")
     p_con.add_argument("--seconds", type=float, default=None, help="stop after N seconds (default: run until stopped)")
     p_con.add_argument("--data-dir", type=Path, default=None)
     p_con.add_argument("--no-phone-check", action="store_true", help="skip the phone check on start (Q-25)")
     p_con.add_argument("--media-dir", type=Path, default=None,
                        help="folder with the customer's own video files for local-file jobs (Q-17)")
     p_con.add_argument("--no-jobs", action="store_true", help="do not claim clip jobs (P3.3)")
+    p_con.add_argument("--no-posts", action="store_true", help="do not take scheduled posts (P5, dry-run only)")
+    p_con.add_argument("--ui-rehearsal", action="store_true",
+                       help="in dry runs also check the account and type the caption in TikTok, then close it (Q-27)")
+    p_ui = sub.add_parser("ui-rehearsal", help="TikTok steps up to Post on the QA phone, then close (P5.4, Q-27)")
+    p_ui.add_argument("--serial", required=True)
+    p_ui.add_argument("--file", required=True, type=Path)
+    p_ui.add_argument("--caption", required=True)
+    p_ui.add_argument("--account", required=True, help="expected TikTok handle on this phone")
     p_reg = sub.add_parser("register-devices", help="register the ready phones on this PC with the server (P2.6)")
     p_reg.add_argument("--server", required=True)
     p_reg.add_argument("--username", required=True)
@@ -61,11 +87,21 @@ def main(argv: list[str] | None = None) -> int:
     p_reg.add_argument("--data-dir", type=Path, default=None)
     args = parser.parse_args(argv)
 
+    if args.cmd == "version":
+        from agent import __version__
+
+        print(__version__)
+        return 0
+    if args.cmd in ("login", "logout", "status", "install", "rollback"):
+        from agent import admin
+
+        return getattr(admin, args.cmd)(args)
     if args.cmd == "recover":
         return recover_all()
     if args.cmd == "connect":
         return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check,
-                       None if args.no_jobs else (args.media_dir or Path.cwd()))
+                       None if args.no_jobs else (args.media_dir or Path.cwd()), posts=not args.no_posts,
+                       ui_rehearsal=args.ui_rehearsal)
     if args.cmd == "register-devices":
         return register_devices(args.server, args.username, args.serial, args.data_dir)
 
@@ -81,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if report.ready else 1
         if args.cmd == "power":
             return power_command(adb, args.serial, args.action)
+        if args.cmd == "ui-rehearsal":
+            return ui_rehearsal(adb, args.serial, args.file, args.caption, args.account)
         return dry_run(adb, args.serial, args.file, args.cleanup, power_saving=not args.no_power_saving)
     except AdbError as exc:
         print(f"adb error: {exc}")
@@ -88,17 +126,31 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def connect(server: str, username: str, seconds: float | None, data_dir: Path | None,
-            phone_check: bool = True, media_dir: Path | None = None) -> int:
+            phone_check: bool = True, media_dir: Path | None = None, posts: bool = True,
+            ui_rehearsal: bool = False) -> int:
     """The token comes from CLIPFLOW_AGENT_TOKEN or a hidden prompt, never from argv (visible to other
     processes). Windows Credential Manager storage arrives with the installer (P5)."""
     import getpass
     import os
 
+    from agent.admin import setup_logging
+    from agent.credentials import CredentialError, load_config, load_token
     from agent.identity import AlreadyRunning, ProcessLock, default_data_dir, load_or_create_installation_id
     from agent.server_client import ServerClient, ServerError
 
     data_dir = data_dir or default_data_dir()
-    token = os.environ.get("CLIPFLOW_AGENT_TOKEN") or getpass.getpass("Agent token: ")
+    saved = load_config(data_dir)
+    server = server or (saved.server if saved else None)
+    username = username or (saved.username if saved else None)
+    if not server or not username:
+        print("run `login` first, or pass --server and --username")
+        return 2
+    try:
+        stored = load_token(data_dir)
+    except CredentialError:
+        stored = None
+    token = os.environ.get("CLIPFLOW_AGENT_TOKEN") or stored or getpass.getpass("Agent token: ")
+    setup_logging(data_dir)
     try:
         with ProcessLock(data_dir):
             installation_id = load_or_create_installation_id(data_dir)
@@ -109,10 +161,13 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
             sync = DeviceSync(lambda: Adb(default_runner())) if phone_check else None
             # P3.3: claim clip jobs and make them on this PC (one at a time).
             from agent.job_runner import JobRunner
+            from agent.post_runner import PostRunner
 
-            worker = JobRunner(data_dir, media_dir) if media_dir else None
+            workers = [JobRunner(data_dir, media_dir)] if media_dir else []
+            if posts:  # P5: scheduled posts, dry-run only (the server refuses Submit, E-40)
+                workers.append(PostRunner(data_dir, lambda: Adb(default_runner()), ui_rehearsal=ui_rehearsal))
             result = run_connection(ServerClient(server), username, token, installation_id, seconds,
-                                    on_session=sync, worker=worker)
+                                    on_session=sync, worker=workers)
             print(json.dumps({"heartbeats": result.heartbeats, "stopped_because": result.stopped_because},
                              ensure_ascii=False))
             return 0 if result.stopped_because == "duration_elapsed" else 1
@@ -158,6 +213,47 @@ def register_devices(server: str, username: str, only: str | None, data_dir: Pat
     except (OSError, ValueError, AdbError) as exc:
         print(f"error: {exc}")
         return 2
+
+
+def ui_rehearsal(adb: Adb, serial: str, clip: Path, caption: str, account: str) -> int:
+    """Everything a post needs in TikTok except pressing Post; TikTok is closed at the end (Q-27).
+
+    Prints the account read on the phone, whether visibility and caption were set exactly, and where
+    the screenshot of the ready-but-not-posted screen was saved (var/, never committed)."""
+    from agent.tiktok_ui import TikTokUi, UiStop, media_id
+
+    report = adb.doctor(serial)
+    if not report.ready:
+        print(json.dumps({"ready": False, "problems": report.problems}, ensure_ascii=False))
+        return 1
+    ui = TikTokUi(adb, report.serial)
+    remote = None
+    result: dict = {"stopped_before_post": True}
+    try:
+        remote = adb.push_verified(report.serial, clip, remote_name=f"cf_rehearsal_{uuid.uuid4().hex[:8]}.mp4")
+        if not adb.scan_and_find(report.serial, remote):
+            result["error"] = "GALLERY_NOT_FOUND"
+            return 1
+        found = media_id(adb, report.serial, remote.rsplit("/", 1)[-1])
+        result["account"] = ui.check_account(account)
+        ui.open_post_screen(found)
+        ui.set_only_me()
+        ui.type_caption(caption)
+        result.update(visibility="only_you", caption_exact=True)
+        shot = Path("var/evidence/phone") / f"ui_rehearsal_{uuid.uuid4().hex[:8]}.png"
+        shot.parent.mkdir(parents=True, exist_ok=True)
+        adb._run(["-s", report.serial, "pull", ui.screenshot(), str(shot)])
+        result["screenshot"] = str(shot)
+        return 0
+    except UiStop as exc:
+        result.update(error=exc.code, detail=exc.detail)
+        return 1
+    finally:
+        ui.close()  # TikTok is stopped: nothing is posted or kept
+        if remote:
+            adb.shell(report.serial, f"rm -f '{remote}' /sdcard/cf_check.png /sdcard/cf_ui.xml")
+            adb.shell(report.serial, f"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file://{remote}'")
+        print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def recover_all() -> int:

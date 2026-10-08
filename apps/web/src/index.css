@@ -204,3 +204,4 @@ a.btn { display: inline-block; text-decoration: none; }
   .cal-week { grid-template-columns: 1fr; }
   .cal-day { min-height: 0; }
 }
+.attention { border-color: #8a5a00; }
