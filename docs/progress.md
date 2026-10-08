@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: P4 — Scheduler, technical checks done (G4 5/5, awaiting sign-off). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = No (5/5 technical, no sign-off).
+## Current phase: P4 done — G4 = Yes (signed off 2026-10-08); next P5. G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes.
 
 Last updated: 2026-10-07
 
@@ -8,8 +8,8 @@ Last updated: 2026-10-07
 - Implemented: `test_dispatch_load.py` (opt-in `CLIPFLOW_LOAD=1`); `GET /v1/schedule-items?start&end` (ทุก series, เวลานัด/เวลาจริงแยกกัน, `queued_behind`, `delay_s`); หน้า `/schedule` รายสัปดาห์ + รายการ (เมนู "ตารางโพสต์")
 - Commands: load test: 150 โทรศัพท์ / 300 โพสต์ → 100% ภายใน 60 วินาที, p95 14.3 วินาที, 0 error (E-41); integration 167 passed / 6 skipped (load test เป็น opt-in); unit 147; E2E 8 (schedule journey ตรวจหน้าปฏิทิน); ruff/oxlint/tsc/build ผ่าน
 - Found: load test รอบแรกมี error 356 ครั้ง — สาเหตุคือ harness ล็อกอิน Agent ตอน setup แล้วรอหลายนาทีจน session หมดอายุ (TTL 90 วินาที) ไม่ใช่ Server; แก้ให้ล็อกอินตอน Agent เริ่ม (เหมือน `agent.cli connect`)
-- Gates: G4 technical 5/5 Yes — รอผู้อนุมัติ (Backend Lead + QA)
-- Next: G4 sign-off; P5 Agent ฝั่งโพสต์ (dry-run บนโทรศัพท์จริงผ่าน claim → transfer → gallery → DRY_RUN_DONE, poll ≤ 15 วินาที), resolve UNKNOWN
+- Gates: **G4 = Yes** — PO ปิยศักดิ์ อนุมัติในแชท 2026-10-08 (5/5)
+- Next: P5 Agent ฝั่งโพสต์ (dry-run บนโทรศัพท์จริงผ่าน claim → transfer → gallery → DRY_RUN_DONE, poll ≤ 15 วินาที), resolve UNKNOWN
 
 ### Previous slice (2026-10-08 14:xx) — P4.4 pause/resume (server preview) + edit unstarted posts
 - Implemented: `schedules.shift_plan/apply_shift` (เลื่อนรักษาระยะ — ใช้ร่วมกับนโยบายออฟไลน์), `pause`, `resume_plan`/`resume` (expected_version), `edit_item` (version, อนาคต, Window, คงลำดับคลิป); routes `/v1/schedules/{id}/pause`, `/resume/preview`, `/resume`, `PATCH /v1/schedule-items/{id}`; เว็บ: ปุ่มหยุดชั่วคราว/ทำงานต่อ (dialog แสดงการเลื่อนจาก Server), แก้เวลารายการ; test helpers ย้ายไป `conftest.py` (`real_clip`, `shop`) และ `api_test_shop.py`

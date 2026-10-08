@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-G0 and G3 are Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. G2 is No (3/5). P4 (the scheduler) is in progress; P2-P4 were started under PO overrides Q-22/Q-24/Q-26. Clips are 3–5 minutes (D02). The QA machine is this PC, with one phone model (POCO 25078PC3EG). What exists:
+G0, G3 and G4 are Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. G2 is No (3/5): no release or pilot. P5 (Agent posting) is next; P2-P4 were started under PO overrides Q-22/Q-24/Q-26. Clips are 3–5 minutes (D02). The QA machine is this PC, with one phone model (POCO 25078PC3EG). What exists:
 - `PRD_CLAUDE_CODE.md`: the product source of truth. Sections A–N are the implementation contract; section O is the full Thai PRD with the 47 gate checks and UAT cases. The `.docx` is the original and duplicates section O.
 - `docs/`: progress (read first), architecture, decisions (D/Q/E registers, including PO answers from 2026-10-06), requirements-map, ui-map, backlog, compatibility (real source/device results), and `gates/G0–G8.md`.
 - `services/worker/clipflow_worker/`: the P1 media POC.
