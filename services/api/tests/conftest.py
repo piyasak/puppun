@@ -71,8 +71,16 @@ def migrated_url(database_url):
 
 
 @pytest.fixture(scope="session")
-def storage(tmp_path_factory):
-    return LocalStorage(tmp_path_factory.mktemp("storage"), "http://testserver", b"test-media-signing-key")
+def api_port():
+    """Port of the real HTTP server (server_url); preview links point there so Agents can download."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="session")
+def storage(tmp_path_factory, api_port):
+    return LocalStorage(tmp_path_factory.mktemp("storage"), f"http://127.0.0.1:{api_port}", b"test-media-signing-key")
 
 
 @pytest.fixture(scope="session")
@@ -123,10 +131,8 @@ def onboard(client):
 
 # Real HTTP server on 127.0.0.1 for tests that use the Agent's own client.
 @pytest.fixture(scope="session")
-def server_url(app):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
+def server_url(app, api_port):
+    port = api_port
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -156,3 +162,35 @@ def shop(onboard, client, real_clip):
     from api_test_shop import Shop
 
     return Shop(onboard(), client, real_clip)
+
+
+# Live posting mode exists only here, to drive post-Submit states with simulated Agents (E-40).
+@pytest.fixture(scope="session")
+def live_app(migrated_url, storage):
+    settings = Settings(app_env="test", database_url=migrated_url, supabase_url=SUPABASE_URL,
+                        agent_auth_rate_per_minute=10_000)
+    return create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key(), storage=storage,
+                      posting_mode="live")
+
+
+@pytest.fixture(scope="session")
+def live_client(live_app):
+    return TestClient(live_app)
+
+
+@pytest.fixture(scope="session")
+def live_server_url(live_app):
+    """The live-mode app over real HTTP, for Agent code that posts (simulated phone/UI, or Q-29)."""
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(live_app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=5)

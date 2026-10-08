@@ -159,7 +159,7 @@ class Adb:
             report.problems.append("sha256sum not available; cannot verify transfers")
         return report
 
-    def push_verified(self, serial: str, local: Path, remote_dir: str = REMOTE_DIR) -> str:
+    def push_verified(self, serial: str, local: Path, remote_dir: str = REMOTE_DIR, remote_name: str | None = None) -> str:
         """Push to a hidden staging name, verify SHA-256 on the device, then rename into place.
 
         P1 real-device fault test: killing the Agent mid-push left `adb push` running
@@ -171,7 +171,7 @@ class Adb:
         expected = hashlib.sha256(local.read_bytes()).hexdigest()
         staging_dir = f"{remote_dir}/{STAGING_DIR}"
         staging = f"{staging_dir}/{uuid.uuid4().hex}.part"
-        remote = f"{remote_dir}/{local.name}"
+        remote = f"{remote_dir}/{remote_name or local.name}"
         self.shell(serial, f"mkdir -p '{staging_dir}' && touch '{staging_dir}/.nomedia'")
         self._run(["-s", serial, "push", str(local), staging])
         output = self.shell(serial, f"sha256sum '{staging}'").split()

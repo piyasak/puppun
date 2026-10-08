@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-AGENT_VERSION = "0.1.0"
+from agent import __version__ as AGENT_VERSION  # noqa: E402,N812
 
 
 class ServerError(Exception):
@@ -106,6 +106,25 @@ class ServerClient:
             return self._send("PUT", f"/v1/agent/jobs/{job_id}/clips/{index}/file", fh, "video/mp4",
                               session.token, {"Content-Length": str(size)}, timeout_s=max(60.0, size / 1e6))
 
+    def claim_post(self, session: Session, ready_serials: list[str]) -> dict | None:
+        return self._post("/v1/agent/posts/claim", {"ready_serials": ready_serials}, bearer=session.token)["post"]
+
+    def post_event(self, session: Session, post_id: str, event: dict) -> dict:
+        return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)
+
+    def download(self, url: str, dest: Path, timeout_s: float = 300.0) -> None:
+        """Fetch a short-lived signed link the server handed out (no Agent credentials are sent)."""
+        parts = urlsplit(url)
+        if parts.scheme not in ("http", "https"):
+            raise ValueError("download link must be http(s)")
+        req = urllib.request.Request(url, headers={"User-Agent": f"ClipFlowAgent/{AGENT_VERSION}"})
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp, open(tmp, "wb") as out:
+            while chunk := resp.read(1024 * 1024):
+                out.write(chunk)
+        tmp.replace(dest)
+
     def end(self, session: Session) -> None:
         # Best effort; the server expires the session after 90 s anyway.
         with contextlib.suppress(ServerError, OSError):
@@ -139,8 +158,9 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
     log(f"connected: environment={session.environment['name']} generation={session.generation}")
     if on_session:
         on_session(client, session)
-    if worker:
-        worker.start(client, lambda: current[0])
+    workers = [] if worker is None else worker if isinstance(worker, list) else [worker]
+    for w in workers:
+        w.start(client, lambda: current[0])
     started, beats, reauthed = clock(), 0, False
     last_check = clock()
     try:
@@ -163,6 +183,6 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
                 return RunResult(beats, exc.reason or exc.code, session.environment)
         return RunResult(beats, "duration_elapsed", session.environment)
     finally:
-        if worker:
-            worker.stop()
+        for w in workers:
+            w.stop()
         client.end(session)

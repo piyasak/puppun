@@ -44,7 +44,9 @@ class Shop:
         self.acc, self.clip_bytes = acc, clip_bytes
         self.env = acc.post("/v1/environments", json={"name": f"office-{uuid.uuid4().hex[:6]}",
                                                       "device_limit": devices}).json()
-        token = self.token = acc.post("/v1/agent-tokens", json={"environment_id": self.env["id"], "name": "pc"}).json()["token"]
+        created = acc.post("/v1/agent-tokens", json={"environment_id": self.env["id"], "name": "pc"}).json()
+        token = self.token = created["token"]
+        self.token_id = created["id"]
         self.w = Worker(client, acc.username, token)
         assert self.w.auth().status_code == 200
         self.devices = [self.phone(f"handle{i}") for i in range(devices)]

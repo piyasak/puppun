@@ -6,6 +6,7 @@ const NAV = [
   { to: '/', label: 'แดชบอร์ด', end: true },
   { to: '/create', label: 'สร้างงาน' },
   { to: '/jobs', label: 'งานผลิตคลิป' },
+  { to: '/schedule', label: 'ตารางโพสต์' },
   { to: '/environments', label: 'Environments' },
   { to: '/agent-tokens', label: 'Agent Token' },
   { to: '/agents', label: 'Agent' },
