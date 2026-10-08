@@ -175,6 +175,8 @@ def test_clip_that_failed_checks_cannot_be_approved(ws):
     junk = b"not a video at all"
     clip = delivered(ws, ws.new_job(), junk)
     assert clip["check_status"] == "failed"
+    # No server paths in what the customer sees (ffprobe's error names the server's temp file).
+    assert clip["checks"]["checks"] == [{"name": "readable", "ok": False, "detail": "not a readable video file"}]
     resp = ws.post(f"/v1/clips/{clip['id']}/approve", json={"metadata_version": 1})
     assert resp.status_code == 409 and resp.json()["code"] == "CHECKS_FAILED"
 

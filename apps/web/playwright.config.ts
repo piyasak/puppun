@@ -37,6 +37,9 @@ export default defineConfig({
         DATABASE_URL: env.E2E_DATABASE_URL ?? '',
         SUPABASE_URL: supabaseUrl,
         WEB_ORIGIN: 'http://127.0.0.1:5173',
+        // Clip files from the simulated Agent; previews are signed links to this API.
+        STORAGE_DIR: 'var/storage-e2e',
+        PUBLIC_API_BASE: 'http://127.0.0.1:8001',
       },
     },
     {

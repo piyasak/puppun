@@ -7,6 +7,9 @@ import { EnvironmentsPage } from './pages/EnvironmentsPage'
 import { TokensPage } from './pages/TokensPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { DevicesPage } from './pages/DevicesPage'
+import { CreateJobPage } from './pages/CreateJobPage'
+import { JobsPage } from './pages/JobsPage'
+import { JobDetailPage } from './pages/JobDetailPage'
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth()
@@ -29,6 +32,9 @@ export default function App() {
           <Route path="/agent-tokens" element={<RequireSession><TokensPage /></RequireSession>} />
           <Route path="/agents" element={<RequireSession><AgentsPage /></RequireSession>} />
           <Route path="/devices" element={<RequireSession><DevicesPage /></RequireSession>} />
+          <Route path="/create" element={<RequireSession><CreateJobPage /></RequireSession>} />
+          <Route path="/jobs" element={<RequireSession><JobsPage /></RequireSession>} />
+          <Route path="/jobs/:id" element={<RequireSession><JobDetailPage /></RequireSession>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

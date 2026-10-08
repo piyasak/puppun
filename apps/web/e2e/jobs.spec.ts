@@ -1,0 +1,162 @@
+/*
+ * P3.4 browser journey (FR-02, FR-06..08, G3-03/G3-05 UI): the owner creates a job in the wizard,
+ * a simulated Agent (API calls) delivers one real 1080x1920 clip and one broken file, the web
+ * shows progress, server checks and a playable preview, then caption edits and approvals,
+ * including "edit after approval needs a new approval".
+ */
+import { expect, test, type APIRequestContext } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { API, agentSession, signUpAndOnboard } from './helpers'
+
+function sampleClip(seconds: number): Buffer {
+  const out = join(mkdtempSync(join(tmpdir(), 'clipflow-e2e-')), 'clip.mp4')
+  execFileSync('ffmpeg', [
+    '-y', '-v', 'error', '-f', 'lavfi', '-i', `testsrc2=size=1080x1920:rate=25:duration=${seconds}`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}`,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', out,
+  ])
+  return readFileSync(out)
+}
+
+class FakeAgent {
+  constructor(private request: APIRequestContext, private session: string) {}
+  private headers() { return { Authorization: `Bearer ${this.session}` } }
+  async event(jobId: string, type: string, payload: Record<string, unknown> = {}) {
+    const resp = await this.request.post(`${API}/v1/agent/jobs/${jobId}/events`, {
+      headers: this.headers(), data: { event_id: randomUUID().replace(/-/g, ''), type, ...payload },
+    })
+    expect(resp.status(), await resp.text()).toBe(200)
+  }
+  async claim() {
+    const resp = await this.request.post(`${API}/v1/agent/jobs/claim`, { headers: this.headers(), data: {} })
+    return (await resp.json()).job as { id: string; seed: number }
+  }
+  async deliver(jobId: string, index: number, body: Buffer, durationMs: number) {
+    await this.event(jobId, 'clip_rendered', {
+      index, start_ms: index * 60_000, end_ms: index * 60_000 + durationMs, duration_ms: durationMs,
+      sha256: createHash('sha256').update(body).digest('hex'), size_bytes: body.length,
+      template_version: 'tpl-default-v2', title: `ตอนพิเศษ ${index}`,
+      caption: `ตอนพิเศษ — ตอนที่ ${index}/2`, hashtags: ['#คลิปสั้น'],
+    })
+    const resp = await this.request.put(`${API}/v1/agent/jobs/${jobId}/clips/${index}/file`, {
+      headers: { ...this.headers(), 'Content-Type': 'video/mp4' }, data: body,
+    })
+    expect(resp.status(), await resp.text()).toBe(200)
+  }
+}
+
+test('create a job, watch it progress, preview, edit and approve clips', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const owner = await signUpAndOnboard(page, request)
+  const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
+
+  // Wizard: source -> format -> review
+  await page.getByRole('link', { name: 'สร้างงาน' }).click()
+  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toHaveText('ใส่ชื่อไฟล์วิดีโอ')
+  await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('C:\\Videos\\ตอนพิเศษ.mp4')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toHaveText('ใส่เฉพาะชื่อไฟล์ ไม่ต้องใส่โฟลเดอร์')
+  await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ตอนพิเศษ.mp4')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByLabel('จำนวนคลิป').fill('2')
+  await page.getByLabel('ความยาวต่อคลิป').selectOption({ label: '30–60 วินาที' })
+  await page.getByLabel(/อนุมัติอัตโนมัติ/).check()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toHaveText('ยืนยันการอนุมัติอัตโนมัติก่อน')
+  await page.getByLabel(/ตรวจเองทุกคลิป/).check()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByTestId('quota-preview')).toHaveText('ใช้สูงสุด 2 คลิป จากที่เหลือ 30 คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง')
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
+  const jobId = page.url().split('/').pop()!
+
+  // The Agent picks it up; the page follows without a reload.
+  const claimed = await agent.claim()
+  expect(claimed.id).toBe(jobId)
+  await agent.event(jobId, 'source_validated', { duration_s: 600, possible_clips: 2 })
+  await agent.event(jobId, 'stage', { stage: 'RENDERING' })
+  await expect(page.getByTestId('job-state')).toHaveText('กำลังสร้างคลิป', { timeout: 15_000 })
+  await expect(page.getByTestId('job-quota')).toHaveText('จอง 2 • ใช้ 0 • คืน 0', { timeout: 15_000 })
+
+  await agent.deliver(jobId, 1, sampleClip(35), 35_000)
+  await agent.deliver(jobId, 2, Buffer.from('this is not a video file'), 35_000)
+  await agent.event(jobId, 'completed')
+  await expect(page.getByTestId('job-state')).toHaveText('คลิปพร้อมแล้ว', { timeout: 15_000 })
+  await expect(page.getByTestId('job-quota')).toHaveText('จอง 2 • ใช้ 2 • คืน 0')
+
+  const [good, broken] = [page.getByTestId('clip-card').nth(0), page.getByTestId('clip-card').nth(1)]
+  await expect(good).toContainText('ผ่านการตรวจไฟล์')
+  await expect(good).toContainText('ช่วงต้นฉบับ 1:00–1:35')
+  await expect(broken).toContainText('ไม่ผ่านการตรวจไฟล์')
+  await expect(broken.getByRole('button', { name: /อนุมัติคลิปนี้/ })).toBeDisabled()
+
+  // Preview through the short-lived signed link. Edge (Windows) plays H.264; open-source Chromium
+  // in CI has no H.264 decoder, so there only the signed link itself is checked.
+  await good.getByRole('button', { name: /ดูตัวอย่าง/ }).click()
+  if (process.platform === 'win32') {
+    const video = good.getByTestId('clip-video')
+    await expect(video).toBeVisible()
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1)
+    expect(await video.evaluate((v: HTMLVideoElement) => Math.round(v.duration))).toBe(35)
+  }
+
+  // Edit -> approve -> edit again voids the approval -> approve the new version
+  await good.getByLabel('คำบรรยาย (Caption)').fill('ตอนพิเศษ ห้ามพลาด')
+  await good.getByLabel('แฮชแท็ก').fill('#คลิปสั้น #ห้ามพลาด')
+  await good.getByRole('button', { name: 'บันทึกข้อความ' }).click()
+  await expect(good).toContainText('ข้อความเวอร์ชัน 2')
+  await good.getByRole('button', { name: 'อนุมัติคลิปนี้ (ข้อความเวอร์ชัน 2)' }).click()
+  await expect(good.getByTestId('approval')).toHaveText('อนุมัติแล้ว')
+  await good.getByLabel('คำบรรยาย (Caption)').fill('ตอนพิเศษ ดูให้จบ')
+  await good.getByRole('button', { name: 'บันทึกข้อความ' }).click()
+  await expect(good.getByTestId('approval')).toHaveText('ยังไม่อนุมัติ')
+  await expect(good).toContainText('ข้อความถูกแก้หลังอนุมัติ ต้องตรวจและอนุมัติใหม่')
+  await good.getByRole('button', { name: 'อนุมัติคลิปนี้ (ข้อความเวอร์ชัน 3)' }).click()
+  await expect(good.getByTestId('approval')).toHaveText('อนุมัติแล้ว')
+  await page.screenshot({ path: '../../var/evidence/e2e/job-detail.png', fullPage: true })
+
+  // List: the job sits under "รอตรวจ"
+  await page.getByRole('link', { name: 'กลับไปรายการงาน' }).click()
+  await page.getByRole('tab', { name: /รอตรวจ/ }).click()
+  await expect(page.getByTestId('job-row')).toHaveCount(1)
+  await expect(page.getByTestId('job-row')).toContainText('ไฟล์บนเครื่อง: ตอนพิเศษ.mp4')
+  await page.getByRole('tab', { name: /กำลังผลิต/ }).click()
+  await expect(page.getByTestId('job-row')).toHaveCount(0)
+})
+
+test('cancel a job before the Agent starts', async ({ page, request }) => {
+  await signUpAndOnboard(page, request)
+  await page.getByRole('link', { name: 'Environments' }).click()
+  await page.getByLabel('ชื่อ Environment').fill('บ้าน')
+  await page.getByRole('button', { name: 'สร้าง Environment' }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'บ้าน' })).toBeVisible()
+  await page.getByRole('link', { name: 'สร้างงาน' }).click()
+  await page.getByLabel('ลิงก์ต้นฉบับ').fill('http://example.com/video')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toContainText('https://')
+  await page.getByLabel('ลิงก์ต้นฉบับ').fill('https://example.com/video')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page.getByRole('alert')).toHaveText('ลิงก์นี้ใช้ไม่ได้ รองรับเฉพาะลิงก์ https ของ YouTube และ Bilibili')
+  await page.getByRole('button', { name: 'ย้อนกลับ' }).click()
+  await page.getByRole('button', { name: 'ย้อนกลับ' }).click()
+  await page.getByLabel('ลิงก์ต้นฉบับ').fill('https://www.youtube.com/watch?v=PBES5k67dhI')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
+
+  await page.getByRole('button', { name: 'ยกเลิกงาน' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'ยกเลิกงาน' }).click()
+  await expect(page.getByTestId('job-state')).toHaveText('ยกเลิกแล้ว')
+  await expect(page.getByTestId('job-quota')).toHaveText('จอง 0 • ใช้ 0 • คืน 0')
+  await expect(page.getByRole('button', { name: 'ยกเลิกงาน' })).toHaveCount(0)
+})

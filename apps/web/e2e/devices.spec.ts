@@ -3,28 +3,9 @@
  * phone, the web shows it, the owner sets the expected TikTok account, a second Workspace
  * cannot take the phone, and unbinding releases it.
  */
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 import { randomUUID } from 'node:crypto'
-import { signUpAndOnboard } from './helpers'
-
-const API = 'http://127.0.0.1:8001'
-
-async function agentSession(page: Page, request: APIRequestContext, username: string) {
-  await page.getByRole('link', { name: 'Environments' }).click()
-  await page.getByLabel('ชื่อ Environment').fill('หน้าร้าน')
-  await page.getByRole('button', { name: 'สร้าง Environment' }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'หน้าร้าน' })).toBeVisible()
-  await page.getByRole('link', { name: 'Agent Token' }).click()
-  await page.getByLabel('ชื่อ Token').fill('PC')
-  await page.getByRole('button', { name: 'สร้าง Token' }).click()
-  const token = await page.getByTestId('new-token').inputValue()
-  await page.getByRole('button', { name: 'ฉันเก็บ Token แล้ว' }).click()
-  const resp = await request.post(`${API}/v1/agent/authenticate`, {
-    data: { username, token, installation_id: randomUUID() },
-  })
-  expect(resp.status()).toBe(200)
-  return (await resp.json()).session_token as string
-}
+import { API, agentSession, signUpAndOnboard } from './helpers'
 
 function registerPhone(request: APIRequestContext, session: string, serial: string, state = 'device') {
   return request.post(`${API}/v1/agent/devices/register`, {
