@@ -17,7 +17,7 @@ def env(acc, name, agents=1, sessions=1, devices=1):
 
 def test_new_workspace_is_on_the_demo_plan(onboard):
     usage = onboard().get("/v1/workspace/usage").json()
-    assert usage["plan"]["code"] == "trial" and usage["plan"]["is_demo"] and usage["plan"]["status"] == "active"
+    assert usage["plan"]["code"] == "trial" and usage["plan"]["is_demo"] and usage["plan"]["status"] == "trial"  # a new Workspace starts on a trial cycle (E-45)
     assert usage["caps"] == {"registered_agent_limit": 2, "concurrent_session_limit": 2, "device_limit": 3}
     assert usage["allocated"] == {"registered_agent_limit": 0, "concurrent_session_limit": 0, "device_limit": 0}
 

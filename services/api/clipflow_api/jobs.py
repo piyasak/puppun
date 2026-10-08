@@ -21,8 +21,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import clips, quota
+from . import billing, clips, quota
 from .agent_sessions import AgentContext
+from .entitlements import entitlement
 from .errors import ApiError
 from .models import Clip, Environment, Job, JobEvent, RightsAcceptance
 from .sources import check_file_label, classify_url
@@ -65,6 +66,7 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
     else:
         raise ApiError(422, "VALIDATION_ERROR", "ต้องระบุแหล่งที่มาเป็นลิงก์หรือไฟล์บนเครื่อง Agent")
 
+    billing.require_active(entitlement(db, workspace_id).cycle)  # an expired subscription makes no new jobs
     # Early, friendly check; the binding reservation happens when the clip count is known (E-04).
     if quota.summary(db, workspace_id, now())["available"] <= 0:
         raise ApiError(409, "QUOTA_EXHAUSTED", "โควตาคลิปของเดือนนี้หมดแล้ว")

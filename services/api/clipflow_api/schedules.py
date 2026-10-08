@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from . import clips as clip_rules
 from . import slots
+from .entitlements import entitlement
 from .errors import ApiError
 from .models import Clip, Device, Job, ScheduleItem, ScheduleSeries
 from .tenancy import get_owned
@@ -344,4 +345,6 @@ def dispatchable(db: Session, item: ScheduleItem, *, expected_state: str = "SCHE
     device = db.get(Device, item.device_id)
     if device.unbound_at is not None:
         return "DEVICE_UNBOUND"
+    if not entitlement(db, item.workspace_id).cycle.active:
+        return "SUBSCRIPTION_INACTIVE"  # waits (not parked): renewing lets it run under the usual late rules
     return None

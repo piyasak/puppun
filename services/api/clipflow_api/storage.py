@@ -26,6 +26,8 @@ class Storage(Protocol):
 
     def exists(self, key: str) -> bool: ...
 
+    def delete(self, key: str) -> None: ...
+
 
 class LocalStorage:
     def __init__(self, root: Path, api_base: str, signing_key: bytes):
@@ -44,6 +46,9 @@ class LocalStorage:
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
+
+    def delete(self, key: str) -> None:
+        self._path(key).unlink(missing_ok=True)
 
     def sign(self, key: str, expires: int) -> str:
         return hmac.new(self._key, f"{key}|{expires}".encode(), hashlib.sha256).hexdigest()
@@ -79,6 +84,9 @@ class S3Storage:
             return True
         except self._s3.exceptions.ClientError:
             return False
+
+    def delete(self, key: str) -> None:
+        self._s3.delete_object(Bucket=self.bucket, Key=key)
 
     def preview_url(self, key: str, ttl_s: int) -> str:
         return self._s3.generate_presigned_url("get_object", Params={"Bucket": self.bucket, "Key": key},

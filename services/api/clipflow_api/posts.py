@@ -140,8 +140,8 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str]) -> ScheduleI
         if phone is None or _busy(db, phone.id):
             continue
         reason = schedules.dispatchable(db, item)
-        if reason == "SERIES_NOT_ACTIVE":
-            continue  # paused: waits, keeps its slot rules
+        if reason in ("SERIES_NOT_ACTIVE", "SUBSCRIPTION_INACTIVE"):
+            continue  # paused or not paid: waits, keeps its slot rules
         if reason:
             _move(item, "NEEDS_ACTION", reason, at)
             continue

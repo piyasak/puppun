@@ -54,7 +54,9 @@ def test_not_onboarded_user_cannot_reach_tenant_resources(client):
 
 def test_every_customer_table_carries_a_non_null_workspace_id():
     """PRD §F: tenant-owned rows have workspace_id. Global tables are listed explicitly."""
-    global_tables = {"workspaces", "users", "plans"}
+    # payment_events is the provider's log: an event can arrive before (or without) a known payment,
+    # so it is global and reaches a Workspace only through payments (E-45).
+    global_tables = {"workspaces", "users", "plans", "payment_events"}
     nullable_by_design = {AuditEvent.__tablename__}  # system events may have no workspace
     for table in Base.metadata.sorted_tables:
         if table.name in global_tables:

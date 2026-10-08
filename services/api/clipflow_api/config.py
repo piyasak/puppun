@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     media_signing_key: str = ""  # HMAC key for local preview links; random per process when empty
     preview_ttl_s: int = 300
     max_clip_bytes: int = 512 * 1024 * 1024
+    # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is
+    # "production". The secret signs/verifies sandbox webhooks; random per process when empty.
+    billing_sandbox_secret: str = ""
 
     @property
     def supabase_issuer(self) -> str:

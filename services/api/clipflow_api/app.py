@@ -20,7 +20,20 @@ from .config import Settings, get_settings
 from .db import Database
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
 from .ratelimit import SlidingWindow
-from .routers import agent, agent_tokens, agents, auth, clips, devices, environments, jobs, posts, schedules
+from .routers import (
+    admin,
+    agent,
+    agent_tokens,
+    agents,
+    auth,
+    billing,
+    clips,
+    devices,
+    environments,
+    jobs,
+    posts,
+    schedules,
+)
 from .storage import LocalStorage, S3Storage, Storage
 
 log = logging.getLogger("clipflow.api")
@@ -93,6 +106,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(schedules.web_router)
     app.include_router(schedules.items_router)
     app.include_router(posts.agent_router)
+    app.include_router(billing.router)
+    app.include_router(admin.router)
 
     @app.get("/healthz")
     def healthz():

@@ -11,6 +11,8 @@ import { CreateJobPage } from './pages/CreateJobPage'
 import { JobsPage } from './pages/JobsPage'
 import { JobDetailPage } from './pages/JobDetailPage'
 import { SchedulePage } from './pages/SchedulePage'
+import { BillingPage, SandboxPayPage } from './pages/BillingPage'
+import { AdminPage } from './pages/AdminPage'
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth()
@@ -37,6 +39,9 @@ export default function App() {
           <Route path="/jobs" element={<RequireSession><JobsPage /></RequireSession>} />
           <Route path="/jobs/:id" element={<RequireSession><JobDetailPage /></RequireSession>} />
           <Route path="/schedule" element={<RequireSession><SchedulePage /></RequireSession>} />
+          <Route path="/billing" element={<RequireSession><BillingPage /></RequireSession>} />
+          <Route path="/billing/sandbox/:id" element={<RequireSession><SandboxPayPage /></RequireSession>} />
+          <Route path="/admin" element={<RequireSession><AdminPage /></RequireSession>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

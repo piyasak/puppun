@@ -205,3 +205,20 @@ a.btn { display: inline-block; text-decoration: none; }
   .cal-day { min-height: 0; }
 }
 .attention { border-color: #8a5a00; }
+
+/* P6: billing */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 12px; }
+.plan { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.plan h3 { margin: 0; font-size: 1.05rem; }
+.plan-price { font-size: 1.6rem; font-weight: 600; margin: 0; }
+.plan-limits { margin: 0; padding-left: 18px; color: var(--muted); font-size: 0.9rem; }
+.plan .btn { margin-top: auto; }
+
+/* P6.4: admin */
+.admin-search { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+.admin-search input, .admin-action input, .admin-action select { font: inherit; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.admin-search input { flex: 1; min-width: 200px; }
+.admin-actions { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.admin-action { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.admin-action input[type=number] { width: 90px; }
+.admin-action input:not([type=number]) { flex: 1; min-width: 220px; }

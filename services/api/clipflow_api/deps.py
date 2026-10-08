@@ -60,3 +60,23 @@ def web_auth(who: Identity = Depends(identity), db: Session = Depends(get_db)) -
     if member is None:
         raise ApiError(403, "ONBOARDING_REQUIRED", "กรุณาตั้งค่าบัญชีและ Workspace ให้เสร็จก่อน")
     return WebAuth(user.id, member.workspace_id, member.role)
+
+
+@dataclass(frozen=True)
+class StaffAuth:
+    user_id: uuid.UUID
+    role: str  # admin | support
+
+
+def staff(who: Identity = Depends(identity), db: Session = Depends(get_db)) -> StaffAuth:
+    """Platform staff only (E-46). Everyone else gets the same 404 as an unknown path."""
+    user = db.get(User, who.user_id)
+    if user is None or user.platform_role not in ("admin", "support"):
+        raise ApiError(404, "NOT_FOUND", "ไม่พบหน้านี้")
+    return StaffAuth(user.id, user.platform_role)
+
+
+def admin_only(who: StaffAuth = Depends(staff)) -> StaffAuth:
+    if who.role != "admin":
+        raise ApiError(403, "ADMIN_ONLY", "สิทธิ์ Support ดูได้อย่างเดียว")
+    return who
