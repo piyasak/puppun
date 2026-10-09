@@ -13,11 +13,19 @@ import { JobDetailPage } from './pages/JobDetailPage'
 import { SchedulePage } from './pages/SchedulePage'
 import { BillingPage, SandboxPayPage } from './pages/BillingPage'
 import { AdminPage } from './pages/AdminPage'
+import { LandingPage } from './pages/LandingPage'
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { session, ready } = useAuth()
   if (!ready) return <p className="muted center" role="status">กำลังโหลด…</p>
   return session ? children : <Navigate to="/login" replace />
+}
+
+/** `/` is the marketing page for visitors and the dashboard once signed in. */
+function HomeOrLanding() {
+  const { session, ready } = useAuth()
+  if (!ready) return <p className="muted center" role="status">กำลังโหลด…</p>
+  return session ? <HomePage /> : <LandingPage />
 }
 
 export default function App() {
@@ -31,7 +39,7 @@ export default function App() {
           <Route path="/reset" element={<ResetPage />} />
           <Route path="/auth/confirm" element={<ConfirmPage />} />
           <Route path="/onboarding" element={<RequireSession><OnboardingPage /></RequireSession>} />
-          <Route path="/" element={<RequireSession><HomePage /></RequireSession>} />
+          <Route path="/" element={<HomeOrLanding />} />
           <Route path="/environments" element={<RequireSession><EnvironmentsPage /></RequireSession>} />
           <Route path="/agent-tokens" element={<RequireSession><TokensPage /></RequireSession>} />
           <Route path="/agents" element={<RequireSession><AgentsPage /></RequireSession>} />

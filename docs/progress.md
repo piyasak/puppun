@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 12:xx) — UI theme "Linear / Modern" (E-47), steps 1–2
+### Latest slice (2026-10-09 13:xx) — marketing landing page (E-48)
+- PO: landing ที่ `/` สำหรับผู้เยี่ยมชม, ไม่แสดงราคา, กลุ่ม SME/ครีเอเตอร์/เอเจนซี่; PR #4 merge แล้ว → เปิด PR #5 สำหรับ `8ae381f` + `a742308`
+- Implemented: `LandingPage.tsx`, `landing.css`, route `/` = landing (ไม่เข้าระบบ) / แดชบอร์ด (เข้าระบบ), SEO + OG meta; hero เป็นภาพ UI จริง (โทรศัพท์ 9:16 + การ์ดอนุมัติ + ตารางโพสต์) ไม่ใช่ภาพ stock
+- Found + fixed: หัวข้อไทยตัดบรรทัดกลางวลี (ไม่มีช่องว่าง) → จัดกลุ่มวลีไม่ให้แยก; ปุ่มบน nav มือถือขึ้นสองบรรทัด (กฎ a.btn ชนะ) → แก้; การ์ดลอยบังซับในภาพโทรศัพท์ → ย้าย; ภาพหน้าจอ landing ถูกทับโดยแดชบอร์ด (path `/` เดียวกัน) → แยกชื่อ
+- Commands: E2E 14 passed (quality: landing ผ่าน axe ทั้งสองธีม, 360px, ซูม 200%; auth: `/jobs` ต้องเข้าระบบ + landing CTA → `/signup`), build + bundle check ผ่าน
+- Next: PO ตรวจข้อความ/ภาพ; โดเมนจริง (D01) ก่อนโปรโมต; ขั้น 3–4 ของธีมในแอป
+
+### Previous slice (2026-10-09 12:xx) — UI theme "Linear / Modern" (E-47), steps 1–2
 - PO: ให้ `uithem.txt` + เลือก มืดเป็นหลัก/ปุ่มสลับสว่าง, ขั้น 1–2, effect พอดี
 - Implemented: `index.css` เขียนใหม่เป็น token (มืด/สว่าง), ปุ่ม/ช่องกรอก/การ์ด/ป้ายสถานะ (จุดเรืองแสง + ข้อความ)/dialog/ตาราง/ปฏิทิน; `ThemeToggle.tsx`; `Shell.tsx` เมนูข้างแบบ sticky + ปุ่มเมนูมือถือ (aria-expanded, Esc, ปิดเมื่อเปลี่ยนหน้า); Inter + IBM Plex Sans Thai; แสงพื้นหลังนิ่ง + grid, แสงเคลื่อนไหวเฉพาะหน้า login; reduced-motion/forced-colors
 - Found + fixed: แสงพื้นหลังไม่แสดงเพราะ :root มี background ทำให้ body ทาสีทับ layer z-index -1; พื้นหลัง fixed ทำให้ภาพเต็มหน้าขาดที่ 800px; สี 2 คู่ไม่ผ่าน contrast (hover ปุ่มหลัก 4.2, ขอบช่องกรอก 1.57) → ปรับ

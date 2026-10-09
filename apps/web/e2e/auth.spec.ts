@@ -91,7 +91,11 @@ test('sign up, confirm, onboard, reset password', async ({ page, request }) => {
   await expect(page.getByRole('link', { name: 'ขอลิงก์ใหม่' })).toBeVisible()
 })
 
-test('dashboard requires a session', async ({ page }) => {
-  await page.goto('/')
+test('working pages require a session; visitors see the landing page at /', async ({ page }) => {
+  await page.goto('/jobs')
   await expect(page).toHaveURL(/\/login$/)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('ตัดวิดีโอยาว')
+  await page.getByRole('link', { name: 'ทดลองใช้ฟรี 30 วัน' }).click()
+  await expect(page).toHaveURL(/\/signup$/)
 })

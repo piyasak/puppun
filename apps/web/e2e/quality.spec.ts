@@ -15,7 +15,7 @@ const VIEWS = [
   { name: 'zoom-200', width: 640, height: 400 },  // a 1280x800 window at 200 % zoom
   { name: 'desktop', width: 1280, height: 800 },
 ]
-const PUBLIC = ['/login', '/signup', '/forgot', '/auth/confirm']
+const PUBLIC = ['/', '/login', '/signup', '/forgot', '/auth/confirm']  // '/' = landing page for visitors
 
 /** Elements that stick out past the right edge without being inside their own scroll area. */
 async function overflow(page: Page) {
@@ -41,6 +41,10 @@ async function check(page: Page, path: string, problems: string[], prepare?: (p:
     await page.setViewportSize({ width: view.width, height: view.height })
     await page.goto(path)
     await page.waitForLoadState('networkidle')
+    await page.evaluate(async () => {  // let scroll-reveal sections appear before checking
+      for (let y = 0; y < document.body.scrollHeight; y += 400) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 30)) }
+      scrollTo(0, 0)
+    })
     if (prepare) await prepare(page)
     const out = await overflow(page)
     if (out.length) problems.push(`${label} @${view.name}: sideways scroll — ${out.join('; ')}`)
@@ -64,7 +68,7 @@ test('pages work at 360 px, at 200 % zoom and pass axe', async ({ page, browser,
 
   const ctx = await browser.newContext({ baseURL: 'http://127.0.0.1:5173', locale: 'th-TH' })
   const anon = await ctx.newPage()
-  for (const path of PUBLIC) await check(anon, path, problems)
+  for (const path of PUBLIC) await check(anon, path, problems, undefined, path === '/' ? '/landing' : path)
   await ctx.close()
 
   // Real data: a named phone and a job with one delivered clip
