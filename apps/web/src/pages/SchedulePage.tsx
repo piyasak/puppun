@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
+import { POST_STATE } from '../lib/posts'
 
 /* P4.6: every post across all series, planned time next to what actually happened (G4-05). */
 
@@ -15,20 +16,6 @@ type CalItem = {
 
 const TZ = 'Asia/Bangkok'
 const DAY_MS = 24 * 60 * 60 * 1000
-const STATE: Record<string, { text: string; badge: string }> = {
-  SCHEDULED: { text: 'รอเวลาโพสต์', badge: 'active' },
-  NEEDS_ACTION: { text: 'ต้องดำเนินการ', badge: 'warn' },
-  CANCELLED: { text: 'ยกเลิก', badge: 'expired' },
-  SKIPPED: { text: 'ข้าม', badge: 'expired' },
-  CLAIMED: { text: 'Agent รับงานแล้ว', badge: 'stale' },
-  TRANSFERRING: { text: 'กำลังส่งไฟล์', badge: 'stale' },
-  PREPARING: { text: 'กำลังเตรียม', badge: 'stale' },
-  SUBMITTING: { text: 'กำลังโพสต์', badge: 'stale' },
-  VERIFYING: { text: 'กำลังตรวจผล', badge: 'stale' },
-  VERIFIED_SUCCESS: { text: 'โพสต์สำเร็จ', badge: 'online' },
-  UNKNOWN: { text: 'ไม่ทราบผล', badge: 'revoked' },
-  DRY_RUN_DONE: { text: 'ทดสอบเสร็จ (ไม่ได้โพสต์จริง)', badge: 'expired' },
-}
 
 const WHY: Record<string, string> = {
   AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ — ตรวจในแอป TikTok แล้วยืนยันผล',
@@ -68,7 +55,7 @@ function actual(it: CalItem): string {
 }
 
 function Chip({ it }: { it: CalItem }) {
-  const s = STATE[it.state] ?? { text: it.state, badge: 'stale' }
+  const s = POST_STATE[it.state] ?? { text: it.state, badge: 'stale' }
   return (
     <Link to={`/jobs/${it.job.id}`} className={`cal-chip cal-${s.badge}`} data-testid="cal-item"
       title={`${fullFmt.format(new Date(it.scheduled_at))} • ${it.device_name} (@${it.account}) • ${s.text}`}>
@@ -166,7 +153,7 @@ export function SchedulePage() {
             <thead><tr><th>เวลานัด</th><th>เวลาจริง</th><th>โทรศัพท์</th><th>งาน / คลิป</th><th>สถานะ</th></tr></thead>
             <tbody>
               {items.map((it) => {
-                const s = STATE[it.state] ?? { text: it.state, badge: 'stale' }
+                const s = POST_STATE[it.state] ?? { text: it.state, badge: 'stale' }
                 return (
                   <tr key={it.id} data-testid="cal-row">
                     <td>{fullFmt.format(new Date(it.scheduled_at))}{it.queued_behind && <div className="hint">เข้าคิวต่อจากโพสต์ก่อนหน้า</div>}</td>

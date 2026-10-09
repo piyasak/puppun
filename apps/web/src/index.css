@@ -328,6 +328,43 @@ a.btn { display: inline-block; text-decoration: none; }
 }
 .attention { box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent), 0 0 32px color-mix(in srgb, var(--warn) 10%, transparent); }
 
+/* ---- Dashboard (E-47 step 3): bento, one large card for the next post ------------------------ */
+.dash { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; grid-auto-flow: row dense; }
+.dash-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; transition: box-shadow var(--base) var(--ease); }
+.dash-next { grid-column: span 4; grid-row: span 2; }
+.dash-small { grid-column: span 2; }
+.dash-wide { grid-column: span 4; grid-row: span 2; }
+.dash-label { margin: 0; font-size: 0.9rem; font-weight: 500; color: var(--muted); }
+.dash-big { margin: 4px 0 0; font-size: 2.2rem; line-height: 1.15; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash-next .dash-big { font-size: 3rem; }
+.dash-big-sub { margin-left: 8px; font-size: 1rem; font-weight: 400; color: var(--muted); }
+.dash-sub { margin: 0; color: var(--muted); font-size: 0.92rem; overflow-wrap: anywhere; }
+.dash-more { margin-top: auto; padding-top: 8px; font-size: 0.92rem; }
+.dash-head-link { margin: 0 0 0 auto; padding: 0; }
+.dash-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.dash-empty p { margin: 0; }
+.dash-meter { height: 8px; border-radius: 999px; background: var(--surface-hover); overflow: hidden; margin: 6px 0 2px; }
+.dash-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), #8b93e6); box-shadow: 0 0 12px var(--primary-glow); }
+.dash-slots { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.dash-slots li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); font-size: 0.85rem; }
+.dash-slots b { font-family: var(--mono); font-size: 0.95rem; }
+.dash-slots li.now { box-shadow: inset 0 0 0 1px var(--border-accent), 0 0 24px var(--primary-glow); }
+.dash-job-link { color: var(--text); text-decoration: none; }
+.dash-job-link:hover { text-decoration: underline; }
+.dash-facts { font-size: 0.9rem; grid-template-columns: 1fr; gap: 0; }
+.dash-facts dt { font-size: 0.8rem; margin-top: 8px; }
+.dash-facts dt:first-child { margin-top: 0; }
+@media (max-width: 1100px) {
+  .dash { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-next, .dash-wide { grid-column: span 2; grid-row: auto; }
+  .dash-small { grid-column: span 1; }
+}
+@media (max-width: 640px) {
+  .dash { grid-template-columns: 1fr; }
+  .dash-next, .dash-wide, .dash-small { grid-column: auto; }
+  .dash-next .dash-big { font-size: 2.4rem; }
+}
+
 /* ---- Billing (P6) ------------------------------------------------------------------------ */
 .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 12px; }
 .plan { border-radius: var(--radius); padding: 18px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);

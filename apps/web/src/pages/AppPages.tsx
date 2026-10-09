@@ -1,24 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
-import { Shell } from '../components/Shell'
+import { useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Alert, AuthCard, Field, Submit } from '../components/ui'
-import { ApiError, api, type Me } from '../lib/api'
-
-/** Loads /v1/me; sends users who have not finished onboarding to /onboarding. */
-function useMe() {
-  const [me, setMe] = useState<Me | null>(null)
-  const [error, setError] = useState<ApiError | null>(null)
-  useEffect(() => {
-    let alive = true
-    api<Me>('/v1/me')
-      .then((m) => alive && setMe(m))
-      .catch((e: ApiError) => alive && setError(e))
-    return () => {
-      alive = false
-    }
-  }, [])
-  return { me, error }
-}
+import { ApiError, api } from '../lib/api'
 
 export function OnboardingPage() {
   const navigate = useNavigate()
@@ -68,31 +51,5 @@ export function OnboardingPage() {
         <Submit busy={busy}>เริ่มใช้งาน</Submit>
       </form>
     </AuthCard>
-  )
-}
-
-export function HomePage() {
-  const { me, error } = useMe()
-
-  if (error?.code === 'ONBOARDING_REQUIRED') return <Navigate to="/onboarding" replace />
-
-  return (
-    <Shell title="แดชบอร์ด">
-      {error && <Alert kind="error">{error.message}</Alert>}
-      {!me && !error && <p className="muted" role="status">กำลังโหลด…</p>}
-      {me && (
-        <section className="card" aria-labelledby="ws-title">
-          <h2 id="ws-title">{me.workspace.name}</h2>
-          <dl className="facts">
-            <dt>ผู้ใช้</dt><dd data-testid="me-username">{me.user.username}</dd>
-            <dt>อีเมล</dt><dd data-testid="me-email">{me.user.email}</dd>
-            <dt>บทบาท</dt><dd>{me.role === 'owner' ? 'เจ้าของ' : me.role}</dd>
-            <dt>เขตเวลา</dt><dd>{me.workspace.timezone}</dd>
-            <dt>คำรับรองสิทธิ์</dt>
-            <dd>{me.rights_declaration ? `ยอมรับแล้ว (ฉบับ ${me.rights_declaration.version})` : 'ยังไม่ยอมรับ'}</dd>
-          </dl>
-        </section>
-      )}
-    </Shell>
   )
 }

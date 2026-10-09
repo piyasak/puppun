@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 13:xx) — marketing landing page (E-48)
+### Latest slice (2026-10-09 15:xx) — dashboard bento (E-47 step 3)
+- PR #5 merged (a38cd26) incl. CI fixes: job-runner test allowed encoder-dependent ms at the last pause; axe measured mid-fade after the theme switch → reduced motion + two frames before measuring (probed: colours final at once)
+- Implemented (branch `p7-dashboard`): `DashboardPage.tsx` — next post (server time, Bangkok, today/tomorrow, countdown < 24 h, queue of 4), quota meter (used/limit, cycle end, trial/plan), ready phones + missing details, posts waiting for a person, 5 recent jobs, account facts; each card loads separately and refreshes every 30 s; empty account shows the next step on every card; `lib/posts.ts` shares post-state wording with the calendar; old HomePage removed
+- Commands: E2E 15 passed (new `dashboard.spec.ts`; quality covers the dashboard with data: axe both themes, 360 px, 200 %), lint/tsc/build ผ่าน
+- Environment: Docker Desktop wedged twice more (Kong) → PO restarted
+- Next: theme step 4 (card spotlight/entrance in the app) if wanted; G2-05 staging; G2-01 PO items
+
+### Previous slice (2026-10-09 13:xx) — marketing landing page (E-48)
 - PO: landing ที่ `/` สำหรับผู้เยี่ยมชม, ไม่แสดงราคา, กลุ่ม SME/ครีเอเตอร์/เอเจนซี่; PR #4 merge แล้ว → เปิด PR #5 สำหรับ `8ae381f` + `a742308`
 - Implemented: `LandingPage.tsx`, `landing.css`, route `/` = landing (ไม่เข้าระบบ) / แดชบอร์ด (เข้าระบบ), SEO + OG meta; hero เป็นภาพ UI จริง (โทรศัพท์ 9:16 + การ์ดอนุมัติ + ตารางโพสต์) ไม่ใช่ภาพ stock
 - Found + fixed: หัวข้อไทยตัดบรรทัดกลางวลี (ไม่มีช่องว่าง) → จัดกลุ่มวลีไม่ให้แยก; ปุ่มบน nav มือถือขึ้นสองบรรทัด (กฎ a.btn ชนะ) → แก้; การ์ดลอยบังซับในภาพโทรศัพท์ → ย้าย; ภาพหน้าจอ landing ถูกทับโดยแดชบอร์ด (path `/` เดียวกัน) → แยกชื่อ
