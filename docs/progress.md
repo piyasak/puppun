@@ -4,7 +4,22 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 08:xx) — G2-01: Gmail SMTP (PO) + E-28 confirm page
+### Latest slice (2026-10-09 12:xx) — UI theme "Linear / Modern" (E-47), steps 1–2
+- PO: ให้ `uithem.txt` + เลือก มืดเป็นหลัก/ปุ่มสลับสว่าง, ขั้น 1–2, effect พอดี
+- Implemented: `index.css` เขียนใหม่เป็น token (มืด/สว่าง), ปุ่ม/ช่องกรอก/การ์ด/ป้ายสถานะ (จุดเรืองแสง + ข้อความ)/dialog/ตาราง/ปฏิทิน; `ThemeToggle.tsx`; `Shell.tsx` เมนูข้างแบบ sticky + ปุ่มเมนูมือถือ (aria-expanded, Esc, ปิดเมื่อเปลี่ยนหน้า); Inter + IBM Plex Sans Thai; แสงพื้นหลังนิ่ง + grid, แสงเคลื่อนไหวเฉพาะหน้า login; reduced-motion/forced-colors
+- Found + fixed: แสงพื้นหลังไม่แสดงเพราะ :root มี background ทำให้ body ทาสีทับ layer z-index -1; พื้นหลัง fixed ทำให้ภาพเต็มหน้าขาดที่ 800px; สี 2 คู่ไม่ผ่าน contrast (hover ปุ่มหลัก 4.2, ขอบช่องกรอก 1.57) → ปรับ
+- Commands: `quality.spec.ts` ตอนนี้รัน axe ทั้งธีมมืดและสว่าง + เทสต์เมนูมือถือ/จำธีม — E2E 14 passed, build + bundle check ผ่าน, tsc/lint ผ่าน
+- Next: PO ดูหน้าตาแล้วตัดสินใจขั้น 3 (แดชบอร์ด bento) และ 4 (spotlight/entrance)
+
+### Previous slice (2026-10-09 11:xx) — G7-04 consolidated QA (NF-04, NF-09, security)
+- Implemented: `test_crud_load.py` + `load_client.py` (NF-04 opt-in: 50 users/60 s, client แยก process); `quality.spec.ts` (NF-09: 15 หน้าด้วยข้อมูลจริง × 360px/ซูม 200%/desktop, axe-core 4.13 WCAG 2.1 AA, keyboard ทั้ง journey + dialog); `@axe-core/playwright` 4.13.0 (pinned); `docs/uat/qa-report.md`
+- Found + fixed: ช่องวันเวลา (datetime-local) ไม่มี focus ring — Chromium โฟกัส segment ภายในที่ :focus-visible จับไม่ได้ → global focus rule + :focus-within; ข้อมูลทดสอบชื่อบัญชียาวเกิน 25 ถูกปฏิเสธเงียบ ๆ → ใช้ค่ายาวแต่ถูกต้องและตรวจว่าบันทึกได้; detector ล้นจอถูกพิสูจน์ด้วย element กว้างเกิน
+- Commands: CRUD load 2 รอบ p95 629/741 ms (0 errors), E2E 13 passed, npm audit 0, pip-audit 0, ruff/tsc ผ่าน
+- ระหว่างทาง: Docker Desktop ค้าง (Kong ไม่ตอบ, หยุด container ไม่ได้) → PO restart แล้ว start ใหม่
+- Gates: G7-04 ยัง No — เหลือ NVDA ด้วยคน, มือถือจริง, load บน staging
+- Next: staging (G2-05) ปลดล็อกหลายข้อ; PO ทดสอบ NVDA/มือถือจริง
+
+### Previous slice (2026-10-09 08:xx) — G2-01: Gmail SMTP (PO) + E-28 confirm page
 - PO ตั้ง Custom SMTP (Gmail) ใน Dashboard เอง; App Password ที่เคยพิมพ์ในแชทแนะนำให้เพิกถอนและสร้างใหม่ — ไม่ถูกบันทึกที่ใดใน repo
 - Implemented (E-28): หน้า `/auth/confirm` (กดปุ่มแล้วจึงเรียก `verifyOtp`), template ภาษาไทย `supabase/templates/confirmation.html` + `recovery.html` (local ใช้ผ่าน `supabase/config.toml`), E2E: GET ของตัวสแกนก่อนผู้ใช้ไม่ทำให้ลิงก์เสีย, ลิงก์ reset ที่ใช้แล้ว → หน้าลิงก์หมดอายุ + ขอลิงก์ใหม่
 - Commands: E2E 10 passed, tsc/build + bundle check ผ่าน

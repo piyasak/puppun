@@ -7,7 +7,12 @@
     <title>punpun</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet" />
+    <meta name="theme-color" content="#050506" />
+    <script>
+      // Dark is the default; apply a remembered light choice before the first paint (ThemeToggle).
+      try { if (localStorage.getItem('punpun-theme') === 'light') document.documentElement.dataset.theme = 'light' } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
