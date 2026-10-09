@@ -97,6 +97,7 @@ def test_local_file_job_end_to_end(shop, tmp_path):
         # The Agent keeps the exact file it delivered, for posting later (Q-15).
         local = tmp_path / "agent-data" / "clips" / job_id / f"clip_{clip['index']:02d}.mp4"
         assert job_runner._sha256(local) == clip["render_sha256"]
+        assert not local.with_suffix(".ass").exists()  # only the clip (and its still) stay in the folder
     assert not (tmp_path / "agent-data" / "work" / job_id).exists()
     assert shop.run() is None  # nothing left to claim
 

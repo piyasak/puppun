@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.2.0"
+SOURCE_VERSION = "0.3.0"  # Q-32 (count from the source) + Q-33 (clips stay on this PC)
 
 
 def _version() -> str:

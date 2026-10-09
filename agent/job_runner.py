@@ -265,6 +265,7 @@ class _Job:
                 continue
             try:
                 result, metadata, _ = pipeline.render(p, index, segment, *parts[index], out, tpl)
+                out.with_suffix(".ass").unlink(missing_ok=True)  # render's subtitle file: not for the customer's folder
             except RenderError as exc:  # keep going: the other clips are still worth delivering
                 failures.append(index)
                 self.r.log(f"งาน {self.id[:8]}: คลิป {index} render ไม่ผ่าน ({exc})")

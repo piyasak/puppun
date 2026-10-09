@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 22:xx) — clips stay on the Agent's PC (Q-33)
+### Latest slice (2026-10-09 23:xx) — Agent 0.3.0 package (Q-32 + Q-33)
+- Built `punpun-agent-0.3.0.zip` (26.3 MB, sha256 edb9987d…, var/dist, not committed); SOURCE_VERSION 0.3.0
+- Packaged test (`tests/test_agent_bundle.py`, now FROM/TO via env): install 0.2.0 → the running exe self-updates to 0.3.0 → bad sha refused → set-folder refuses a relative path, `--move` moves an existing clip, status shows the folder → rollback to 0.2.0, which still reads the config with clips_dir; the exe sees the QA phone
+- Packaged exe end to end (local API, throwaway DB): `login --clips-dir D:\punpun\clips` (token encrypted), a local-file job in "count from the source" mode → 4 consecutive clips (part 1/4–4/4), checks passed, quota 4 reserved = 4 settled; videos only in D:\punpun\clips\<job>\, the server stored 4 JPEG stills (≤ 23 KB)
+- Found: the render's subtitle file (clip_NN.ass) was left in the customer's folder → removed after render; the bundle test decoded the CLI's UTF-8 Thai output with cp874 → UTF-8; this PC's C: has 5.2 GB free (just above the 5 GB no-new-job limit) → use a folder on D:
+- Next: install 0.3.0 for real (PO) and `login` with the clips folder; commit/PR
+
+### Previous slice (2026-10-09 22:xx) — clips stay on the Agent's PC (Q-33)
 - G2 = Yes (PO signed); PR #8 (Q-32 + G2) open
 - PO (Q-33): no clip upload; the Agent keeps clips in a folder chosen at setup; the web shows stills, not video
 - Implemented (branch `p7-local-clips`, on top of PR #8): `clipflow_worker.delivery` (checks = server rules, parity unit test; 3-frame JPEG still); migration 0012 (`clips.file_location`, `preview_key`, `agent_path`); `PUT /v1/agent/jobs/{id}/clips/{n}/preview` (JPEG ≤ 2 MB, needs reported checks) = delivered + quota settled; a "passed" without every check ok is stored as failed; `/media` returns the still (`kind`); Agent: `agent/clips_folder.py` (asked at `login`, `set-folder [--move]`, < 5 GB free = no new job), job runner delivers checks + still, post runner reads the chosen folder then the old one (FILE_UNAVAILABLE otherwise, Thai reason on the web); web: still + Agent path + copy, no video player for these clips
