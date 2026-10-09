@@ -83,8 +83,11 @@ def test_local_file_job_end_to_end(shop, tmp_path):
     for clip in job["clips"]:
         assert clip["uploaded"] and clip["check_status"] == "passed", clip["checks"]
         assert 15_000 <= clip["duration_ms"] <= 25_000
-        # Cut at the middle of a real pause (9.5 s, 19.5 s, ...), never mid-sound.
-        assert clip["start_ms"] % 10_000 == 9_500 and clip["end_ms"] % 10_000 == 9_500
+        # Cut at the middle of a real (1 s) pause (9.5 s, 19.5 s, ...), never mid-sound. The last pause
+        # ends with the file, whose exact length depends on the AAC encoder of the ffmpeg build (CI saw
+        # 69.504 s), so allow a few milliseconds while staying well inside the pause.
+        for edge in (clip["start_ms"], clip["end_ms"]):
+            assert abs(edge % 10_000 - 9_500) <= 50, edge
         assert clip["metadata"]["caption"] == f"source — ตอนที่ {clip['index']}/2"
         assert not clip["approval"]["approved"]  # review mode: a person approves
         # The Agent keeps the exact file it delivered, for posting later (Q-15).
