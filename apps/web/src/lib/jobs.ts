@@ -13,6 +13,7 @@ export type Job = {
   source: { kind: 'url' | 'local_file'; url: string | null; file_name: string | null }
   environment_id: string
   requested_clips: number
+  auto_clips: boolean  // Q-32: the count follows the source
   planned_clips: number | null
   clip_min_s: number
   clip_max_s: number

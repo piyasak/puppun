@@ -23,8 +23,9 @@ test('create a job, watch it progress, preview, edit and approve clips', async (
   await expect(page.getByRole('alert')).toHaveText('ใส่เฉพาะชื่อไฟล์ ไม่ต้องใส่โฟลเดอร์')
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ตอนพิเศษ.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByLabel('ความยาวต่อคลิป').fill('40')  // clips of 32–40 s (the sample clips are 35 s)
+  await page.getByLabel('กำหนดเอง').check()
   await page.getByLabel('จำนวนคลิป').fill('2')
-  await page.getByLabel('ความยาวต่อคลิป').selectOption({ label: '30–60 วินาที' })
   await page.getByLabel(/อนุมัติอัตโนมัติ/).check()
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await expect(page.getByRole('alert')).toHaveText('ยืนยันการอนุมัติอัตโนมัติก่อน')
@@ -118,4 +119,29 @@ test('cancel a job before the Agent starts', async ({ page, request }) => {
   await expect(page.getByTestId('job-state')).toHaveText('ยกเลิกแล้ว')
   await expect(page.getByTestId('job-quota')).toHaveText('จอง 0 • ใช้ 0 • คืน 0')
   await expect(page.getByRole('button', { name: 'ยกเลิกงาน' })).toHaveCount(0)
+})
+
+test('by default the clip count follows the source, with clips of about 300 s', async ({ page, request }) => {
+  const owner = await signUpAndOnboard(page, request)
+  const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
+  await page.goto('/create')
+  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ไลฟ์ยาว.mp4')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByLabel('ความยาวต่อคลิป')).toHaveValue('300')
+  await expect(page.getByLabel('คำนวณจากความยาวต้นฉบับ')).toBeChecked()
+  await expect(page.getByText('ตัดตรงช่วงเงียบ ยาวประมาณ 240–300 วินาที (5.0 นาที)')).toBeVisible()
+  await expect(page.getByLabel('จำนวนคลิป')).toHaveCount(0)  // no count to type
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByTestId('clips-preview')).toHaveText('คำนวณจากความยาวต้นฉบับ คลิปละประมาณ 240–300 วินาที')
+  await expect(page.getByTestId('quota-preview')).toContainText('ใช้ตามจำนวนที่ต้นฉบับตัดได้')
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  await expect(page.getByText('คำนวณจากต้นฉบับ • รอ Agent วัดความยาว')).toBeVisible()
+
+  // The Agent measures a 42-minute source: 9 clips; the page follows
+  const jobId = page.url().split('/').pop()!
+  expect((await agent.claim()).id).toBe(jobId)
+  await agent.event(jobId, 'source_validated', { duration_s: 2530, possible_clips: 9 })
+  await expect(page.getByText('คำนวณจากต้นฉบับ • ได้ 9 คลิป')).toBeVisible({ timeout: 15_000 })
 })

@@ -8,11 +8,10 @@ import type { Environment, Usage } from '../lib/types'
 
 /* /create (ui-map): 1 ต้นฉบับ → 2 รูปแบบ → 3 ตรวจและสร้าง. Device/time selection arrives with P4. */
 
-const LENGTHS = [
-  { id: '180-300', min: 180, max: 300, text: '3–5 นาที (แนะนำ)' },
-  { id: '60-180', min: 60, max: 180, text: '1–3 นาที' },
-  { id: '30-60', min: 30, max: 60, text: '30–60 วินาที' },
-]
+// Q-32: one length (default 300 s, D02); the server cuts each clip at a pause within 80–100 % of it,
+// and with the count taken from the source the last clip may run up to 1.2 x.
+const DEFAULT_LENGTH_S = 300
+const shortest = (length: number) => Math.max(15, Math.round(length * 0.8))
 const STEP_TITLES = ['ต้นฉบับ', 'รูปแบบ', 'ตรวจและสร้าง']
 
 function createError(e: ApiError): string {
@@ -37,8 +36,9 @@ export function CreateJobPage() {
   const [kind, setKind] = useState<'url' | 'local_file'>('url')
   const [url, setUrl] = useState('')
   const [fileName, setFileName] = useState('')
+  const [countMode, setCountMode] = useState<'auto' | 'manual'>('auto')
   const [clips, setClips] = useState(3)
-  const [length, setLength] = useState(LENGTHS[0].id)
+  const [lengthS, setLengthS] = useState(DEFAULT_LENGTH_S)
   const [subtitles, setSubtitles] = useState(true)
   const [mode, setMode] = useState<'review' | 'auto'>('review')
   const [confirmAuto, setConfirmAuto] = useState(false)
@@ -53,7 +53,6 @@ export function CreateJobPage() {
       .catch((err) => setError((err as ApiError).message))
   }, [])
 
-  const len = LENGTHS.find((l) => l.id === length) ?? LENGTHS[0]
   const env = envs?.find((e) => e.id === envId)
   const available = usage?.clips.available ?? 0
 
@@ -65,7 +64,8 @@ export function CreateJobPage() {
       if (kind === 'local_file' && /[\\/:]/.test(fileName)) return 'ใส่เฉพาะชื่อไฟล์ ไม่ต้องใส่โฟลเดอร์'
     }
     if (n === 1) {
-      if (!Number.isInteger(clips) || clips < 1 || clips > 20) return 'จำนวนคลิปต้องอยู่ระหว่าง 1–20'
+      if (!Number.isInteger(lengthS) || lengthS < 15 || lengthS > 600) return 'ความยาวต่อคลิปต้องอยู่ระหว่าง 15–600 วินาที'
+      if (countMode === 'manual' && (!Number.isInteger(clips) || clips < 1 || clips > 20)) return 'จำนวนคลิปต้องอยู่ระหว่าง 1–20'
       if (mode === 'auto' && !confirmAuto) return 'ยืนยันการอนุมัติอัตโนมัติก่อน'
     }
     return ''
@@ -87,7 +87,7 @@ export function CreateJobPage() {
         body: {
           idempotency_key: idempotencyKey, environment_id: envId,
           source: kind === 'url' ? { kind, url: url.trim() } : { kind, file_name: fileName.trim() },
-          requested_clips: clips, clip_min_s: len.min, clip_max_s: len.max, subtitles,
+          auto_clips: countMode === 'auto', requested_clips: countMode === 'auto' ? 1 : clips, clip_length_s: lengthS, subtitles,
           review_mode: mode, confirm_auto: mode === 'auto' && confirmAuto,
         },
       })
@@ -145,15 +145,23 @@ export function CreateJobPage() {
         {step === 1 && (
           <form onSubmit={next} noValidate>
             <div className="grid-3">
-              <Field label="จำนวนคลิป" type="number" min={1} max={20} inputMode="numeric" value={String(clips)}
-                onChange={(e) => setClips(Math.trunc(Number(e.target.value)) || 0)} hint="ถ้าต้นฉบับสั้น ระบบจะตัดได้น้อยลงและแจ้งให้ทราบ" />
-              <div className="field">
-                <label htmlFor="length">ความยาวต่อคลิป</label>
-                <select id="length" value={length} onChange={(e) => setLength(e.target.value)}>
-                  {LENGTHS.map((l) => <option key={l.id} value={l.id}>{l.text}</option>)}
-                </select>
-              </div>
+              <Field label="ความยาวต่อคลิป (วินาที)" type="number" min={15} max={600} step={1} inputMode="numeric"
+                value={String(lengthS)} onChange={(e) => setLengthS(Math.trunc(Number(e.target.value)) || 0)}
+                hint={lengthS >= 15 ? `ตัดตรงช่วงเงียบ ยาวประมาณ ${shortest(lengthS)}–${lengthS} วินาที (${(lengthS / 60).toFixed(1)} นาที)` : '15–600 วินาที'} />
             </div>
+            <fieldset className="choices">
+              <legend>ได้กี่คลิป</legend>
+              <label className="check"><input type="radio" name="count" checked={countMode === 'auto'} onChange={() => setCountMode('auto')} />
+                <span>คำนวณจากความยาวต้นฉบับ (ตัดต่อเนื่องทั้งเรื่อง)<br /><span className="hint">
+                  Agent วัดความยาวต้นฉบับแล้วแบ่งตั้งแต่ต้นจนจบ เช่น ต้นฉบับ 40 นาที ได้ประมาณ {lengthS >= 15 ? Math.ceil(2400 / lengthS) : '—'} คลิป
+                  เป็นตอนที่ 1/N…N/N — คลิปสุดท้ายอาจยาวกว่ากำหนดเล็กน้อย</span></span></label>
+              <label className="check"><input type="radio" name="count" checked={countMode === 'manual'} onChange={() => setCountMode('manual')} />
+                <span>กำหนดเอง<br /><span className="hint">เลือกช่วงจากต้นฉบับตามจำนวนที่ใส่ ถ้าต้นฉบับสั้น ระบบจะตัดได้น้อยลงและแจ้งให้ทราบ</span></span></label>
+              {countMode === 'manual' && (
+                <Field label="จำนวนคลิป" type="number" min={1} max={20} inputMode="numeric" value={String(clips)}
+                  onChange={(e) => setClips(Math.trunc(Number(e.target.value)) || 0)} />
+              )}
+            </fieldset>
             <label className="check"><input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} />
               <span>ใส่ซับจากต้นฉบับลงในคลิป<br /><span className="hint">ปิดถ้าต้นฉบับมีซับฝังในภาพอยู่แล้ว ไม่งั้นซับจะซ้อนกัน</span></span></label>
             <fieldset className="choices">
@@ -179,13 +187,20 @@ export function CreateJobPage() {
             <dl className="facts">
               <dt>Environment</dt><dd>{env?.name}</dd>
               <dt>ต้นฉบับ</dt><dd>{kind === 'url' ? url.trim() : `ไฟล์บนเครื่อง: ${fileName.trim()}`}</dd>
-              <dt>คลิป</dt><dd>{clips} คลิป ยาว {len.text.replace(' (แนะนำ)', '')}</dd>
+              <dt>คลิป</dt><dd data-testid="clips-preview">{countMode === 'auto'
+                ? `คำนวณจากความยาวต้นฉบับ คลิปละประมาณ ${shortest(lengthS)}–${lengthS} วินาที`
+                : `${clips} คลิป ยาว ${shortest(lengthS)}–${lengthS} วินาที`}</dd>
               <dt>ซับ</dt><dd>{subtitles ? 'ใส่ซับจากต้นฉบับ' : 'ไม่ใส่ซับ'}</dd>
               <dt>การตรวจ</dt><dd>{mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'}</dd>
               <dt>โควตา</dt>
-              <dd data-testid="quota-preview">ใช้สูงสุด {clips} คลิป จากที่เหลือ {available} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง</dd>
+              <dd data-testid="quota-preview">{countMode === 'auto'
+                ? `ใช้ตามจำนวนที่ต้นฉบับตัดได้ จากที่เหลือ ${available} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`
+                : `ใช้สูงสุด ${clips} คลิป จากที่เหลือ ${available} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`}</dd>
             </dl>
-            {available < clips && available > 0 && (
+            {countMode === 'auto' && available > 0 && (
+              <Alert kind="info">ถ้าต้นฉบับต้องใช้มากกว่า {available} คลิป งานจะหยุดรอให้คุณตัดสินใจก่อน ไม่ตัดแค่บางส่วนโดยไม่บอก</Alert>
+            )}
+            {countMode === 'manual' && available < clips && available > 0 && (
               <Alert kind="info">โควตาเหลือน้อยกว่าจำนวนที่ขอ ถ้าต้นฉบับตัดได้มากกว่า {available} คลิป งานจะหยุดรอให้ดำเนินการ</Alert>
             )}
             {available <= 0 && <Alert kind="error">โควตาคลิปของเดือนนี้หมดแล้ว</Alert>}

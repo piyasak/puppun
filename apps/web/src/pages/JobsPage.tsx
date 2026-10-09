@@ -69,7 +69,7 @@ export function JobsPage() {
                   <Link to={`/jobs/${j.id}`} className="row-title">{sourceLabel(j)}</Link>
                   <span className={`badge badge-${s.badge}`}>{s.text}</span>
                   <span className="muted">
-                    {j.planned_clips ?? j.requested_clips} คลิป • {j.review_mode === 'review' ? 'ตรวจเอง' : 'อนุมัติอัตโนมัติ'} • สร้าง {formatDate(j.created_at)}
+                    {j.planned_clips ?? (j.auto_clips ? 'ตามต้นฉบับ' : j.requested_clips)} คลิป • {j.review_mode === 'review' ? 'ตรวจเอง' : 'อนุมัติอัตโนมัติ'} • สร้าง {formatDate(j.created_at)}
                   </span>
                 </div>
               </li>

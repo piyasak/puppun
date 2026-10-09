@@ -52,12 +52,12 @@ class Shop:
         self.logs = []
         self.runner = JobRunner(data_dir, media_dir, log=self.logs.append, keepalive_s=1.0, retry_wait_s=0.1)
 
-    def job(self, file_name="source.mp4", clips=2, url=None):
+    def job(self, file_name="source.mp4", clips=2, url=None, **extra):
         source = {"kind": "url", "url": url} if url else {"kind": "local_file", "file_name": file_name}
         resp = self.owner.post("/v1/jobs", json={
             "idempotency_key": uuid.uuid4().hex, "environment_id": self.env["id"],
             "source": source,
-            "requested_clips": clips, "clip_min_s": 15, "clip_max_s": 25})
+            "requested_clips": clips, "clip_min_s": 15, "clip_max_s": 25} | extra)
         assert resp.status_code == 201, resp.text
         return resp.json()["id"]
 
@@ -214,3 +214,17 @@ def test_source_pointing_at_an_internal_address_is_refused(shop, monkeypatch):  
     assert job["error"]["code"] == "SOURCE_BLOCKED_ADDRESS"
     assert hits == []  # refused before any connection
     assert job["quota"]["reserved"] == 0
+
+
+def test_whole_source_is_split_into_consecutive_clips(shop, tmp_path):  # Q-32
+    job_id = shop.job(auto_clips=True, clip_length_s=20)  # clips of 16–20 s from a 70 s source
+    assert shop.run() == "READY_FOR_REVIEW"
+    job = shop.detail(job_id)
+    clips = job["clips"]
+    assert job["planned_clips"] == len(clips) == 4 and job["notice"] is None  # ceil(70 / 20), counted by the Agent
+    assert clips[0]["start_ms"] == 0 and clips[-1]["end_ms"] >= 69_000  # from the start to the end
+    assert all(a["end_ms"] == b["start_ms"] for a, b in zip(clips, clips[1:], strict=False))  # nothing skipped
+    assert all(16_000 - 1000 <= c["duration_ms"] <= 20_000 + 1000 for c in clips)
+    assert all(c["check_status"] == "passed" for c in clips), [c["checks"] for c in clips]
+    assert [c["metadata"]["caption"] for c in clips] == [f"source — ตอนที่ {i}/4" for i in range(1, 5)]
+    assert job["quota"] == {"reserved": 4, "settled": 4, "released": 0, "outstanding": 0}

@@ -11,6 +11,7 @@ clip so the same input reproduces the same intervals.
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
 from dataclasses import asdict, dataclass
@@ -165,6 +166,61 @@ def time_candidates(duration: float, min_len: float, max_len: float, step: float
     while t + length <= duration - margin:
         out.append(Segment(round(t, 3), round(t + length, 3), "time_grid_no_transcript"))
         t += step
+    return out
+
+
+LAST_CLIP_STRETCH = 1.2  # the last clip of a whole-source split may run this much over max_len (Q-32)
+
+
+def tile(pauses: list[tuple[float, float]], duration: float, min_len: float, max_len: float) -> list[Segment]:
+    """Split the whole source into consecutive clips (Q-32: the clip count follows the source).
+
+    Balanced first: the fewest clips that keep every clip <= max_len, cut near equal lengths at the
+    nearest pause midpoint (a time cut where none fits) while keeping the rest splittable. When equal
+    clips would be shorter than min_len, clips are cut at max_len instead and the last may stretch to
+    LAST_CLIP_STRETCH x max_len; a tail too short to be a clip that cannot join the last one is left
+    out, never padded or made into a too-short clip (T09).
+    """
+    mids = sorted(round((a + b) / 2, 3) for a, b in pauses)
+    n = math.ceil(duration / max_len) if duration > 0 else 0
+    if n and duration / n >= min_len:
+        return _tile_balanced(mids, duration, n, min_len, max_len)
+    return _tile_greedy(mids, duration, min_len, max_len)
+
+
+def _tile_balanced(mids, duration, n, min_len, max_len) -> list[Segment]:
+    out: list[Segment] = []
+    start = 0.0
+    for i in range(n - 1):
+        left = n - i  # clips still to make, this one included
+        target = start + (duration - start) / left
+        lo = max(start + min_len, duration - (left - 1) * max_len)
+        hi = min(start + max_len, duration - (left - 1) * min_len)
+        fits = [m for m in mids if lo <= m <= hi]
+        if fits:
+            end, method = min(fits, key=lambda m: abs(m - target)), "tile_audio_pause"
+        else:
+            end, method = round(min(max(target, lo), hi), 3), "tile_time"
+        out.append(Segment(round(start, 3), end, method))
+        start = end
+    out.append(Segment(round(start, 3), round(duration, 3), "tile_end"))
+    return out
+
+
+def _tile_greedy(mids, duration, min_len, max_len) -> list[Segment]:
+    longest_last = max_len * LAST_CLIP_STRETCH
+    out: list[Segment] = []
+    start = 0.0
+    while duration - start > longest_last:
+        fits = [m for m in mids if start + min_len <= m <= start + max_len]
+        end, method = (fits[-1], "tile_audio_pause") if fits else (round(start + max_len, 3), "tile_time")
+        out.append(Segment(round(start, 3), end, method))
+        start = end
+    rest = duration - start
+    if rest >= min_len:
+        out.append(Segment(round(start, 3), round(duration, 3), "tile_end"))
+    elif out and out[-1].duration + rest <= longest_last:
+        out[-1] = Segment(out[-1].start, round(duration, 3), out[-1].method)
     return out
 
 

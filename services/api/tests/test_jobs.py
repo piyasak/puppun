@@ -353,3 +353,40 @@ def test_api_allowlist_matches_the_agent_downloader():
     from clipflow_worker.source import PLATFORM_HOSTS as worker_hosts
 
     assert api_hosts == worker_hosts
+
+
+# --- Q-32: the clip count follows the source ------------------------------------------------------
+
+def test_auto_count_takes_the_count_from_the_source_and_one_length(ws):
+    job = ws.new_job(auto_clips=True, clip_length_s=300).json()
+    assert job["auto_clips"] is True and (job["clip_min_s"], job["clip_max_s"]) == (240, 300)
+    ws.w.claim()
+    out = ws.w.event(job["id"], "source_validated", duration_s=2530, possible_clips=9).json()["job"]
+    assert out["planned_clips"] == 9
+    detail = ws.get(f"/v1/jobs/{job['id']}").json()
+    assert detail["quota"]["reserved"] == 9 and detail["notice"] is None  # the count is the source's, not "short"
+
+
+def test_auto_count_beyond_the_quota_stops_for_the_user(ws, app):
+    job_id = ws.new_job(auto_clips=True, clip_length_s=60).json()["id"]
+    ws.w.claim()
+    ws.w.event(job_id, "source_validated", duration_s=6000, possible_clips=95)  # trial quota is 30
+    detail = ws.get(f"/v1/jobs/{job_id}").json()
+    assert detail["state"] == "NEEDS_ACTION" and detail["error"]["code"] == "QUOTA_EXCEEDED"
+    assert "95" in detail["error"]["detail"] and ledger(app, job_id) == []  # nothing made, nothing charged
+
+
+def test_only_the_last_clip_of_a_whole_split_may_run_long(ws):
+    job_id = ws.new_job(auto_clips=True, clip_length_s=300).json()["id"]
+    ws.w.claim()
+    ws.w.run_to_rendering(job_id, possible=2)
+    assert ws.w.clip(job_id, 1, duration_ms=350_000, upload=False).json()["code"] == "CLIP_DURATION_OUT_OF_RANGE"
+    assert ws.w.clip(job_id, 1, duration_ms=290_000).status_code == 200
+    assert ws.w.clip(job_id, 2, duration_ms=350_000).status_code == 200  # last: up to 1.2 x 300 s
+    assert ws.w.clip(job_id, 2, duration_ms=370_000, digest=sha(9), upload=False).json()["code"] in (
+        "CLIP_DURATION_OUT_OF_RANGE", "CLIP_CONFLICT")
+
+
+@pytest.mark.parametrize("length", [14, 601])
+def test_clip_length_is_bounded(ws, length):
+    assert ws.new_job(auto_clips=True, clip_length_s=length).status_code == 422

@@ -216,7 +216,9 @@ class _Job:
         url, local = self._source()
         p = self._guarded(url, lambda: pipeline.plan(
             work=self.work, count=spec["requested_clips"], seed=spec["seed"], min_len=spec["clip_min_s"],
-            max_len=spec["clip_max_s"], url=url, local=local))
+            max_len=spec["clip_max_s"], url=url, local=local,
+            whole=bool(spec.get("auto_clips")),  # Q-32: split the whole source; the count follows it
+        ))
         self.check()
         possible = len(p.selection.segments)
         if self.state == "RECEIVED":
