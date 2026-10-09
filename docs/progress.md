@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: P7 — Pilot/UAT (local regression only; no pilot until G2 = Yes). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5, PO signed under Q-31), G7 = No (0/5).
+## Current phase: P7 — Pilot/UAT (staging live; pilot prerequisites open). G0 = Yes, G1 = No (5/6), G2 = Yes (signed 2026-10-09), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5, PO signed under Q-31), G7 = No (0/5).
 
 Last updated: 2026-10-07
 
@@ -10,7 +10,10 @@ Last updated: 2026-10-07
 - Implemented (branch `p7-auto-clips`): `segments.tile` (balanced split at pauses, greedy fallback with a last clip up to 1.2x, short tail joined or left out), `pipeline.plan(whole=)`, Agent passes `auto_clips`; migration 0011 (`jobs.auto_clips`, cap 100, expand-only); API `auto_clips` + `clip_length_s` (80–100 %), last-clip limit shared by the event check and the file check; web: length field (default 300) + "คำนวณจากความยาวต้นฉบับ" (default) / "กำหนดเอง", review and job pages show the source-based count
 - Found: the first tiling cut always at max length lost the tail (130 s of 2,530 s) → balanced split
 - Commands: worker unit 38 (4 new), integration 224 passed / 9 skipped (4 new API + real-pipeline whole split: 4 consecutive clips of a 70 s file, all checks passed), unit 171, E2E 16 (new: default auto count)
-- Next: PO rollback on Render → close G2-05; commit/PR for Q-32 on request
+- Rollback (PO): /healthz back to the previous build, data kept → G2-05 Yes; PR #8 opened (Q-32 + G2-05)
+- G2-01 (PO): min password length 10 + password reset on the public staging URL with a Microsoft 365 mailbox: recover → verify (no failed verify before) → password changed → sign-in with the new one → G2-01 Yes; G2 technical 5/5
+- **G2 = Yes**: ปิยศักดิ์ อนุมัติในแชท 2026-10-09
+- Next: new Agent build (0.3.0) for Q-32; pilot prerequisites (50 MB file limit, G6-01/G6-02, D07 pilot users)
 
 ### Previous slice (2026-10-09 17:xx) — staging image, Render blueprint, rehearsal (G2-05, E-49)
 - PO: Render + Supabase punpun
