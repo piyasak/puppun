@@ -1,10 +1,48 @@
 # Progress
 
-## Current phase: P6 — Billing & administration (sandbox; D05/D06 partially decided). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5).
+## Current phase: P7 — Pilot/UAT (local regression only; no pilot until G2 = Yes). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5, PO signed under Q-31), G7 = No (0/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 05:xx) — P6 slice B: admin, audit, support, retention; D05/D06 answers
+### Latest slice (2026-10-09 13:xx) — marketing landing page (E-48)
+- PO: landing ที่ `/` สำหรับผู้เยี่ยมชม, ไม่แสดงราคา, กลุ่ม SME/ครีเอเตอร์/เอเจนซี่; PR #4 merge แล้ว → เปิด PR #5 สำหรับ `8ae381f` + `a742308`
+- Implemented: `LandingPage.tsx`, `landing.css`, route `/` = landing (ไม่เข้าระบบ) / แดชบอร์ด (เข้าระบบ), SEO + OG meta; hero เป็นภาพ UI จริง (โทรศัพท์ 9:16 + การ์ดอนุมัติ + ตารางโพสต์) ไม่ใช่ภาพ stock
+- Found + fixed: หัวข้อไทยตัดบรรทัดกลางวลี (ไม่มีช่องว่าง) → จัดกลุ่มวลีไม่ให้แยก; ปุ่มบน nav มือถือขึ้นสองบรรทัด (กฎ a.btn ชนะ) → แก้; การ์ดลอยบังซับในภาพโทรศัพท์ → ย้าย; ภาพหน้าจอ landing ถูกทับโดยแดชบอร์ด (path `/` เดียวกัน) → แยกชื่อ
+- Commands: E2E 14 passed (quality: landing ผ่าน axe ทั้งสองธีม, 360px, ซูม 200%; auth: `/jobs` ต้องเข้าระบบ + landing CTA → `/signup`), build + bundle check ผ่าน
+- Next: PO ตรวจข้อความ/ภาพ; โดเมนจริง (D01) ก่อนโปรโมต; ขั้น 3–4 ของธีมในแอป
+
+### Previous slice (2026-10-09 12:xx) — UI theme "Linear / Modern" (E-47), steps 1–2
+- PO: ให้ `uithem.txt` + เลือก มืดเป็นหลัก/ปุ่มสลับสว่าง, ขั้น 1–2, effect พอดี
+- Implemented: `index.css` เขียนใหม่เป็น token (มืด/สว่าง), ปุ่ม/ช่องกรอก/การ์ด/ป้ายสถานะ (จุดเรืองแสง + ข้อความ)/dialog/ตาราง/ปฏิทิน; `ThemeToggle.tsx`; `Shell.tsx` เมนูข้างแบบ sticky + ปุ่มเมนูมือถือ (aria-expanded, Esc, ปิดเมื่อเปลี่ยนหน้า); Inter + IBM Plex Sans Thai; แสงพื้นหลังนิ่ง + grid, แสงเคลื่อนไหวเฉพาะหน้า login; reduced-motion/forced-colors
+- Found + fixed: แสงพื้นหลังไม่แสดงเพราะ :root มี background ทำให้ body ทาสีทับ layer z-index -1; พื้นหลัง fixed ทำให้ภาพเต็มหน้าขาดที่ 800px; สี 2 คู่ไม่ผ่าน contrast (hover ปุ่มหลัก 4.2, ขอบช่องกรอก 1.57) → ปรับ
+- Commands: `quality.spec.ts` ตอนนี้รัน axe ทั้งธีมมืดและสว่าง + เทสต์เมนูมือถือ/จำธีม — E2E 14 passed, build + bundle check ผ่าน, tsc/lint ผ่าน
+- Next: PO ดูหน้าตาแล้วตัดสินใจขั้น 3 (แดชบอร์ด bento) และ 4 (spotlight/entrance)
+
+### Previous slice (2026-10-09 11:xx) — G7-04 consolidated QA (NF-04, NF-09, security)
+- Implemented: `test_crud_load.py` + `load_client.py` (NF-04 opt-in: 50 users/60 s, client แยก process); `quality.spec.ts` (NF-09: 15 หน้าด้วยข้อมูลจริง × 360px/ซูม 200%/desktop, axe-core 4.13 WCAG 2.1 AA, keyboard ทั้ง journey + dialog); `@axe-core/playwright` 4.13.0 (pinned); `docs/uat/qa-report.md`
+- Found + fixed: ช่องวันเวลา (datetime-local) ไม่มี focus ring — Chromium โฟกัส segment ภายในที่ :focus-visible จับไม่ได้ → global focus rule + :focus-within; ข้อมูลทดสอบชื่อบัญชียาวเกิน 25 ถูกปฏิเสธเงียบ ๆ → ใช้ค่ายาวแต่ถูกต้องและตรวจว่าบันทึกได้; detector ล้นจอถูกพิสูจน์ด้วย element กว้างเกิน
+- Commands: CRUD load 2 รอบ p95 629/741 ms (0 errors), E2E 13 passed, npm audit 0, pip-audit 0, ruff/tsc ผ่าน
+- ระหว่างทาง: Docker Desktop ค้าง (Kong ไม่ตอบ, หยุด container ไม่ได้) → PO restart แล้ว start ใหม่
+- Gates: G7-04 ยัง No — เหลือ NVDA ด้วยคน, มือถือจริง, load บน staging
+- Next: staging (G2-05) ปลดล็อกหลายข้อ; PO ทดสอบ NVDA/มือถือจริง
+
+### Previous slice (2026-10-09 08:xx) — G2-01: Gmail SMTP (PO) + E-28 confirm page
+- PO ตั้ง Custom SMTP (Gmail) ใน Dashboard เอง; App Password ที่เคยพิมพ์ในแชทแนะนำให้เพิกถอนและสร้างใหม่ — ไม่ถูกบันทึกที่ใดใน repo
+- Implemented (E-28): หน้า `/auth/confirm` (กดปุ่มแล้วจึงเรียก `verifyOtp`), template ภาษาไทย `supabase/templates/confirmation.html` + `recovery.html` (local ใช้ผ่าน `supabase/config.toml`), E2E: GET ของตัวสแกนก่อนผู้ใช้ไม่ทำให้ลิงก์เสีย, ลิงก์ reset ที่ใช้แล้ว → หน้าลิงก์หมดอายุ + ขอลิงก์ใหม่
+- Commands: E2E 10 passed, tsc/build + bundle check ผ่าน
+- Gates: G2 ยัง 3/5 — G2-01 รอ PO วาง template + ตั้ง min length/Site URL + ทดสอบ cloud จริง; G2-05 staging
+- Cloud (PO): Gmail SMTP ใช้ได้หลังบันทึก App Password ใหม่ (เดิม 535); reset + สมัครใหม่ → อีเมลไทย → ปุ่มยืนยัน → onboarding สำเร็จ (auth log 10:00–10:04 น.)
+- Next: min length 10 ใน Dashboard; staging (G2-05) เพื่อพิสูจน์ E-28 กับตัวสแกนจริง
+
+### Previous slice (2026-10-09 07:xx) — G6 PO sign-off (Q-31) + P7.1 regression T01–T25
+- PO: "อนุมัติ G6 ปิยศักดิ์" → บันทึกการลงนามใน G6 แต่ G6 ยังเป็น No (G6-01/G6-02); Q-31: เริ่ม P7 ที่ทำในเครื่องได้, ห้ามขาย/รับเงินจริง/Pilot
+- Implemented: `docs/uat/p7-uat.md` (T01–T25 → เทสต์ที่พิสูจน์แต่ละข้อ + หลักฐานจริงที่มี); `test_uat.py`: T01 sweep ทุก route ที่รับ id (B ได้คำตอบเหมือน id ที่ไม่มี และข้อมูล A ไม่เปลี่ยน), T14 ยกเลิกหลัง claim, T19 server restart (process ที่สองบน DB เดียวกัน), T22 หมดอายุระหว่างรอ/Submit, T23 retention ขณะงานกำลังทำ; unit T15 อ่านชื่อบัญชีไม่ได้
+- Found + fixed (T22, Medium): โพสต์ที่ถูกปฏิเสธตอน Submit เพราะหมดอายุถูก park เป็น NEEDS_ACTION ต่างจากรายการที่ยังไม่ claim ซึ่งรอ → ตอนนี้กลับไปรอ (SCHEDULED) และทำต่อหลังต่ออายุ
+- Commands: integration 213 passed / 8 skipped, unit 167, E2E 10, ruff ผ่าน
+- Gates: G7 0/5 (G7-03 บางส่วน: 24/25 ผ่าน, T24 = P8); Pilot ต้องรอ G2 + D07
+- Next: P7 ที่ไม่ต้องมี Pilot (รายงาน QA รวม: mobile/a11y/security) หรือ G2-01/G2-05 เพื่อปลดล็อก Pilot; Omise/Stripe (G6-02); ราคา (G6-01)
+
+### Previous slice (2026-10-09 05:xx) — P6 slice B: admin, audit, support, retention; D05/D06 answers
 - PO: D05 "config ได้ทีหลัง"; D06 Omise + Stripe (config ทีหลัง), **ไม่คืนเงินทุกกรณี** — บันทึกใน decisions, แสดงในหน้าแพ็กเกจ/ชำระ
 - Implemented: migration 0010 (platform_role, audit reason/details, clips.file_deleted_at), `deps.staff/admin_only`, `routers/admin.py` (workspaces, jobs by ID, payments, plans + new version, plan/extend/end/quota with reason + before/after audit, retention run), `retention.py`, `manage.py` (grant-role, retention), quota grant/deduct, `/v1/me` platform_role, storage.delete, preview 410 หลังลบ; เว็บ `/admin` (เมนูเห็นเฉพาะ staff)
 - Found: `quota._add` ใช้ rowcount ที่ไม่น่าเชื่อถือ → บอกว่าไม่ได้บันทึกทั้งที่บันทึกแล้ว (เดิมไม่มีใครใช้ค่าคืน) → ใช้ RETURNING; grant ทำให้ "ใช้" ติดลบ → แยก grant เป็นเพดานเพิ่ม; เทสต์ admin สร้าง plan version ใหม่ในฐานข้อมูลที่ใช้ร่วมกัน → คืนค่าเดิมหลังเทสต์

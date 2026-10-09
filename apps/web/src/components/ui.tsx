@@ -1,8 +1,10 @@
 import { useId, type InputHTMLAttributes, type ReactNode } from 'react'
+import { ThemeToggle } from './ThemeToggle'
 
 export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <main className="auth-page">
+      <div className="auth-top"><ThemeToggle /></div>
       <div className="auth-brand" aria-hidden="true">
         <span className="brand-mark">p</span> punpun
       </div>

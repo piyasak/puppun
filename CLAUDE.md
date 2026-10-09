@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository state
 
-G0, G3, G4 and G5 are Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. G2 is No (3/5): no release or pilot. P6 (billing/admin) is next; P2-P4 were started under PO overrides Q-22/Q-24/Q-26. Real posts happen only under a recorded one-post PO grant (Q-29/Q-30 are used up). Clips are 3–5 minutes (D02). The QA machine is this PC, with one phone model (POCO 25078PC3EG). What exists:
+G0, G3, G4 and G5 are Yes (signed off). G1 is No: 5/6, with G1-06 cost deferred. G2 is No (3/5): no release or pilot. G6 is No (3/5) but PO-signed under Q-31 (sandbox billing only, no real payments). P7 has started with the local T01–T25 regression (`docs/uat/p7-uat.md`); P2-P4 were started under PO overrides Q-22/Q-24/Q-26. Real posts happen only under a recorded one-post PO grant (Q-29/Q-30 are used up). Clips are 3–5 minutes (D02). The QA machine is this PC, with one phone model (POCO 25078PC3EG). What exists:
 - `PRD_CLAUDE_CODE.md`: the product source of truth. Sections A–N are the implementation contract; section O is the full Thai PRD with the 47 gate checks and UAT cases. The `.docx` is the original and duplicates section O.
 - `docs/`: progress (read first), architecture, decisions (D/Q/E registers, including PO answers from 2026-10-06), requirements-map, ui-map, backlog, compatibility (real source/device results), and `gates/G0–G8.md`.
 - `services/worker/clipflow_worker/`: the P1 media POC.

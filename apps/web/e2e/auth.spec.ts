@@ -2,6 +2,7 @@
  * FR-01 / G2-01 browser journey on LOCAL Supabase + Mailpit (synthetic accounts only):
  * sign up -> blocked until confirmed -> confirm link -> onboarding -> dashboard -> sign out
  * -> generic login errors -> reset without enumeration -> new password works, old does not.
+ * E-28: links open our /auth/confirm page; a mail scanner fetching the link first does not use it up.
  */
 import { expect, test } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
@@ -26,8 +27,13 @@ test('sign up, confirm, onboard, reset password', async ({ page, request }) => {
   await login(page, email, password)
   await expect(page.getByRole('alert')).toHaveText('กรุณายืนยันอีเมลก่อน โดยกดลิงก์ในอีเมลที่เราส่งให้')
 
-  // Confirm -> signed in -> must finish onboarding first
-  await page.goto(await mailLink(request, email, seen, 'signup'))
+  // A mail scanner opens the link first (Microsoft 365 Safe Links did, 2026-10-07): nothing is used up
+  const confirmLink = await mailLink(request, email, seen, 'email')
+  expect((await request.get(confirmLink)).ok()).toBe(true)
+  await page.goto(confirmLink)
+  await page.goto(confirmLink)  // opening it twice is still fine
+  // Confirm (the person presses the button) -> signed in -> must finish onboarding first
+  await page.getByRole('button', { name: 'ยืนยันอีเมล' }).click()
   await expect(page).toHaveURL(/\/onboarding$/)
   await page.getByLabel('ชื่อผู้ใช้').fill(`e2e${tag}`)
   await page.getByRole('button', { name: 'เริ่มใช้งาน' }).click()
@@ -62,8 +68,10 @@ test('sign up, confirm, onboard, reset password', async ({ page, request }) => {
   const resetLink = await mailLink(request, email, seen, 'recovery')
   expect((await messageIds(request, ghost)).size).toBe(0)
 
+  expect((await request.get(resetLink)).ok()).toBe(true)  // the scanner again
   await page.goto(resetLink)
-  await expect(page).toHaveURL(/\/reset#?$/)
+  await page.getByRole('button', { name: 'ตั้งรหัสผ่านใหม่' }).click()
+  await expect(page).toHaveURL(/\/reset$/)
   await page.getByLabel('รหัสผ่านใหม่', { exact: true }).fill(newPassword)
   await page.getByLabel('ยืนยันรหัสผ่านใหม่').fill(newPassword)
   await page.getByRole('button', { name: 'บันทึกรหัสผ่านใหม่' }).click()
@@ -78,10 +86,16 @@ test('sign up, confirm, onboard, reset password', async ({ page, request }) => {
   // A used reset link cannot be used again
   await page.getByRole('button', { name: 'ออกจากระบบ' }).click()
   await page.goto(resetLink)
+  await page.getByRole('button', { name: 'ตั้งรหัสผ่านใหม่' }).click()
   await expect(page.getByRole('heading', { name: 'ลิงก์ไม่ถูกต้องหรือหมดอายุ' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'ขอลิงก์ใหม่' })).toBeVisible()
 })
 
-test('dashboard requires a session', async ({ page }) => {
-  await page.goto('/')
+test('working pages require a session; visitors see the landing page at /', async ({ page }) => {
+  await page.goto('/jobs')
   await expect(page).toHaveURL(/\/login$/)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('ตัดวิดีโอยาว')
+  await page.getByRole('link', { name: 'ทดลองใช้ฟรี 30 วัน' }).click()
+  await expect(page).toHaveURL(/\/signup$/)
 })

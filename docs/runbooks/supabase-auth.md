@@ -21,7 +21,8 @@ application profile (username, Workspace, role, rights acceptance).
 2. Browser: `signInWithPassword` → access token (JWT, about 1 h) + refresh token.
 3. Browser → API: `Authorization: Bearer <access token>` on every request (never a cookie, never a query string).
 4. First time: `POST /v1/onboarding {username, workspace_name, accept_rights: true}` creates the profile, Workspace (Owner) and rights acceptance (Q-14). Until then the API answers `403 ONBOARDING_REQUIRED`.
-5. Password reset: `supabase.auth.resetPasswordForEmail(email, {redirectTo})`. Supabase answers the same way whether or not the account exists. The link signs the user in; then `updateUser({password})`.
+5. Password reset: `supabase.auth.resetPasswordForEmail(email, {redirectTo})`. Supabase answers the same way whether or not the account exists. The email link opens `/auth/confirm?token_hash=…&type=recovery`; pressing the button calls `verifyOtp`, which signs the user in; then `updateUser({password})`.
+6. Email confirmation works the same way (`type=email`) (E-28).
 
 API check per request (`clipflow_api/identity.py`): signature with a JWKS key (ES256/RS256 only, never HS256 or none), `iss = <url>/auth/v1`, `aud = authenticated`, `exp`, `role = authenticated`, not `is_anonymous`, has an email. Every failure gives the same `401 UNAUTHENTICATED`.
 
@@ -37,7 +38,8 @@ Authentication → URL Configuration / Sign In / Providers / Emails:
 | Redirect URLs | `http://localhost:5173/**` | Allows `redirectTo` on the reset page |
 | Anonymous sign-ins | Off (default) | The API rejects anonymous users anyway |
 | Leaked password protection | On if available on the plan | — |
-| **Custom SMTP** | **Required before real customers.** The built-in sender delivers only to members of the Supabase org team, has a small per-hour limit and no SLA | E-25 follow-up: choose an SMTP provider before staging/pilot |
+| **Custom SMTP** | **Set by the PO on 2026-10-09:** Gmail (`smtp.gmail.com:465`, sender = the PO's Gmail, App Password entered by the PO in the dashboard only; never in chat, repo or logs) | Good for staging/pilot (about 500 recipients/day, `@gmail.com` sender). Before launch, move to a transactional provider on the punpun domain (SPF/DKIM) |
+| **Email templates (E-28)** | Emails → Templates: paste the body of `supabase/templates/confirmation.html` into **Confirm signup** and `supabase/templates/recovery.html` into **Reset Password** (subjects are in `supabase/config.toml`) | Links open our `/auth/confirm` page; the token is used only when the person presses the button, so mail scanners cannot use it up |
 
 ## Local stack and browser E2E
 

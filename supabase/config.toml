@@ -245,6 +245,15 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# E-28: links open our /auth/confirm page; the token is used only when the person presses the button.
+[auth.email.template.confirmation]
+subject = "ยืนยันอีเมลของคุณ — punpun"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "ตั้งรหัสผ่านใหม่ — punpun"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

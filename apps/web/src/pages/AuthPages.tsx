@@ -141,6 +141,53 @@ export function ForgotPage() {
   )
 }
 
+const CONFIRM_TYPES = {
+  email: { title: 'ยืนยันอีเมล', button: 'ยืนยันอีเมล', next: '/' },
+  recovery: { title: 'ตั้งรหัสผ่านใหม่', button: 'ตั้งรหัสผ่านใหม่', next: '/reset' },
+} as const
+
+/**
+ * E-28: email links land here instead of on Supabase's verify URL. The token is used only when the
+ * person presses the button, so a mail scanner that opens (GETs) the link cannot use it up.
+ */
+export function ConfirmPage() {
+  const navigate = useNavigate()
+  const params = new URLSearchParams(useLocation().search)
+  const tokenHash = params.get('token_hash') ?? ''
+  const type = params.get('type') ?? ''
+  const kind = type in CONFIRM_TYPES ? CONFIRM_TYPES[type as keyof typeof CONFIRM_TYPES] : undefined
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  if (!kind || !tokenHash || failed) {
+    return (
+      <AuthCard title="ลิงก์ไม่ถูกต้องหรือหมดอายุ">
+        <Alert kind="error">ลิงก์นี้ใช้ไม่ได้แล้ว (ใช้ไปแล้วหรือหมดอายุ) กรุณาขอลิงก์ใหม่</Alert>
+        <Link to={type === 'recovery' ? '/forgot' : '/login'}>{type === 'recovery' ? 'ขอลิงก์ใหม่' : 'ไปหน้าเข้าสู่ระบบ'}</Link>
+      </AuthCard>
+    )
+  }
+
+  async function confirm() {
+    setBusy(true)
+    const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as 'email' | 'recovery' })
+    if (error) {
+      setBusy(false)
+      setFailed(true)
+      return
+    }
+    navigate(kind!.next, { replace: true })
+  }
+
+  return (
+    <AuthCard title={kind.title} subtitle="กดปุ่มด้านล่างเพื่อดำเนินการต่อ">
+      <button type="button" className="btn btn-primary btn-block" disabled={busy} aria-busy={busy} onClick={confirm}>
+        {busy ? 'กำลังดำเนินการ…' : kind.button}
+      </button>
+    </AuthCard>
+  )
+}
+
 export function ResetPage() {
   const navigate = useNavigate()
   const { session, ready } = useAuth()
