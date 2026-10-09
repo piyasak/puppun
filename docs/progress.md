@@ -9,7 +9,8 @@ Last updated: 2026-10-07
 - Implemented (branch `p7-dashboard`): `DashboardPage.tsx` — next post (server time, Bangkok, today/tomorrow, countdown < 24 h, queue of 4), quota meter (used/limit, cycle end, trial/plan), ready phones + missing details, posts waiting for a person, 5 recent jobs, account facts; each card loads separately and refreshes every 30 s; empty account shows the next step on every card; `lib/posts.ts` shares post-state wording with the calendar; old HomePage removed
 - Commands: E2E 15 passed (new `dashboard.spec.ts`; quality covers the dashboard with data: axe both themes, 360 px, 200 %), lint/tsc/build ผ่าน
 - Environment: Docker Desktop wedged twice more (Kong) → PO restarted
-- Next: theme step 4 (card spotlight/entrance in the app) if wanted; G2-05 staging; G2-01 PO items
+- Step 4 (same PR #6): cursor spotlight on cards (mouse only) + one-time staggered page entrance; reduced motion turns both off; E2E 15 passed (quality alone 2.4 min, same as before)
+- Next: G2-05 staging; G2-01 PO items
 
 ### Previous slice (2026-10-09 13:xx) — marketing landing page (E-48)
 - PO: landing ที่ `/` สำหรับผู้เยี่ยมชม, ไม่แสดงราคา, กลุ่ม SME/ครีเอเตอร์/เอเจนซี่; PR #4 merge แล้ว → เปิด PR #5 สำหรับ `8ae381f` + `a742308`

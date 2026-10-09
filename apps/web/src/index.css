@@ -384,6 +384,25 @@ a.btn { display: inline-block; text-decoration: none; }
 .admin-action input[type=number] { width: 90px; }
 .admin-action input:not([type=number]) { flex: 1; min-width: 220px; }
 
+/* ---- Theme step 4 (E-47): cursor spotlight on cards, page entrance ------------------------------ */
+/* A soft light follows the pointer over cards (mouse/trackpad only; Shell sets --mx/--my). */
+@media (hover: hover) and (pointer: fine) {
+  .content .card { position: relative; transition: box-shadow var(--base) var(--ease); }
+  .content .card::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0;
+    background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 50%), rgba(94, 106, 210, 0.12), transparent 60%);
+    transition: opacity var(--base) var(--ease); }
+  .content .card:hover::after { opacity: 1; }
+  .content .card:hover { box-shadow: 0 0 0 1px var(--border-hover), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 40px rgba(0, 0, 0, 0.3), 0 0 60px rgba(94, 106, 210, 0.08); }
+  :root[data-theme='light'] .content .card:hover { box-shadow: 0 0 0 1px var(--border-hover), 0 10px 30px rgba(10, 10, 20, 0.08); }
+}
+/* Opening a page: the header and sections fade up once, one after another (never on refresh). */
+.content > *, .dash > * { animation: enter 600ms var(--ease) both; }
+.content > :nth-child(2), .dash > :nth-child(2) { animation-delay: 60ms; }
+.content > :nth-child(3), .dash > :nth-child(3) { animation-delay: 120ms; }
+.content > :nth-child(4), .dash > :nth-child(4) { animation-delay: 180ms; }
+.content > :nth-child(n + 5), .dash > :nth-child(n + 5) { animation-delay: 240ms; }
+@keyframes enter { from { opacity: 0; transform: translateY(12px); } }
+
 /* ---- Motion and system preferences ------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
