@@ -1,0 +1,7 @@
+<!-- E-28: the link opens our page; the token is used only when the person presses the button there,
+     so email scanners that open links (e.g. Microsoft 365 Safe Links) cannot use it up.
+     Paste the same body into Dashboard -> Authentication -> Emails -> "Confirm signup". -->
+<h2>ยืนยันอีเมลของคุณ — punpun</h2>
+<p>กดลิงก์ด้านล่าง แล้วกดปุ่ม "ยืนยันอีเมล" ในหน้าที่เปิดขึ้นเพื่อเปิดใช้งานบัญชี</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">ยืนยันอีเมล</a></p>
+<p>ลิงก์นี้ใช้ได้ครั้งเดียวและหมดอายุใน 1 ชั่วโมง หากคุณไม่ได้สมัคร punpun ไม่ต้องทำอะไร</p>

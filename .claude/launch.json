@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-cloud",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d apps\\web && npx vite --mode cloud --host 127.0.0.1 --port 3000 --strictPort"],
+      "port": 3000,
+      "url": "http://localhost:3000"
+    },
+    {
+      "name": "api-cloud",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=postgresql+psycopg://clipflow:clipflow_dev@127.0.0.1:5432/clipflow&& set SUPABASE_URL=https://wqcbubphiihpseqzglwe.supabase.co&& set WEB_ORIGIN=http://localhost:3000&& .venv\\Scripts\\python -m uvicorn clipflow_api.app:app --host 127.0.0.1 --port 8000"],
+      "port": 8000
+    }
+  ]
+}

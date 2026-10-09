@@ -217,7 +217,8 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
         reason = schedules.dispatchable(db, item, expected_state="PREPARING")
         if reason:
             _release(item)
-            _move(item, "NEEDS_ACTION", reason, at)
+            # An expired subscription only makes the post wait, as it would before a claim (T22).
+            _move(item, "SCHEDULED" if reason == "SUBSCRIPTION_INACTIVE" else "NEEDS_ACTION", reason, at)
             event["detail"] = f"refused: {reason}"
             refusal = ApiError(409, "DISPATCH_REVOKED", "คลิปหรือข้อความเปลี่ยนไปแล้ว ห้ามกดโพสต์", {"reason": reason})
         else:

@@ -1,10 +1,26 @@
 # Progress
 
-## Current phase: P6 — Billing & administration (sandbox; D05/D06 partially decided). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5).
+## Current phase: P7 — Pilot/UAT (local regression only; no pilot until G2 = Yes). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5, PO signed under Q-31), G7 = No (0/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 05:xx) — P6 slice B: admin, audit, support, retention; D05/D06 answers
+### Latest slice (2026-10-09 08:xx) — G2-01: Gmail SMTP (PO) + E-28 confirm page
+- PO ตั้ง Custom SMTP (Gmail) ใน Dashboard เอง; App Password ที่เคยพิมพ์ในแชทแนะนำให้เพิกถอนและสร้างใหม่ — ไม่ถูกบันทึกที่ใดใน repo
+- Implemented (E-28): หน้า `/auth/confirm` (กดปุ่มแล้วจึงเรียก `verifyOtp`), template ภาษาไทย `supabase/templates/confirmation.html` + `recovery.html` (local ใช้ผ่าน `supabase/config.toml`), E2E: GET ของตัวสแกนก่อนผู้ใช้ไม่ทำให้ลิงก์เสีย, ลิงก์ reset ที่ใช้แล้ว → หน้าลิงก์หมดอายุ + ขอลิงก์ใหม่
+- Commands: E2E 10 passed, tsc/build + bundle check ผ่าน
+- Gates: G2 ยัง 3/5 — G2-01 รอ PO วาง template + ตั้ง min length/Site URL + ทดสอบ cloud จริง; G2-05 staging
+- Cloud (PO): Gmail SMTP ใช้ได้หลังบันทึก App Password ใหม่ (เดิม 535); reset + สมัครใหม่ → อีเมลไทย → ปุ่มยืนยัน → onboarding สำเร็จ (auth log 10:00–10:04 น.)
+- Next: min length 10 ใน Dashboard; staging (G2-05) เพื่อพิสูจน์ E-28 กับตัวสแกนจริง
+
+### Previous slice (2026-10-09 07:xx) — G6 PO sign-off (Q-31) + P7.1 regression T01–T25
+- PO: "อนุมัติ G6 ปิยศักดิ์" → บันทึกการลงนามใน G6 แต่ G6 ยังเป็น No (G6-01/G6-02); Q-31: เริ่ม P7 ที่ทำในเครื่องได้, ห้ามขาย/รับเงินจริง/Pilot
+- Implemented: `docs/uat/p7-uat.md` (T01–T25 → เทสต์ที่พิสูจน์แต่ละข้อ + หลักฐานจริงที่มี); `test_uat.py`: T01 sweep ทุก route ที่รับ id (B ได้คำตอบเหมือน id ที่ไม่มี และข้อมูล A ไม่เปลี่ยน), T14 ยกเลิกหลัง claim, T19 server restart (process ที่สองบน DB เดียวกัน), T22 หมดอายุระหว่างรอ/Submit, T23 retention ขณะงานกำลังทำ; unit T15 อ่านชื่อบัญชีไม่ได้
+- Found + fixed (T22, Medium): โพสต์ที่ถูกปฏิเสธตอน Submit เพราะหมดอายุถูก park เป็น NEEDS_ACTION ต่างจากรายการที่ยังไม่ claim ซึ่งรอ → ตอนนี้กลับไปรอ (SCHEDULED) และทำต่อหลังต่ออายุ
+- Commands: integration 213 passed / 8 skipped, unit 167, E2E 10, ruff ผ่าน
+- Gates: G7 0/5 (G7-03 บางส่วน: 24/25 ผ่าน, T24 = P8); Pilot ต้องรอ G2 + D07
+- Next: P7 ที่ไม่ต้องมี Pilot (รายงาน QA รวม: mobile/a11y/security) หรือ G2-01/G2-05 เพื่อปลดล็อก Pilot; Omise/Stripe (G6-02); ราคา (G6-01)
+
+### Previous slice (2026-10-09 05:xx) — P6 slice B: admin, audit, support, retention; D05/D06 answers
 - PO: D05 "config ได้ทีหลัง"; D06 Omise + Stripe (config ทีหลัง), **ไม่คืนเงินทุกกรณี** — บันทึกใน decisions, แสดงในหน้าแพ็กเกจ/ชำระ
 - Implemented: migration 0010 (platform_role, audit reason/details, clips.file_deleted_at), `deps.staff/admin_only`, `routers/admin.py` (workspaces, jobs by ID, payments, plans + new version, plan/extend/end/quota with reason + before/after audit, retention run), `retention.py`, `manage.py` (grant-role, retention), quota grant/deduct, `/v1/me` platform_role, storage.delete, preview 410 หลังลบ; เว็บ `/admin` (เมนูเห็นเฉพาะ staff)
 - Found: `quota._add` ใช้ rowcount ที่ไม่น่าเชื่อถือ → บอกว่าไม่ได้บันทึกทั้งที่บันทึกแล้ว (เดิมไม่มีใครใช้ค่าคืน) → ใช้ RETURNING; grant ทำให้ "ใช้" ติดลบ → แยก grant เป็นเพดานเพิ่ม; เทสต์ admin สร้าง plan version ใหม่ในฐานข้อมูลที่ใช้ร่วมกัน → คืนค่าเดิมหลังเทสต์

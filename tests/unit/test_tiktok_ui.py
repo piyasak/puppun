@@ -154,6 +154,18 @@ def test_wrong_account_stops_before_anything_is_opened():
     assert all(state in ("feed", "profile") for state, *_ in phone.presses)
 
 
+def test_an_unreadable_account_stops_before_anything_is_opened():  # T15
+    class NoHandle(FakeTikTok):
+        def xml(self):
+            return screen(node("qa", bounds=(297, 384, 423, 428))) if self.state == "profile" else super().xml()
+
+    phone = NoHandle()
+    with pytest.raises(UiStop) as err:
+        ui_for(phone).check_account("qa_account")
+    assert err.value.code == "ACCOUNT_UNREADABLE"
+    assert all(state in ("feed", "profile") for state, *_ in phone.presses) and phone.caption is None
+
+
 @pytest.mark.parametrize("texts, code", [
     (["เข้าสู่ระบบ TikTok", "ใช้โทรศัพท์หรืออีเมล"], "LOGIN_REQUIRED"),
     (["Log in to TikTok", "Use phone or email"], "LOGIN_REQUIRED"),

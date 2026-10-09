@@ -9,7 +9,7 @@ function decodeEntities(s: string) {
   return s.replace(/&amp;/g, '&')
 }
 
-/** Waits for a new message to `email` whose body contains an auth link, returns the link. */
+/** Waits for a new message to `email` whose body contains our /auth/confirm link (E-28), returns it. */
 export async function mailLink(request: APIRequestContext, email: string, after: Set<string>, type: string) {
   for (let i = 0; i < 40; i++) {
     const res = await request.get(`${MAILPIT}/api/v1/search`, { params: { query: `to:"${email}"` } })
@@ -17,7 +17,7 @@ export async function mailLink(request: APIRequestContext, email: string, after:
     for (const m of messages.filter((m) => !after.has(m.ID))) {
       const body = await (await request.get(`${MAILPIT}/api/v1/message/${m.ID}`)).json()
       const text = `${body.Text ?? ''}\n${body.HTML ?? ''}`
-      const link = text.match(new RegExp(`https?://[^\\s"'<>]+/auth/v1/verify\\?[^\\s"'<>]*type=${type}[^\\s"'<>]*`))
+      const link = text.match(new RegExp(`https?://[^\\s"'<>]+/auth/confirm\\?token_hash=[^\\s"'<>]*type=${type}[^\\s"'<>]*`))
       if (link) {
         after.add(m.ID)
         return decodeEntities(link[0])
@@ -55,7 +55,8 @@ export async function signUpAndOnboard(page: Page, request: APIRequestContext) {
   await page.getByLabel('ยืนยันรหัสผ่าน').fill(user.password)
   await page.getByRole('button', { name: 'สมัครสมาชิก' }).click()
   await expect(page.getByRole('heading', { name: 'ตรวจสอบอีเมลของคุณ' })).toBeVisible()
-  await page.goto(await mailLink(request, user.email, new Set(), 'signup'))
+  await page.goto(await mailLink(request, user.email, new Set(), 'email'))
+  await page.getByRole('button', { name: 'ยืนยันอีเมล' }).click()
   await expect(page).toHaveURL(/\/onboarding$/)
   await page.getByLabel('ชื่อผู้ใช้').fill(user.username)
   await page.getByLabel(/ข้าพเจ้ารับรองว่ามีสิทธิ์/).check()
