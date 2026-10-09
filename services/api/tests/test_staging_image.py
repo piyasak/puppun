@@ -41,6 +41,20 @@ def test_db_schema_keeps_every_table_out_of_public(database_url, alembic_config,
         engine.dispose()
 
 
+def test_build_id_comes_from_the_image_or_the_deployed_commit(migrated_url, storage, monkeypatch):
+    settings = Settings(app_env="staging", database_url=migrated_url, supabase_url=SUPABASE_URL)
+
+    def build():
+        app = create_app(settings, resolve_key=lambda token: SIGNING_KEY.public_key(), storage=storage)
+        return TestClient(app).get("/healthz").json()["build"]
+
+    monkeypatch.delenv("BUILD_ID", raising=False)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "07cdbbd1234567890")
+    assert build() == "07cdbbd"  # Render: the commit it deployed
+    monkeypatch.setenv("BUILD_ID", "v2")
+    assert build() == "v2"  # an explicit image build id wins
+
+
 def test_dashboard_style_database_urls_are_accepted():
     assert driver_url("postgresql://u:p@h:5432/db") == "postgresql+psycopg://u:p@h:5432/db"
     assert driver_url("postgres://u:p@h/db") == "postgresql+psycopg://u:p@h/db"
@@ -74,4 +88,5 @@ def test_web_app_is_served_on_the_api_origin(migrated_url, storage, tmp_path):
     assert missing.status_code == 404 and missing.json()["code"] == "NOT_FOUND"
     assert client.get("/assets/missing.js").status_code == 404
     assert client.get("/healthz").json()["status"] == "ok"
+    assert client.head("/jobs/123").status_code == 200  # HEAD (link checkers, uptime monitors) gets the page too
     assert client.get("/v1/billing/plans").status_code == 200

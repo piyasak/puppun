@@ -23,7 +23,7 @@ COPY services/api/alembic.ini services/api/
 COPY services/api/migrations services/api/migrations
 COPY deploy/start.sh /app/start.sh
 COPY --from=web /web/dist /app/web
-ARG BUILD_ID=dev
+ARG BUILD_ID=
 ENV BUILD_ID=${BUILD_ID}
 RUN useradd --system --uid 10001 app && chmod 0555 /app/start.sh
 USER app

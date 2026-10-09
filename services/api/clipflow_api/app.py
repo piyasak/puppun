@@ -114,7 +114,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(billing.router)
     app.include_router(admin.router)
 
-    build = os.environ.get("BUILD_ID", "dev")  # set by the staging image; shows which release answers
+    # Which release answers: BUILD_ID from the image build, else the commit Render deployed.
+    build = os.environ.get("BUILD_ID") or os.environ.get("RENDER_GIT_COMMIT", "")[:7] or "dev"
 
     @app.get("/healthz")
     def healthz():
@@ -134,7 +135,7 @@ def _serve_web(app: FastAPI, dist: Path) -> None:
     app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
     root_files = {p.name for p in dist.iterdir() if p.is_file() and p.name != "index.html"}
 
-    @app.get("/{path:path}", include_in_schema=False)
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def web(path: str):
         if path.startswith(("v1/", "assets/")) or path in ("v1", "healthz"):
             raise ApiError(404, "NOT_FOUND", "ไม่พบหน้านี้")
