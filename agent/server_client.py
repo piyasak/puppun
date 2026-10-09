@@ -106,6 +106,11 @@ class ServerClient:
             return self._send("PUT", f"/v1/agent/jobs/{job_id}/clips/{index}/file", fh, "video/mp4",
                               session.token, {"Content-Length": str(size)}, timeout_s=max(60.0, size / 1e6))
 
+    def upload_preview(self, session: Session, job_id: str, index: int, path: Path) -> dict:
+        """Q-33: the still of a clip whose file stays on this PC (its checks went with clip_rendered)."""
+        return self._send("PUT", f"/v1/agent/jobs/{job_id}/clips/{index}/preview", path.read_bytes(), "image/jpeg",
+                          session.token, {}, timeout_s=60.0)
+
     def claim_post(self, session: Session, ready_serials: list[str]) -> dict | None:
         return self._post("/v1/agent/posts/claim", {"ready_serials": ready_serials}, bearer=session.token)["post"]
 

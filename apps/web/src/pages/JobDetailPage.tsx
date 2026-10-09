@@ -29,6 +29,46 @@ function Timeline({ job }: { job: JobDetail }) {
   )
 }
 
+/** Q-33: the video never leaves the Agent's PC; the page shows three frames and where the file is. */
+function AgentStill({ clip }: { clip: Clip }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    let alive = true
+    api<{ url: string }>(`/v1/clips/${clip.id}/media`)
+      .then((m) => alive && setUrl(m.url))
+      .catch((err: ApiError) => alive && setError(err.message))
+    return () => { alive = false }
+  }, [clip.id])
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(clip.agent_path ?? '')
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <figure className="agent-still" data-testid="clip-still">
+      {url
+        ? <img src={url} alt={`ภาพจาก 3 ช่วงของคลิป ${clip.index}`} width={810} height={480} onError={() => setError('โหลดภาพไม่ได้')} />
+        : <div className="agent-still-empty">{error || 'กำลังโหลดภาพ…'}</div>}
+      <figcaption>
+        <span className="hint">วิดีโอเก็บไว้บนเครื่อง Agent (ไม่ได้อัปโหลด) — เปิดดูจากโฟลเดอร์นี้บนเครื่องนั้น</span>
+        {clip.agent_path && (
+          <span className="agent-path">
+            <code data-testid="agent-path">{clip.agent_path}</code>
+            <button type="button" className="btn btn-secondary btn-small" onClick={copy}>{copied ? 'คัดลอกแล้ว' : 'คัดลอก path'}</button>
+          </span>
+        )}
+      </figcaption>
+    </figure>
+  )
+}
+
 function Preview({ clip }: { clip: Clip }) {
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -48,6 +88,7 @@ function Preview({ clip }: { clip: Clip }) {
   }
 
   if (!clip.uploaded) return <div className="preview preview-empty">รอไฟล์จาก Agent</div>
+  if (clip.file_location === 'agent') return <AgentStill clip={clip} />
   return (
     <div className="preview">
       {url ? (

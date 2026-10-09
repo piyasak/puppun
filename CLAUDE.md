@@ -65,7 +65,7 @@ CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_re
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_post.py -s   # opt-in: dry-run post on the QA phone (push, hash, Gallery, removed; TikTok never opened)
 CLIPFLOW_LOAD=1 .venv/Scripts/python -m pytest services/api/tests/test_dispatch_load.py -s   # opt-in, ~5 min: 150 phones / 300 posts, p95 dispatch latency (G4-05)
 .venv/Scripts/python tools/staging_rehearsal.py               # G2-05: real staging image, deploy v1 -> release v2 -> rollback v1 on a throwaway DB (DB_SCHEMA=clipflow); runbook docs/runbooks/staging.md
-.venv/Scripts/python tools/build_agent.py [version]          # PyInstaller bundle -> var/dist/punpun-agent-<v>.zip (+ .sha256), E-44
+.venv/Scripts/python tools/build_agent.py [version]          # PyInstaller bundle -> var/dist/punpun-agent-<v>.zip (+ .sha256), E-44 + double-click var/dist/punpun-agent-setup-<v>.exe (E-50: PATH, shortcuts, login; --uninstall)
 .venv/Scripts/python -m agent install --bundle B --sha256 H  # install/update (refused while a post is between Submit and its result); rollback | login | status | version
 CLIPFLOW_AGENT_BUNDLE=1 .venv/Scripts/python -m pytest tests/test_agent_bundle.py   # opt-in: packaged exe install -> self-update -> rollback
 CLIPFLOW_AUTHORIZED_POST=<decision> .venv/Scripts/python -m pytest services/api/tests/test_authorized_real_post.py -s   # ONLY with a recorded PO grant (Q-29 is used up); one real post
@@ -85,7 +85,7 @@ Environment notes:
 
 ## Architecture: the parts that span modules
 
-**Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, then uploads the finished clip + sha256 for preview/approval. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
+**Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, and keeps the finished clip in the folder chosen in the Agent (Q-33): it sends only the sha256, its own file checks and a still (three frames) for approval, never the video. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
 
 **Identity chain:** Workspace → Username + Agent Token → server-bound Environment → Agent installation/session → Android serial → expected TikTok account.
 - Browser auth (Supabase Auth JWT in `Authorization: Bearer`, never cookies or query strings) and Agent auth (our own tokens, P2.4/P2.5) are separate. Never create accounts on the real Supabase project yourself; the PO runs live sign-up tests.

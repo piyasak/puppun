@@ -358,8 +358,12 @@ class Clip(Base):
     title: Mapped[str | None] = mapped_column(String(200))  # burned into the video: changing it means a re-render
     created_at: Mapped[datetime] = _created()
     # P3.2: the uploaded file, server-side checks, metadata version and approval.
-    storage_key: Mapped[str | None] = mapped_column(String(300))
-    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    storage_key: Mapped[str | None] = mapped_column(String(300))  # the clip file, when it was uploaded (before Q-33)
+    uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # delivered (file or Agent report)
+    # Q-33: "agent" = the file stays on the Agent's PC (agent_path); the server keeps a still (preview_key).
+    file_location: Mapped[str] = mapped_column(String(8), default="server", server_default="server")
+    preview_key: Mapped[str | None] = mapped_column(String(300))
+    agent_path: Mapped[str | None] = mapped_column(String(500))
     check_status: Mapped[str | None] = mapped_column(String(8))  # passed | failed | skipped
     check_results: Mapped[dict | None] = mapped_column(JSONB)
     metadata_version: Mapped[int] = mapped_column(Integer, default=1)

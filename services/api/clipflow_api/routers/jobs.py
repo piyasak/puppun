@@ -139,7 +139,10 @@ def _spec(db: Session, job: Job, env_name: str) -> dict:
     # Clips already reported let a restarted Agent resume instead of starting over (E-37).
     reported = db.scalars(select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)).all()
     return {
-        "clips": [{"index": c.clip_index, "sha256": c.render_sha256, "uploaded": c.uploaded_at is not None}
+        "clips": [{"index": c.clip_index, "sha256": c.render_sha256, "uploaded": c.uploaded_at is not None,
+                   # enough for an Agent that restarted to re-report a kept render with its checks (Q-33)
+                   "start_ms": c.start_ms, "end_ms": c.end_ms, "duration_ms": c.duration_ms,
+                   "template_version": c.template_version, "title": c.title}
                   for c in reported],
         "id": str(job.id), "state": job.state, "state_version": job.state_version,
         "environment": {"id": str(job.environment_id), "name": env_name},

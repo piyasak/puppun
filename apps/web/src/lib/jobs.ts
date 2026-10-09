@@ -44,6 +44,10 @@ export type Clip = {
   render_sha256: string
   size_bytes: number
   uploaded: boolean
+  // Q-33: 'agent' = the video stays on the Agent's PC (agent_path); the page shows a still instead
+  file_location: 'agent' | 'server'
+  agent_path: string | null
+  preview: 'image' | 'video' | null
   checks: { status: 'passed' | 'failed' | 'skipped'; reason?: string; checks: Check[] } | null
   check_status: 'passed' | 'failed' | 'skipped' | null
   metadata: { version: number; caption: string | null; hashtags: string[] }

@@ -3,7 +3,8 @@
     claim -> inspect + captions + audio pauses + seeded selection   (job still RECEIVED)
           -> source_validated(possible clips)                       (server reserves quota)
           -> DOWNLOADING selected ranges -> ANALYZING -> RENDERING
-          -> per clip: render -> clip_rendered(sha256) -> upload    (server hashes + checks, settles quota)
+          -> per clip: render -> checks + still on this PC -> clip_rendered(sha256, checks, path)
+                       -> still (JPEG) to the server               (delivered: server settles quota, Q-33)
           -> completed | failed
 
 One job at a time. A keep-alive thread sends `progress` events so the 300 s lease survives
@@ -12,8 +13,8 @@ next step and nothing more is sent for it. Re-claiming a job after a restart res
 seed makes the same selection, uploaded clips are skipped and a local render whose hash matches
 the server's report is reused.
 
-Rendered clips stay under <data dir>/clips/<job id>/ because the Agent later posts that same
-file (Q-15). Intermediate downloads are deleted. Error details sent to the server never contain
+Rendered clips stay in the clips folder chosen in the Agent (<folder>/<job id>/, Q-33) and are
+never uploaded: the Agent later posts that same file (Q-15). Intermediate downloads are deleted. Error details sent to the server never contain
 local paths (they can include the Windows user name).
 """
 
@@ -26,6 +27,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from agent import clips_folder
 from agent.server_client import ServerClient, ServerError, Session
 
 STOP_CODES = {"LEASE_LOST", "JOB_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
@@ -53,12 +55,14 @@ def _sha256(path: Path) -> str:
 
 class JobRunner:
     def __init__(self, data_dir: Path, media_dir: Path | None = None, log=print, poll_s: float = 10.0,
-                 keepalive_s: float = 60.0, max_height: int = 1080, retries: int = 3, retry_wait_s: float = 2.0):
+                 keepalive_s: float = 60.0, max_height: int = 1080, retries: int = 3, retry_wait_s: float = 2.0,
+                 clips_dir: Path | None = None):
         from clipflow_worker.cooldown import Cooldown
         from clipflow_worker.media import ensure_on_path
 
         ensure_on_path()  # before the first yt-dlp call: it caches ffmpeg detection per process
         self.data_dir, self.media_dir, self.log = Path(data_dir), media_dir, log
+        self.clips_dir = Path(clips_dir) if clips_dir else clips_folder.current(self.data_dir)
         self.poll_s, self.keepalive_s, self.max_height = poll_s, keepalive_s, max_height
         self.retries, self.retry_wait_s = retries, retry_wait_s
         self.cooldown = Cooldown(self.data_dir / "source_cooldown.json")
@@ -90,6 +94,11 @@ class JobRunner:
 
     def run_once(self, client: ServerClient, get_session) -> str | None:
         """Claim and run one job. Returns its final state, "stopped", or None when nothing was waiting."""
+        if not clips_folder.has_room(self.clips_dir):
+            gb = clips_folder.free_bytes(self.clips_dir) / 1024**3
+            self.log(f"งาน: พื้นที่ว่างในโฟลเดอร์คลิปเหลือ {gb:.1f} GB (ต้องมีอย่างน้อย "
+                     f"{clips_folder.MIN_FREE_BYTES // 1024**3} GB) — ยังไม่รับงานใหม่ ลบหรือย้ายคลิปเก่า หรือเปลี่ยนโฟลเดอร์ด้วย set-folder")
+            return None
         spec = client.claim_job(get_session())
         if spec is None:
             return None
@@ -102,7 +111,7 @@ class _Job:
         self.id = spec["id"]
         self.state = spec["state"]
         self.reported = {c["index"]: c for c in spec.get("clips", [])}
-        self.home = runner.data_dir / "clips" / self.id
+        self.home = runner.clips_dir / self.id
         self.work = runner.data_dir / "work" / self.id
         self.stopped = threading.Event()
 
@@ -250,11 +259,13 @@ class _Job:
             out = self.home / f"clip_{index:02d}.mp4"
             earlier = self.reported.get(index)
             if earlier and out.is_file() and _sha256(out) == earlier["sha256"]:
-                self._upload(index, out)  # rendered and reported before a restart; only the upload is missing
+                # Rendered and reported before a restart: check it again and send what is missing.
+                self._deliver(index, out, earlier["duration_ms"], resend=True)
                 self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} แล้ว (ไฟล์เดิม)")
                 continue
             try:
                 result, metadata, _ = pipeline.render(p, index, segment, *parts[index], out, tpl)
+                out.with_suffix(".ass").unlink(missing_ok=True)  # render's subtitle file: not for the customer's folder
             except RenderError as exc:  # keep going: the other clips are still worth delivering
                 failures.append(index)
                 self.r.log(f"งาน {self.id[:8]}: คลิป {index} render ไม่ผ่าน ({exc})")
@@ -262,20 +273,45 @@ class _Job:
             if earlier and earlier["sha256"] != result.sha256:
                 self.r.log(f"งาน {self.id[:8]}: คลิป {index} render ใหม่ได้ไฟล์ต่างจากเดิม แจ้ง Server ใหม่")
             self.check()
+            duration_ms = round(result.duration_s * 1000)
+            checks = self._checks(index, out, duration_ms)
             self.event("clip_rendered", index=index, start_ms=round(segment.start * 1000),
-                       end_ms=round(segment.end * 1000), duration_ms=round(result.duration_s * 1000),
+                       end_ms=round(segment.end * 1000), duration_ms=duration_ms,
                        sha256=result.sha256, size_bytes=out.stat().st_size,
                        template_version=result.template_version, title=metadata["title"],
-                       caption=metadata["caption"], hashtags=metadata["hashtags"])
-            self._upload(index, out)
+                       caption=metadata["caption"], hashtags=metadata["hashtags"],
+                       checks=checks, local_path=str(out))
+            self._deliver(index, out, duration_ms)
             self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} แล้ว")
         if failures and len(failures) == len(todo) and not any(c.get("uploaded") for c in self.reported.values()):
             raise JobFailure("RENDER_FAILED", f"render ไม่ผ่านทุกคลิป ({failures})")
 
-    def _upload(self, index: int, path: Path) -> None:
+    def _checks(self, index: int, path: Path, duration_ms: int) -> dict:
+        """The server's file checks, made here because the file never leaves this PC (Q-33)."""
+        from clipflow_worker import delivery
+
+        spec = self.spec
+        stretch = 1.2 if spec.get("auto_clips") and index == spec.get("planned_clips") else 1
+        return delivery.check_clip(path, reported_duration_ms=duration_ms, clip_min_s=spec["clip_min_s"],
+                                   clip_max_s=spec["clip_max_s"] * stretch)
+
+    def _deliver(self, index: int, path: Path, duration_ms: int, resend: bool = False) -> None:
+        if resend:  # after a restart: the report may have gone out without checks (or before Q-33)
+            earlier = self.reported[index]
+            self.event("clip_rendered", index=index, start_ms=earlier["start_ms"], end_ms=earlier["end_ms"],
+                       duration_ms=earlier["duration_ms"], sha256=earlier["sha256"], size_bytes=path.stat().st_size,
+                       template_version=earlier["template_version"], title=earlier.get("title") or "",
+                       checks=self._checks(index, path, earlier["duration_ms"]), local_path=str(path))
+        from clipflow_worker import delivery
+
+        still = self.home / f"clip_{index:02d}.jpg"
+        delivery.contact_sheet(path, still, max(duration_ms / 1000, 0.1))
+        self._upload(index, still)
+
+    def _upload(self, index: int, still: Path) -> None:
         for attempt in range(self.r.retries):
             try:
-                self.client.upload_clip(self.session(), self.id, index, path)
+                self.client.upload_preview(self.session(), self.id, index, still)
                 return
             except ServerError as exc:
                 if exc.code in STOP_CODES:

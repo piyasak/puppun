@@ -36,6 +36,9 @@ def clip_out(db: Session, clip: Clip, job: Job) -> dict:
         "title": clip.title, "start_ms": clip.start_ms, "end_ms": clip.end_ms, "duration_ms": clip.duration_ms,
         "seed": clip.seed, "template_version": clip.template_version, "render_sha256": clip.render_sha256,
         "size_bytes": clip.size_bytes, "uploaded": clip.uploaded_at is not None,
+        # Q-33: where the clip file is. "agent": on the Agent's PC (agent_path), the page shows a still.
+        "file_location": clip.file_location, "agent_path": clip.agent_path,
+        "preview": ("image" if clip.preview_key else "video" if clip.storage_key else None),
         "checks": clip.check_results, "check_status": clip.check_status,
         "metadata": {"version": meta.version, "caption": meta.caption, "hashtags": meta.hashtags},
         "review_mode": job.review_mode,
@@ -80,6 +83,36 @@ async def upload_clip(job_id: uuid.UUID, index: int, request: Request, ctx: Agen
         temp.unlink(missing_ok=True)
 
 
+@agent_router.put("/{job_id}/clips/{index}/preview")
+async def upload_preview(job_id: uuid.UUID, index: int, request: Request, ctx: AgentContext = Depends(agent_context),
+                         db: Session = Depends(get_db)):
+    """Q-33 delivery: a JPEG still of a clip whose file stays on the Agent's PC (checks came with
+    clip_rendered). Small by design; anything larger is refused while reading."""
+    fd, name = tempfile.mkstemp(prefix="preview-", suffix=".jpg")
+    temp, size = Path(name), 0
+    try:
+        with os.fdopen(fd, "wb") as out:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > clips.PREVIEW_MAX_BYTES:
+                    raise ApiError(413, "PREVIEW_TOO_LARGE", "ภาพตัวอย่างใหญ่เกินกำหนด")
+                out.write(chunk)
+
+        def store() -> dict:
+            job = jobs.lease_holder_job(db, ctx, job_id)
+            clip = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)
+                              .with_for_update()).first()
+            if clip is None:
+                raise ApiError(404, "NOT_FOUND", "ยังไม่ได้รายงานคลิปลำดับนี้ (clip_rendered)")
+            clips.accept_preview(db, request.app.state.storage, job, clip, temp, size)
+            db.commit()
+            return {"clip_id": str(clip.id), "check_status": clip.check_status, "approved": clips.is_approved(clip)}
+
+        return await run_in_threadpool(store)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 # --- web ----------------------------------------------------------------------------------------
 
 class MetadataPatch(BaseModel):
@@ -116,10 +149,11 @@ def clip_media(clip_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web
     clip, _ = _owned(db, auth, clip_id)
     if clip.file_deleted_at is not None:
         raise ApiError(410, "CLIP_FILE_EXPIRED", "ไฟล์คลิปนี้ถูกลบตามระยะเวลาเก็บไฟล์ของแพ็กเกจแล้ว")
-    if clip.storage_key is None:
+    key, kind = (clip.preview_key, "image") if clip.file_location == "agent" else (clip.storage_key, "video")
+    if key is None:
         raise ApiError(409, "CLIP_NOT_UPLOADED", "ยังไม่ได้รับไฟล์คลิปนี้จาก Agent")
     ttl = request.app.state.settings.preview_ttl_s
-    return {"url": request.app.state.storage.preview_url(clip.storage_key, ttl), "expires_in_s": ttl}
+    return {"url": request.app.state.storage.preview_url(key, ttl), "expires_in_s": ttl, "kind": kind}
 
 
 @web_router.patch("/{clip_id}/metadata")
@@ -169,4 +203,5 @@ def local_media(key: str, exp: int, sig: str, request: Request):
     path = storage.verify(key, exp, sig)
     if path is None:
         raise not_found()
-    return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=60"})
+    media_type = "image/jpeg" if key.endswith(".jpg") else "video/mp4"  # Q-33 stills
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=60"})

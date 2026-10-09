@@ -3,6 +3,7 @@ release old registrations, so an uninstall without cleanup never burns quota for
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, Request
@@ -29,6 +30,27 @@ def _out(inst: AgentInstallation, env_name: str, live: AgentSession | None, at) 
         "created_at": inst.created_at.isoformat(),
         "deregistered_at": inst.deregistered_at.isoformat() if inst.deregistered_at else None,
     }
+
+
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+@router.get("/download")
+def agent_download(request: Request, auth: WebAuth = Depends(web_auth)):
+    """The Agent setup on offer (E-50). Offered only with an https link (http only outside staging and
+    production) and a well-formed SHA-256, so the page never shows a link the customer cannot check."""
+    s = request.app.state.settings
+    secure = s.agent_setup_url.startswith("https://") or (
+        s.agent_setup_url.startswith("http://") and s.app_env not in ("staging", "production"))
+    sha = s.agent_setup_sha256.lower()
+    if not (secure and SHA256_RE.fullmatch(sha) and s.agent_setup_version):
+        return {"available": False}
+    try:
+        size_mb = round(float(s.agent_setup_size_mb), 1) or None
+    except ValueError:
+        size_mb = None
+    return {"available": True, "version": s.agent_setup_version, "url": s.agent_setup_url, "sha256": sha,
+            "size_mb": size_mb}
 
 
 @router.get("")

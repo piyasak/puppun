@@ -51,6 +51,12 @@ def main(argv: list[str] | None = None) -> int:
     p_login.add_argument("--server", required=True)
     p_login.add_argument("--username", required=True)
     p_login.add_argument("--data-dir", type=Path, default=None)
+    p_login.add_argument("--clips-dir", type=Path, default=None,
+                         help="where finished clips are kept on this PC (asked when not given; Q-33)")
+    p_fold = sub.add_parser("set-folder", help="change where finished clips are kept on this PC (Q-33)")
+    p_fold.add_argument("folder", type=Path)
+    p_fold.add_argument("--move", action="store_true", help="also move the clips already made")
+    p_fold.add_argument("--data-dir", type=Path, default=None)
     p_out = sub.add_parser("logout", help="forget the stored Agent token")
     p_out.add_argument("--data-dir", type=Path, default=None)
     p_st = sub.add_parser("status", help="Agent version, settings, phones and posts in progress")
@@ -92,10 +98,10 @@ def main(argv: list[str] | None = None) -> int:
 
         print(__version__)
         return 0
-    if args.cmd in ("login", "logout", "status", "install", "rollback"):
+    if args.cmd in ("login", "logout", "status", "install", "rollback", "set-folder"):
         from agent import admin
 
-        return getattr(admin, args.cmd)(args)
+        return getattr(admin, args.cmd.replace("-", "_"))(args)
     if args.cmd == "recover":
         return recover_all()
     if args.cmd == "connect":

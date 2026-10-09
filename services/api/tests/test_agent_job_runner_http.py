@@ -82,6 +82,10 @@ def test_local_file_job_end_to_end(shop, tmp_path):
     assert job["quota"] == {"reserved": 2, "settled": 2, "released": 0, "outstanding": 0}
     for clip in job["clips"]:
         assert clip["uploaded"] and clip["check_status"] == "passed", clip["checks"]
+        # Q-33: the file stayed on this PC; the server holds the Agent's checks and a still, never the video.
+        assert clip["file_location"] == "agent" and clip["preview"] == "image" and clip["checks"]["by"] == "agent"
+        assert clip["agent_path"].endswith(f"clip_{clip['index']:02d}.mp4")
+        assert shop.owner.get(f"/v1/clips/{clip['id']}/media").json()["kind"] == "image"
         assert 15_000 <= clip["duration_ms"] <= 25_000
         # Cut at the middle of a real (1 s) pause (9.5 s, 19.5 s, ...), never mid-sound. The last pause
         # ends with the file, whose exact length depends on the AAC encoder of the ffmpeg build (CI saw
@@ -93,6 +97,7 @@ def test_local_file_job_end_to_end(shop, tmp_path):
         # The Agent keeps the exact file it delivered, for posting later (Q-15).
         local = tmp_path / "agent-data" / "clips" / job_id / f"clip_{clip['index']:02d}.mp4"
         assert job_runner._sha256(local) == clip["render_sha256"]
+        assert not local.with_suffix(".ass").exists()  # only the clip (and its still) stay in the folder
     assert not (tmp_path / "agent-data" / "work" / job_id).exists()
     assert shop.run() is None  # nothing left to claim
 

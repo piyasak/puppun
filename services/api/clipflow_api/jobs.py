@@ -243,10 +243,13 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
         raise ApiError(422, "VALIDATION_ERROR", "sha256 ไม่ถูกต้อง")
     if not job.clip_min_s * 1000 - 1000 <= duration_ms <= longest_clip_s(job, index) * 1000 + 1000:
         raise ApiError(422, "CLIP_DURATION_OUT_OF_RANGE", "ความยาวคลิปไม่อยู่ในช่วงที่กำหนด")
+    checks, agent_path = clips.reported_checks(e.get("checks")), clips.reported_path(e.get("local_path"))
     existing = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)
                           .with_for_update()).first()
     if existing is not None:
         if existing.render_sha256 == sha:
+            if existing.uploaded_at is None and checks is not None:
+                existing.check_results, existing.agent_path = checks, agent_path
             return
         if existing.uploaded_at is not None:  # delivered files are never swapped
             raise ApiError(409, "CLIP_CONFLICT", "คลิปลำดับนี้ถูกรายงานแล้วด้วยไฟล์อื่น")
@@ -255,12 +258,14 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
         existing.render_sha256, existing.size_bytes = sha, int(e["size_bytes"])
         existing.template_version = str(e["template_version"])[:40]
         existing.title = (e.get("title") or "")[:200] or None
+        existing.check_results, existing.agent_path = checks, agent_path
         return
     clip = Clip(
         workspace_id=job.workspace_id, job_id=job.id, clip_index=index, start_ms=int(e["start_ms"]),
         end_ms=int(e["end_ms"]), seed=job.seed, template_version=str(e["template_version"])[:40],
         render_sha256=sha, size_bytes=int(e["size_bytes"]), duration_ms=duration_ms,
         title=(e.get("title") or "")[:200] or None, metadata_version=1,
+        check_results=checks, agent_path=agent_path,  # Q-33: checks made on the Agent, delivered with its still
     )
     db.add(clip)
     db.flush()

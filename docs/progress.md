@@ -4,7 +4,35 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 20:xx) — clip count from the source (Q-32) + staging release
+### Latest slice (2026-10-10 00:xx) — Agent download on the web (E-50)
+- API `GET /v1/agents/download` (signed-in users): the setup on offer from `AGENT_SETUP_URL` / `_VERSION` / `_SHA256` / `_SIZE_MB`; offered only with https (http only outside staging/production), a 64-hex SHA-256 and a version, otherwise `available: false`
+- Web `/agents`: "ติดตั้ง Agent บน Windows" card: download button (version, MB) + SHA-256, or "ยังไม่เปิดให้ดาวน์โหลด ติดต่อทีมงาน" when not configured; 5 steps (SmartScreen, the user's own username + link to Agent Token, clips folder on a roomy drive, phone USB debugging, the punpun Agent shortcut)
+- Commands: integration 235 passed / 9 skipped (new test_agent_download 8; an empty size value never stops the server), ruff clean, tsc + oxlint clean (old warnings only); E2E 18 passed after the PO restarted Docker (new: no setup configured = "ติดต่อทีมงาน" and no link; configured = link + version/size + SHA-256; axe on /agents clean)
+- Open: where the setup is hosted (PO): e.g. a public Supabase Storage bucket or GitHub Release; then set the AGENT_SETUP_* values in Render
+- Next: PO double-clicks the setup on this PC; PO picks where the setup is hosted
+
+### Previous slice (2026-10-09 23:xx) — double-click setup for the Agent (E-50)
+- Gap found by the PO: `punpun-agent` was not a command (the first install needed Python, nothing put the launcher on PATH)
+- `agent/setup_win.py` + `tools/build_agent.py` now also build `var/dist/punpun-agent-setup-<v>.exe` (PyInstaller onefile, 34.9 MB, carries the bundle + its SHA-256 + the default server, CLIPFLOW_SETUP_SERVER = staging): install/update through `agent.updater.install` (same checks), add the install folder to the user PATH (HKCU, no admin; WM_SETTINGCHANGE), "punpun Agent" shortcuts in the Start menu and on the desktop (`cmd /k ... connect`, window stays open; working folder = Videos), then `login` at the Agent's hidden token prompt when no token is stored; `--uninstall` removes PATH entry, shortcuts and program folder, keeps the data and the clips
+- Commands: unit test_setup_win 4 passed; setup exe into a temp folder (no PATH): installed 0.3.0, launcher answers 0.3.0, shortcut = cmd.exe /k "<launcher>" connect in Videos; uninstall removed program + shortcut, exit 0
+- Not yet: code signing (SmartScreen warns on an unsigned exe), a download page on the web, start on boot / tray icon
+- Next: PO double-clicks the setup on this PC (PATH + shortcuts + login with the staging token)
+
+### Previous slice (2026-10-09 23:xx) — Agent 0.3.0 package (Q-32 + Q-33)
+- Built `punpun-agent-0.3.0.zip` (26.3 MB, sha256 edb9987d…, var/dist, not committed); SOURCE_VERSION 0.3.0
+- Packaged test (`tests/test_agent_bundle.py`, now FROM/TO via env): install 0.2.0 → the running exe self-updates to 0.3.0 → bad sha refused → set-folder refuses a relative path, `--move` moves an existing clip, status shows the folder → rollback to 0.2.0, which still reads the config with clips_dir; the exe sees the QA phone
+- Packaged exe end to end (local API, throwaway DB): `login --clips-dir D:\punpun\clips` (token encrypted), a local-file job in "count from the source" mode → 4 consecutive clips (part 1/4–4/4), checks passed, quota 4 reserved = 4 settled; videos only in D:\punpun\clips\<job>\, the server stored 4 JPEG stills (≤ 23 KB)
+- Found: the render's subtitle file (clip_NN.ass) was left in the customer's folder → removed after render; the bundle test decoded the CLI's UTF-8 Thai output with cp874 → UTF-8; this PC's C: has 5.2 GB free (just above the 5 GB no-new-job limit) → use a folder on D:
+- Next: install 0.3.0 for real (PO) and `login` with the clips folder; commit/PR
+
+### Previous slice (2026-10-09 22:xx) — clips stay on the Agent's PC (Q-33)
+- G2 = Yes (PO signed); PR #8 (Q-32 + G2) open
+- PO (Q-33): no clip upload; the Agent keeps clips in a folder chosen at setup; the web shows stills, not video
+- Implemented (branch `p7-local-clips`, on top of PR #8): `clipflow_worker.delivery` (checks = server rules, parity unit test; 3-frame JPEG still); migration 0012 (`clips.file_location`, `preview_key`, `agent_path`); `PUT /v1/agent/jobs/{id}/clips/{n}/preview` (JPEG ≤ 2 MB, needs reported checks) = delivered + quota settled; a "passed" without every check ok is stored as failed; `/media` returns the still (`kind`); Agent: `agent/clips_folder.py` (asked at `login`, `set-folder [--move]`, < 5 GB free = no new job), job runner delivers checks + still, post runner reads the chosen folder then the old one (FILE_UNAVAILABLE otherwise, Thai reason on the web); web: still + Agent path + copy, no video player for these clips
+- Commands: unit 178 (new delivery 3, clips folder 4), integration 228 / 9 skipped (new API 4; the real Agent pipeline now delivers stills: file_location agent), E2E 17 passed after the PO restarted Docker (new: a clip kept on the Agent shows the real still (810 px), its path and no video player, and can be approved)
+- Next: commit/PR; Agent 0.3.0 build (Q-32 + Q-33)
+
+### Previous slice (2026-10-09 20:xx) — clip count from the source (Q-32) + staging release
 - Staging: PR #7 merged → Render deployed `8bdd0f6` (/healthz), data kept (1 user, 1 workspace, 1 environment, alembic 0010); rollback in Render = PO next
 - PO (Q-32): count follows the source, length in seconds (default 300); whole-source split; over quota → stop for the user
 - Implemented (branch `p7-auto-clips`): `segments.tile` (balanced split at pauses, greedy fallback with a last clip up to 1.2x, short tail joined or left out), `pipeline.plan(whole=)`, Agent passes `auto_clips`; migration 0011 (`jobs.auto_clips`, cap 100, expand-only); API `auto_clips` + `clip_length_s` (80–100 %), last-clip limit shared by the event check and the file check; web: length field (default 300) + "คำนวณจากความยาวต้นฉบับ" (default) / "กำหนดเอง", review and job pages show the source-based count

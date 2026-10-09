@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is
     # "production". The secret signs/verifies sandbox webhooks; random per process when empty.
     billing_sandbox_secret: str = ""
+    # The Agent's double-click setup (E-50) offered on the Agents page. Hosting is the operator's
+    # choice; the page shows the version, size and SHA-256 next to the link. Empty url = not offered.
+    agent_setup_url: str = ""
+    agent_setup_version: str = ""
+    agent_setup_sha256: str = ""
+    agent_setup_size_mb: str = ""  # text, so an empty dashboard value never stops the server
     # Built web app (apps/web/dist) to serve from this process, same origin as the API (staging image).
     web_dist: str = ""
 
