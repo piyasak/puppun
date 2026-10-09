@@ -6,6 +6,7 @@ Run locally: `uvicorn clipflow_api.app:app --reload` with DATABASE_URL and SUPAB
 from __future__ import annotations
 
 import logging
+import os
 import re
 import secrets
 import time
@@ -14,10 +15,13 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import errors
 from .config import Settings, get_settings
 from .db import Database
+from .errors import ApiError
 from .identity import KeyResolver, SupabaseVerifier, jwks_resolver
 from .ratelimit import SlidingWindow
 from .routers import (
@@ -43,7 +47,8 @@ _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 def _storage(settings: Settings) -> Storage:
     if settings.object_storage_endpoint:
         return S3Storage(settings.object_storage_endpoint, settings.object_storage_bucket,
-                         settings.object_storage_access_key, settings.object_storage_secret_key)
+                         settings.object_storage_access_key, settings.object_storage_secret_key,
+                         region=settings.object_storage_region)
     key = settings.media_signing_key.encode() or secrets.token_bytes(32)
     return LocalStorage(Path(settings.storage_dir), settings.public_api_base, key)
 
@@ -59,7 +64,7 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app = FastAPI(title="ClipFlow API", version="0.1.0")
     app.state.settings = settings
     app.state.posting_mode = posting_mode
-    app.state.db = Database(settings.database_url)
+    app.state.db = Database(settings.database_url, settings.db_schema)
     app.state.storage = storage or _storage(settings)
     if resolve_key is None:
         if not settings.supabase_url:
@@ -109,11 +114,33 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(billing.router)
     app.include_router(admin.router)
 
+    build = os.environ.get("BUILD_ID", "dev")  # set by the staging image; shows which release answers
+
     @app.get("/healthz")
     def healthz():
-        return {"status": "ok"}
+        return {"status": "ok", "build": build}
 
+    if settings.web_dist:
+        _serve_web(app, Path(settings.web_dist))
     return app
+
+
+def _serve_web(app: FastAPI, dist: Path) -> None:
+    """The built web app on the same origin (staging image): hashed assets cached for a year, every
+    other non-API path answers index.html so client routes work on reload. API paths keep their 404."""
+    index = dist / "index.html"
+    if not index.is_file():
+        raise RuntimeError(f"WEB_DIST has no index.html: {dist}")
+    app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+    root_files = {p.name for p in dist.iterdir() if p.is_file() and p.name != "index.html"}
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def web(path: str):
+        if path.startswith(("v1/", "assets/")) or path in ("v1", "healthz"):
+            raise ApiError(404, "NOT_FOUND", "ไม่พบหน้านี้")
+        if path in root_files:
+            return FileResponse(dist / path)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 def __getattr__(name: str):

@@ -1,0 +1,19 @@
+# Only what the staging image needs; never secrets, media or local state.
+**/node_modules
+**/dist
+**/__pycache__
+**/*.egg-info
+**/.env*
+.git
+.venv
+var
+agent
+tests
+docs
+tools
+services/worker
+services/api/tests
+apps/web/e2e
+*.mp4
+*.docx
+uithem.txt

@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 15:xx) — dashboard bento (E-47 step 3)
+### Latest slice (2026-10-09 17:xx) — staging image, Render blueprint, rehearsal (G2-05, E-49)
+- PO: Render + Supabase punpun
+- Implemented: `Dockerfile` (web build → API image, non-root, BUILD_ID), `deploy/start.sh` (migrate → uvicorn, LF via .gitattributes), `.dockerignore`, `render.yaml`, `DB_SCHEMA` (search_path on every connection, alembic in schema, name validated), `OBJECT_STORAGE_REGION`, `WEB_DIST` (SPA on the API origin, API 404s kept), `VITE_API_URL=same-origin`, dashboard-style DB URLs accepted, `/healthz` build id; CI job "Staging image build + smoke"; `tools/staging_rehearsal.py`; `docs/runbooks/staging.md`; Supabase: private bucket `clipflow-media` created (MCP)
+- Found: tables in `public` would be readable through Supabase's REST API with the public key → own schema; S3 region was hard-coded us-east-1 → setting; Supabase free = 50 MB per file (clips often larger) → open item before pilot
+- Commands: staging rehearsal deploy/release/rollback ok (4.3/2.8/2.8 s, 23 tables in clipflow, 0 in public); `test_staging_image.py` 4 passed
+- Gates: G2-05 still No — needs the Render deploy by the PO, then one real release + rollback
+- Next: PO follows `docs/runbooks/staging.md`; then Claude checks the deploy, schema privileges and E-28 on the public URL
+
+### Previous slice (2026-10-09 15:xx) — dashboard bento (E-47 step 3)
 - PR #5 merged (a38cd26) incl. CI fixes: job-runner test allowed encoder-dependent ms at the last pause; axe measured mid-fade after the theme switch → reduced motion + two frames before measuring (probed: colours final at once)
 - Implemented (branch `p7-dashboard`): `DashboardPage.tsx` — next post (server time, Bangkok, today/tomorrow, countdown < 24 h, queue of 4), quota meter (used/limit, cycle end, trial/plan), ready phones + missing details, posts waiting for a person, 5 recent jobs, account facts; each card loads separately and refreshes every 30 s; empty account shows the next step on every card; `lib/posts.ts` shares post-state wording with the calendar; old HomePage removed
 - Commands: E2E 15 passed (new `dashboard.spec.ts`; quality covers the dashboard with data: axe both themes, 360 px, 200 %), lint/tsc/build ผ่าน

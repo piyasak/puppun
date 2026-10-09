@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = ""
+    db_schema: str = ""  # own schema instead of public (Supabase staging, E-49); empty = default search_path
     web_origin: str = "http://localhost:5173"
 
     # Browser identity comes from Supabase Auth (E-25/E-27). Only the public project URL is
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     object_storage_bucket: str = "clipflow-media"
     object_storage_access_key: str = ""
     object_storage_secret_key: str = ""
+    object_storage_region: str = "us-east-1"  # Supabase Storage S3 needs the project's region
     storage_dir: str = "var/storage"
     public_api_base: str = "http://127.0.0.1:8000"  # how browsers reach this API (local-storage previews)
     media_signing_key: str = ""  # HMAC key for local preview links; random per process when empty
@@ -36,6 +38,8 @@ class Settings(BaseSettings):
     # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is
     # "production". The secret signs/verifies sandbox webhooks; random per process when empty.
     billing_sandbox_secret: str = ""
+    # Built web app (apps/web/dist) to serve from this process, same origin as the API (staging image).
+    web_dist: str = ""
 
     @property
     def supabase_issuer(self) -> str:

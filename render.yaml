@@ -1,0 +1,46 @@
+# Render Blueprint for staging (G2-05, E-49). Render → New → Blueprint → this repository.
+# Secrets are never written here: entries with `sync: false` are typed into the Render dashboard
+# once; `generateValue` is created by Render. Runbook: docs/runbooks/staging.md.
+services:
+  - type: web
+    name: punpun-staging
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    branch: master
+    region: singapore
+    plan: free                      # sleeps when idle (first request ~30 s); starter keeps it awake
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass   # deploy master only after GitHub CI is green
+    envVars:
+      # Public values (also inlined into the web build as build args)
+      - key: VITE_SUPABASE_URL
+        value: https://wqcbubphiihpseqzglwe.supabase.co
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false                 # Supabase → Project Settings → API Keys → publishable (public)
+      - key: VITE_API_URL
+        value: same-origin
+      # Server
+      - key: APP_ENV
+        value: staging              # sandbox billing allowed; real posting never (dry_run is not a setting)
+      - key: SUPABASE_URL
+        value: https://wqcbubphiihpseqzglwe.supabase.co
+      - key: DB_SCHEMA
+        value: clipflow             # never `public`: Supabase publishes `public` through its REST API
+      - key: DATABASE_URL
+        sync: false                 # Supabase → Connect → Session pooler (port 5432) URI, with the DB password
+      - key: WEB_ORIGIN
+        sync: false                 # this service's https://….onrender.com URL
+      - key: OBJECT_STORAGE_ENDPOINT
+        value: https://wqcbubphiihpseqzglwe.storage.supabase.co/storage/v1/s3
+      - key: OBJECT_STORAGE_REGION
+        value: ap-southeast-1
+      - key: OBJECT_STORAGE_BUCKET
+        value: clipflow-media       # private bucket
+      - key: OBJECT_STORAGE_ACCESS_KEY
+        sync: false                 # Supabase → Storage → S3 connection → new access key
+      - key: OBJECT_STORAGE_SECRET_KEY
+        sync: false
+      - key: MEDIA_SIGNING_KEY
+        generateValue: true
+      - key: BILLING_SANDBOX_SECRET
+        generateValue: true

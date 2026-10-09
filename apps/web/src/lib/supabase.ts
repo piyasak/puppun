@@ -3,7 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 // Public values only: project URL and the publishable key. Never put a service-role key here.
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined
-export const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://127.0.0.1:8000'
+// 'same-origin': the API serves this app itself (staging image), so requests go to /v1/... on the same host.
+const apiUrl = import.meta.env.VITE_API_URL as string | undefined
+export const API_URL = apiUrl === 'same-origin' ? '' : apiUrl ?? 'http://127.0.0.1:8000'
 
 /**
  * Missing config is reported on screen at runtime (main.tsx). Throwing here at module scope made

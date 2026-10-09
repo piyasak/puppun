@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     settings = get_settings()
-    database = Database(settings.database_url)
+    database = Database(settings.database_url, settings.db_schema)
     with database.sessionmaker() as db:
         if args.cmd == "grant-role":
             return grant_role(db, args.email, args.role)
