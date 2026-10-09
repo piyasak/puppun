@@ -50,15 +50,22 @@ async function check(page: Page, path: string, problems: string[], prepare?: (p:
     if (out.length) problems.push(`${label} @${view.name}: sideways scroll — ${out.join('; ')}`)
     await page.screenshot({ path: `../../var/evidence/e2e/quality/${label.replace(/[/:? ]/g, '_')}-${view.name}.png`, fullPage: true })
   }
-  // Both themes: dark (default) and light (ThemeToggle)
+  // Both themes: dark (default) and light (ThemeToggle). Colours have 200 ms transitions, and a fast
+  // machine (CI) ran axe mid-fade after the switch and measured in-between colours; reduced motion
+  // turns every transition off, and two frames let the new theme paint before measuring.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const theme of ['dark', 'light']) {
-    await page.evaluate((t) => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else delete document.documentElement.dataset.theme }, theme)
+    await page.evaluate(async (t) => {
+      if (t === 'light') document.documentElement.dataset.theme = 'light'; else delete document.documentElement.dataset.theme
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    }, theme)
     const axe = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     for (const v of axe.violations) {
       problems.push(`${label} [${theme}]: axe ${v.id} (${v.impact}) — ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(', ')}`)
     }
   }
   await page.evaluate(() => { delete document.documentElement.dataset.theme })
+  await page.emulateMedia({ reducedMotion: null })
   expect(await page.getAttribute('html', 'lang')).toBe('th')
 }
 
