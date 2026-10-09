@@ -85,7 +85,7 @@ Environment notes:
 
 ## Architecture: the parts that span modules
 
-**Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, then uploads the finished clip + sha256 for preview/approval. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
+**Pipeline (Q-15 ข2):** Web UI → API → DB/quota ledger → scheduler → customer Agent (outbound HTTPS polling only, no exposed ADB). The Agent downloads or reads the customer's own file, analyzes and renders on the customer machine, and keeps the finished clip in the folder chosen in the Agent (Q-33): it sends only the sha256, its own file checks and a still (three frames) for approval, never the video. Later it posts that same local file to Android and verifies the result. Sources: YouTube, Bilibili, customer-provided file (Q-17). Download bot checks are `SOURCE_RATE_LIMITED` with a per-platform cool-down; never rotate IPs or use proxies to get around them.
 
 **Identity chain:** Workspace → Username + Agent Token → server-bound Environment → Agent installation/session → Android serial → expected TikTok account.
 - Browser auth (Supabase Auth JWT in `Authorization: Bearer`, never cookies or query strings) and Agent auth (our own tokens, P2.4/P2.5) are separate. Never create accounts on the real Supabase project yourself; the PO runs live sign-up tests.

@@ -68,6 +68,54 @@ def _auto_approve(clip: Clip) -> None:
     clip.approved_at, clip.approved_by, clip.approval_mode = now(), None, "auto"
 
 
+CHECK_STATUSES = ("passed", "failed", "skipped")
+PREVIEW_MAX_BYTES = 2 * 1024 * 1024
+JPEG_MAGIC = bytes([0xFF, 0xD8, 0xFF])
+
+
+def reported_checks(raw) -> dict | None:
+    """The Agent's own checks of the file it keeps (Q-33), reduced to the known shape."""
+    if not isinstance(raw, dict) or raw.get("status") not in CHECK_STATUSES:
+        return None
+    items = []
+    for c in (raw.get("checks") or [])[:20]:
+        if isinstance(c, dict) and isinstance(c.get("name"), str):
+            detail = c.get("detail")
+            items.append({"name": c["name"][:40], "ok": bool(c.get("ok")),
+                          "detail": detail if isinstance(detail, int | float) or detail is None else str(detail)[:80]})
+    out = {"status": raw["status"], "checks": items, "by": "agent"}
+    if raw["status"] == "passed" and not (items and all(i["ok"] for i in items)):
+        out["status"] = "failed"  # "passed" only with every check present and ok
+    if isinstance(raw.get("reason"), str):
+        out["reason"] = raw["reason"][:40]
+    return out
+
+
+def reported_path(raw) -> str | None:
+    return raw[:500] if isinstance(raw, str) and raw.strip() else None
+
+
+def accept_preview(db: Session, storage, job: Job, clip: Clip, temp: Path, size: int) -> None:
+    """Q-33 delivery: the file stays on the Agent's PC. The clip counts as delivered (and quota is
+    settled) when its checks were reported and its still image arrives."""
+    if clip.uploaded_at is not None:
+        return
+    if clip.check_results is None:
+        raise ApiError(409, "CHECKS_NOT_REPORTED", "ยังไม่ได้รายงานผลตรวจไฟล์ของคลิปนี้ (clip_rendered)")
+    if size > PREVIEW_MAX_BYTES:
+        raise ApiError(413, "PREVIEW_TOO_LARGE", "ภาพตัวอย่างใหญ่เกินกำหนด")
+    with temp.open("rb") as f:
+        if f.read(3) != JPEG_MAGIC:
+            raise ApiError(422, "PREVIEW_NOT_JPEG", "ภาพตัวอย่างต้องเป็น JPEG")
+    key = f"{clip.workspace_id}/{job.id}/clip_{clip.clip_index:02d}_{clip.render_sha256[:12]}.jpg"
+    storage.put_file(key, temp, "image/jpeg")
+    clip.preview_key, clip.file_location, clip.uploaded_at = key, "agent", now()
+    clip.check_status = clip.check_results["status"]
+    quota.settle_clip(db, job.workspace_id, job.id, job.quota_period, clip.clip_index)
+    if job.review_mode == "auto" and clip.check_status == "passed":
+        _auto_approve(clip)
+
+
 def accept_upload(db: Session, storage, job: Job, clip: Clip, temp: Path, size: int, digest: str) -> None:
     """Called with the job row locked, after the body was streamed to `temp` and hashed."""
     if digest != clip.render_sha256:
@@ -81,7 +129,7 @@ def accept_upload(db: Session, storage, job: Job, clip: Clip, temp: Path, size: 
     storage.put_file(key, temp, "video/mp4")
     result = mediacheck.check(temp, reported_duration_ms=clip.duration_ms, clip_min_s=job.clip_min_s,
                               clip_max_s=jobs.longest_clip_s(job, clip.clip_index))
-    clip.storage_key, clip.uploaded_at = key, now()
+    clip.storage_key, clip.uploaded_at, clip.file_location = key, now(), "server"
     clip.check_status, clip.check_results = result["status"], result
     quota.settle_clip(db, job.workspace_id, job.id, job.quota_period, clip.clip_index)
     if job.review_mode == "auto" and result["status"] == "passed":

@@ -18,6 +18,7 @@ const TZ = 'Asia/Bangkok'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 const WHY: Record<string, string> = {
+  FILE_UNAVAILABLE: 'ไฟล์คลิปไม่อยู่บนเครื่อง Agent — ตรวจโฟลเดอร์คลิปแล้วกดลองใหม่',
   AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ — ตรวจในแอป TikTok แล้วยืนยันผล',
   VERIFY_MARKER: 'กดโพสต์แล้วแต่ยืนยันผลไม่ได้ — ตรวจในแอป TikTok แล้วยืนยันผล',
   VERIFY_COUNT: 'กดโพสต์แล้วแต่ยืนยันผลไม่ได้ — ตรวจในแอป TikTok แล้วยืนยันผล',

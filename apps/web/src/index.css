@@ -283,6 +283,13 @@ a.btn { display: inline-block; text-decoration: none; }
 .preview video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .preview-empty { color: #8a8f98; font-size: 0.9rem; }
 .preview .field-error { color: #f07178; padding: 0 8px; text-align: center; }
+/* Q-33: a clip kept on the Agent's PC shows three frames (810x480) and where the file is */
+.agent-still { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.agent-still img { width: 100%; height: auto; border-radius: 12px; background: var(--preview-bg); box-shadow: 0 0 0 1px var(--border-hover); }
+.agent-still-empty { aspect-ratio: 810 / 480; display: grid; place-items: center; border-radius: 12px; background: var(--preview-bg); color: #8a8f98; font-size: 0.9rem; }
+.agent-still figcaption { display: flex; flex-direction: column; gap: 6px; }
+.agent-path { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.agent-path code { font-family: var(--mono); font-size: 0.8rem; overflow-wrap: anywhere; color: var(--text); background: var(--surface); padding: 2px 6px; border-radius: 6px; }
 .meta-form .field { margin: 8px 0; }
 .meta-form .form-actions { align-items: center; justify-content: space-between; }
 @media (max-width: 720px) {

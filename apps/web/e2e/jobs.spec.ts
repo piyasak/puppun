@@ -5,7 +5,7 @@
  * including "edit after approval needs a new approval".
  */
 import { expect, test } from '@playwright/test'
-import { FakeAgent, sampleClip } from './agentSim'
+import { FakeAgent, sampleClip, sampleStill } from './agentSim'
 import { agentSession, signUpAndOnboard } from './helpers'
 
 test('create a job, watch it progress, preview, edit and approve clips', async ({ page, request }) => {
@@ -144,4 +144,37 @@ test('by default the clip count follows the source, with clips of about 300 s', 
   expect((await agent.claim()).id).toBe(jobId)
   await agent.event(jobId, 'source_validated', { duration_s: 2530, possible_clips: 9 })
   await expect(page.getByText('คำนวณจากต้นฉบับ • ได้ 9 คลิป')).toBeVisible({ timeout: 15_000 })
+})
+
+test('a clip kept on the Agent shows its frames and where the file is, and can be approved', async ({ page, request }) => {
+  const owner = await signUpAndOnboard(page, request)
+  const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
+  await page.goto('/create')
+  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ไลฟ์.mp4')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByLabel('ความยาวต่อคลิป').fill('40')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  const jobId = page.url().split('/').pop()!
+  expect((await agent.claim()).id).toBe(jobId)
+  await agent.event(jobId, 'source_validated', { duration_s: 80, possible_clips: 2 })
+  await agent.event(jobId, 'stage', { stage: 'RENDERING' })
+  const still = sampleStill()
+  await agent.deliverKept(jobId, 1, 40_000, still)
+  await agent.deliverKept(jobId, 2, 40_000, still)
+  await agent.event(jobId, 'completed')
+  await expect(page.getByTestId('job-state')).toHaveText('คลิปพร้อมแล้ว', { timeout: 15_000 })
+
+  const first = page.getByTestId('clip-card').nth(0)
+  const img = first.getByRole('img', { name: 'ภาพจาก 3 ช่วงของคลิป 1' })
+  await expect(img).toBeVisible()
+  expect(await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(810)  // the real still loaded
+  await expect(first.getByTestId('agent-path')).toHaveText(['D:', 'punpun', 'clips', jobId, 'clip_01.mp4'].join('\\'))
+  await expect(first.getByText('วิดีโอเก็บไว้บนเครื่อง Agent (ไม่ได้อัปโหลด)')).toBeVisible()
+  await expect(first.getByTestId('clip-video')).toHaveCount(0)  // nothing to play: the video never left the PC
+  await first.getByRole('button', { name: 'อนุมัติคลิปนี้ (ข้อความเวอร์ชัน 1)' }).click()
+  await expect(first.getByTestId('approval')).toHaveText('อนุมัติแล้ว')
+  await page.screenshot({ path: '../../var/evidence/e2e/clip-kept-on-agent.png', fullPage: true })
 })

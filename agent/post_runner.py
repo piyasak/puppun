@@ -285,14 +285,18 @@ class _Post:
         """The exact bound file: this PC's own render when its hash matches, else a verified download."""
         clip = self.post["clip"]
         want = clip["sha256"]
-        own = self.r.data_dir / "clips" / clip["job_id"] / f"clip_{clip['index']:02d}.mp4"
-        if own.is_file() and sha256_file(own) == want:
-            return own
+        from agent import clips_folder
+
+        for folder in clips_folder.search_order(self.r.data_dir):  # the chosen clips folder, then the old one
+            own = folder / clip["job_id"] / f"clip_{clip['index']:02d}.mp4"
+            if own.is_file() and sha256_file(own) == want:
+                return own
         cached = self.r.data_dir / "downloads" / f"{want}.mp4"
         if cached.is_file() and sha256_file(cached) == want:
             return cached
         if not clip.get("download_url"):
-            raise PostFailed("FILE_UNAVAILABLE", "no local copy and no download link")
+            # Q-33: clips are kept on the PC that made them; this PC does not have it (moved, deleted, other PC).
+            raise PostFailed("FILE_UNAVAILABLE", "clip file not on this PC and not on the server")
         try:
             self.client.download(clip["download_url"], cached)
         except (OSError, ValueError) as exc:

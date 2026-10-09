@@ -172,3 +172,61 @@ def test_clips_are_tenant_scoped(ws, onboard, real_clip):
                  other.patch(f"/v1/clips/{clip['id']}/metadata", json={"expected_version": 1, "caption": "x"})):
         assert resp.status_code == 404
     assert ws.get(f"/v1/clips/{clip['id']}").json()["approval"]["approved"] is False
+
+
+# --- Q-33: the file stays on the Agent's PC; checks + a still are delivered --------------------------
+
+JPEG = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"still-image-bytes"
+PASSED = {"status": "passed", "checks": [{"name": "size_9_16", "ok": True, "detail": "1080x1920"},
+                                          {"name": "audio_stream", "ok": True, "detail": "aac"}]}
+
+
+def kept_on_agent(ws, job_id, body, index=1, checks=PASSED, still=JPEG):
+    assert ws.w.report(job_id, index, body, checks=checks, local_path=f"D:\punpun\clips\{job_id}\clip_{index:02d}.mp4"
+                       ).status_code == 200
+    return ws.w.client.put(f"/v1/agent/jobs/{job_id}/clips/{index}/preview", content=still,
+                           headers={"Authorization": f"Bearer {ws.w.session}", "Content-Type": "image/jpeg"})
+
+
+def test_clip_kept_on_the_agent_is_delivered_with_checks_and_a_still(ws, real_clip, client):
+    job_id = ws.new_job()
+    assert kept_on_agent(ws, job_id, real_clip).status_code == 200
+    clip = ws.get(f"/v1/jobs/{job_id}").json()["clips"][0]
+    assert clip["uploaded"] and clip["file_location"] == "agent" and clip["preview"] == "image"
+    assert clip["agent_path"].endswith("clip_01.mp4") and clip["check_status"] == "passed"
+    assert clip["checks"]["by"] == "agent"
+    assert ws.get(f"/v1/jobs/{job_id}").json()["quota"]["settled"] == 1  # settled on delivery, as before
+    media = ws.get(f"/v1/clips/{clip['id']}/media").json()
+    assert media["kind"] == "image"
+    still = client.get(media["url"])
+    assert still.status_code == 200 and still.headers["content-type"] == "image/jpeg" and still.content == JPEG
+    assert ws.post(f"/v1/clips/{clip['id']}/approve", json={"metadata_version": 1}).status_code == 200
+    # Posting reads the Agent's own file: no download link for a clip that never left the PC.
+    assert kept_on_agent(ws, job_id, real_clip).status_code == 200  # repeated delivery: nothing changes
+
+
+def test_a_still_needs_reported_checks_and_must_be_a_small_jpeg(ws, real_clip):
+    job_id = ws.new_job()
+    assert ws.w.report(job_id, 1, real_clip).status_code == 200  # no checks reported (an old Agent)
+    put = lambda body: ws.w.client.put(f"/v1/agent/jobs/{job_id}/clips/1/preview", content=body,  # noqa: E731
+                                       headers={"Authorization": f"Bearer {ws.w.session}"})
+    assert put(JPEG).json()["code"] == "CHECKS_NOT_REPORTED"
+    assert ws.w.report(job_id, 1, real_clip, checks=PASSED).status_code == 200
+    assert put(b"GIF89a....").json()["code"] == "PREVIEW_NOT_JPEG"
+    assert put(JPEG + b"x" * (2 * 1024 * 1024)).json()["code"] == "PREVIEW_TOO_LARGE"
+    assert put(JPEG).status_code == 200
+
+
+def test_reported_checks_cannot_claim_a_pass_they_do_not_show(ws, real_clip):
+    job_id = ws.new_job(mode="auto")
+    lying = {"status": "passed", "checks": [{"name": "size_9_16", "ok": False, "detail": "720x1280"}]}
+    assert kept_on_agent(ws, job_id, real_clip, checks=lying).status_code == 200
+    clip = ws.get(f"/v1/jobs/{job_id}").json()["clips"][0]
+    assert clip["check_status"] == "failed" and not clip["approval"]["approved"]  # auto mode approves only a pass
+    assert ws.post(f"/v1/clips/{clip['id']}/approve", json={"metadata_version": 1}).json()["code"] == "CHECKS_FAILED"
+
+
+def test_auto_mode_approves_a_clip_kept_on_the_agent_that_passed(ws, real_clip):
+    job_id = ws.new_job(mode="auto")
+    assert kept_on_agent(ws, job_id, real_clip).status_code == 200
+    assert ws.get(f"/v1/jobs/{job_id}").json()["clips"][0]["approval"]["approved"]

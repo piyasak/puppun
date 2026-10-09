@@ -10,7 +10,7 @@ One Docker image (`Dockerfile`) runs the API and serves the built web app on the
 |---|---|---|
 | API + web | Render web service `punpun-staging`, region Singapore (`render.yaml`) | Free plan sleeps when idle; the first request takes ~30 s. Starter (~$7/month) keeps it awake |
 | Database | Supabase punpun Postgres, schema **`clipflow`** (`DB_SCHEMA`) | Never `public`: Supabase publishes `public` through its REST API to anyone holding the public key |
-| Clip files | Supabase Storage, private bucket **`clipflow-media`** (created 2026-10-09), S3 protocol | **Free plan: 50 MB per file.** Clips of 3–5 min at 1080×1920 are often bigger, so uploads above the limit fail. Fix before the pilot: Supabase Pro, or another S3 store (e.g. Cloudflare R2) |
+| Clip stills | Supabase Storage, private bucket **`clipflow-media`** (created 2026-10-09), S3 protocol | Since Q-33 the videos stay on the Agent's PC; only stills (≤ 2 MB JPEG) are stored, so the free plan's 50 MB per file limit no longer applies |
 | Auth + email | Supabase Auth on punpun, Gmail SMTP, templates with `/auth/confirm` (E-28) | Site URL must be the staging URL, or email links point elsewhere |
 | Rendering and posting | The customer's Agent | Nothing renders on the server; posting stays dry-run (not a setting) |
 

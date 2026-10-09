@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 20:xx) — clip count from the source (Q-32) + staging release
+### Latest slice (2026-10-09 22:xx) — clips stay on the Agent's PC (Q-33)
+- G2 = Yes (PO signed); PR #8 (Q-32 + G2) open
+- PO (Q-33): no clip upload; the Agent keeps clips in a folder chosen at setup; the web shows stills, not video
+- Implemented (branch `p7-local-clips`, on top of PR #8): `clipflow_worker.delivery` (checks = server rules, parity unit test; 3-frame JPEG still); migration 0012 (`clips.file_location`, `preview_key`, `agent_path`); `PUT /v1/agent/jobs/{id}/clips/{n}/preview` (JPEG ≤ 2 MB, needs reported checks) = delivered + quota settled; a "passed" without every check ok is stored as failed; `/media` returns the still (`kind`); Agent: `agent/clips_folder.py` (asked at `login`, `set-folder [--move]`, < 5 GB free = no new job), job runner delivers checks + still, post runner reads the chosen folder then the old one (FILE_UNAVAILABLE otherwise, Thai reason on the web); web: still + Agent path + copy, no video player for these clips
+- Commands: unit 178 (new delivery 3, clips folder 4), integration 228 / 9 skipped (new API 4; the real Agent pipeline now delivers stills: file_location agent), E2E 17 passed after the PO restarted Docker (new: a clip kept on the Agent shows the real still (810 px), its path and no video player, and can be approved)
+- Next: commit/PR; Agent 0.3.0 build (Q-32 + Q-33)
+
+### Previous slice (2026-10-09 20:xx) — clip count from the source (Q-32) + staging release
 - Staging: PR #7 merged → Render deployed `8bdd0f6` (/healthz), data kept (1 user, 1 workspace, 1 environment, alembic 0010); rollback in Render = PO next
 - PO (Q-32): count follows the source, length in seconds (default 300); whole-source split; over quota → stop for the user
 - Implemented (branch `p7-auto-clips`): `segments.tile` (balanced split at pauses, greedy fallback with a last clip up to 1.2x, short tail joined or left out), `pipeline.plan(whole=)`, Agent passes `auto_clips`; migration 0011 (`jobs.auto_clips`, cap 100, expand-only); API `auto_clips` + `clip_length_s` (80–100 %), last-clip limit shared by the event check and the file check; web: length field (default 300) + "คำนวณจากความยาวต้นฉบับ" (default) / "กำหนดเอง", review and job pages show the source-based count

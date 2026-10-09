@@ -29,6 +29,7 @@ class CredentialError(Exception):
 class AgentConfig:
     server: str
     username: str
+    clips_dir: str | None = None  # Q-33: where finished clips are kept (agent/clips_folder.py)
 
 
 def save_config(data_dir: Path, config: AgentConfig) -> None:
@@ -41,7 +42,7 @@ def save_config(data_dir: Path, config: AgentConfig) -> None:
 def load_config(data_dir: Path) -> AgentConfig | None:
     try:
         data = json.loads((data_dir / "config.json").read_text(encoding="utf-8"))
-        return AgentConfig(data["server"], data["username"])
+        return AgentConfig(data["server"], data["username"], data.get("clips_dir"))
     except (FileNotFoundError, KeyError, ValueError):
         return None
 
