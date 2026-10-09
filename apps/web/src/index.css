@@ -418,3 +418,9 @@ a.btn { display: inline-block; text-decoration: none; }
   .topbar h1, .auth-card h1 { background: none; color: CanvasText; }
   .badge::before { forced-color-adjust: none; }
 }
+
+/* Agent setup download (E-50) */
+.download { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; margin: 8px 0 4px; }
+.download .btn { text-decoration: none; }
+.hash { word-break: break-all; font-size: 0.8rem; }
+.steps { margin: 12px 0 0; padding-left: 1.4em; display: grid; gap: 6px; }

@@ -44,3 +44,12 @@ services:
         generateValue: true
       - key: BILLING_SANDBOX_SECRET
         generateValue: true
+      # Agent setup offered on the Agents page (E-50); empty = "ติดต่อทีมงาน". https link + its SHA-256.
+      - key: AGENT_SETUP_URL
+        sync: false
+      - key: AGENT_SETUP_VERSION
+        sync: false
+      - key: AGENT_SETUP_SHA256
+        sync: false
+      - key: AGENT_SETUP_SIZE_MB
+        sync: false

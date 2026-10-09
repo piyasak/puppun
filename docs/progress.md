@@ -4,7 +4,21 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 23:xx) — Agent 0.3.0 package (Q-32 + Q-33)
+### Latest slice (2026-10-10 00:xx) — Agent download on the web (E-50)
+- API `GET /v1/agents/download` (signed-in users): the setup on offer from `AGENT_SETUP_URL` / `_VERSION` / `_SHA256` / `_SIZE_MB`; offered only with https (http only outside staging/production), a 64-hex SHA-256 and a version, otherwise `available: false`
+- Web `/agents`: "ติดตั้ง Agent บน Windows" card: download button (version, MB) + SHA-256, or "ยังไม่เปิดให้ดาวน์โหลด ติดต่อทีมงาน" when not configured; 5 steps (SmartScreen, the user's own username + link to Agent Token, clips folder on a roomy drive, phone USB debugging, the punpun Agent shortcut)
+- Commands: integration 235 passed / 9 skipped (new test_agent_download 8; an empty size value never stops the server), ruff clean, tsc + oxlint clean (old warnings only); E2E (new download test + axe) **not run**: local Supabase auth stopped answering (/auth/v1/health timeout) → needs a Docker restart
+- Open: where the setup is hosted (PO): e.g. a public Supabase Storage bucket or GitHub Release; then set the AGENT_SETUP_* values in Render
+- Next: E2E after the Docker restart; PO double-clicks the setup on this PC
+
+### Previous slice (2026-10-09 23:xx) — double-click setup for the Agent (E-50)
+- Gap found by the PO: `punpun-agent` was not a command (the first install needed Python, nothing put the launcher on PATH)
+- `agent/setup_win.py` + `tools/build_agent.py` now also build `var/dist/punpun-agent-setup-<v>.exe` (PyInstaller onefile, 34.9 MB, carries the bundle + its SHA-256 + the default server, CLIPFLOW_SETUP_SERVER = staging): install/update through `agent.updater.install` (same checks), add the install folder to the user PATH (HKCU, no admin; WM_SETTINGCHANGE), "punpun Agent" shortcuts in the Start menu and on the desktop (`cmd /k ... connect`, window stays open; working folder = Videos), then `login` at the Agent's hidden token prompt when no token is stored; `--uninstall` removes PATH entry, shortcuts and program folder, keeps the data and the clips
+- Commands: unit test_setup_win 4 passed; setup exe into a temp folder (no PATH): installed 0.3.0, launcher answers 0.3.0, shortcut = cmd.exe /k "<launcher>" connect in Videos; uninstall removed program + shortcut, exit 0
+- Not yet: code signing (SmartScreen warns on an unsigned exe), a download page on the web, start on boot / tray icon
+- Next: PO double-clicks the setup on this PC (PATH + shortcuts + login with the staging token)
+
+### Previous slice (2026-10-09 23:xx) — Agent 0.3.0 package (Q-32 + Q-33)
 - Built `punpun-agent-0.3.0.zip` (26.3 MB, sha256 edb9987d…, var/dist, not committed); SOURCE_VERSION 0.3.0
 - Packaged test (`tests/test_agent_bundle.py`, now FROM/TO via env): install 0.2.0 → the running exe self-updates to 0.3.0 → bad sha refused → set-folder refuses a relative path, `--move` moves an existing clip, status shows the folder → rollback to 0.2.0, which still reads the config with clips_dir; the exe sees the QA phone
 - Packaged exe end to end (local API, throwaway DB): `login --clips-dir D:\punpun\clips` (token encrypted), a local-file job in "count from the source" mode → 4 consecutive clips (part 1/4–4/4), checks passed, quota 4 reserved = 4 settled; videos only in D:\punpun\clips\<job>\, the server stored 4 JPEG stills (≤ 23 KB)
