@@ -16,6 +16,16 @@ const NAV = [
   { to: '/billing', label: 'แพ็กเกจ' },
 ]
 
+/** Cursor spotlight on cards (E-47 step 4): the card under the pointer gets its position for the CSS light. */
+function spotlight(e: React.PointerEvent<HTMLElement>) {
+  if (e.pointerType !== 'mouse') return
+  const card = (e.target as HTMLElement).closest<HTMLElement>('.card')
+  if (!card) return
+  const r = card.getBoundingClientRect()
+  card.style.setProperty('--mx', `${e.clientX - r.left}px`)
+  card.style.setProperty('--my', `${e.clientY - r.top}px`)
+}
+
 export function Shell({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -74,7 +84,7 @@ export function Shell({ title, actions, children }: { title: string; actions?: R
           </div>
         </div>
       </aside>
-      <main className="content">
+      <main className="content" onPointerMove={spotlight}>
         <header className="topbar">
           <h1>{title}</h1>
           <div className="topbar-actions">

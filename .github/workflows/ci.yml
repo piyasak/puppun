@@ -134,3 +134,41 @@ jobs:
           name: playwright-report
           path: var/evidence/e2e/
           retention-days: 7
+
+  image:
+    # G2-05 / E-49: the staging image builds, migrates into its own schema on start, serves the web
+    # app and the API on one origin, and keeps `public` empty. Render deploys master only after this
+    # and the other jobs pass (render.yaml: autoDeployTrigger checksPass). Nothing is pushed or deployed here.
+    name: Staging image build + smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: clipflow
+          POSTGRES_PASSWORD: clipflow_dev  # throwaway CI database
+          POSTGRES_DB: clipflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clipflow -d clipflow" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: >
+          docker build -t punpun-staging:ci --build-arg BUILD_ID=${GITHUB_SHA::7}
+          --build-arg VITE_SUPABASE_URL=https://example.supabase.co
+          --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci-placeholder .
+      - name: Start and smoke test
+        run: |
+          docker run -d --name staging --network host -e PORT=8080 -e DB_SCHEMA=clipflow \
+            -e DATABASE_URL=postgresql://clipflow:clipflow_dev@127.0.0.1:5432/clipflow \
+            -e SUPABASE_URL=https://example.supabase.co punpun-staging:ci
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/healthz | grep -q "\"build\":\"${GITHUB_SHA::7}\""
+          curl -fsS http://127.0.0.1:8080/jobs/any | grep -q '<div id="root">'
+          curl -fsS http://127.0.0.1:8080/v1/billing/plans > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/v1/nope)" = 404
+          test "$(docker exec staging python -c "import os,sqlalchemy as s;e=s.create_engine(os.environ['DATABASE_URL'].replace('postgresql://','postgresql+psycopg://'));print(len(s.inspect(e).get_table_names(schema='public')))")" = 0
+      - name: Logs on failure
+        if: failure()
+        run: docker logs staging || true

@@ -64,6 +64,7 @@ CLIPFLOW_REAL_SOURCE_URL=<corpus url> .venv/Scripts/python -m pytest services/ap
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_registration.py   # opt-in, phone on USB
 CLIPFLOW_REAL_DEVICE=1 .venv/Scripts/python -m pytest services/api/tests/test_real_device_post.py -s   # opt-in: dry-run post on the QA phone (push, hash, Gallery, removed; TikTok never opened)
 CLIPFLOW_LOAD=1 .venv/Scripts/python -m pytest services/api/tests/test_dispatch_load.py -s   # opt-in, ~5 min: 150 phones / 300 posts, p95 dispatch latency (G4-05)
+.venv/Scripts/python tools/staging_rehearsal.py               # G2-05: real staging image, deploy v1 -> release v2 -> rollback v1 on a throwaway DB (DB_SCHEMA=clipflow); runbook docs/runbooks/staging.md
 .venv/Scripts/python tools/build_agent.py [version]          # PyInstaller bundle -> var/dist/punpun-agent-<v>.zip (+ .sha256), E-44
 .venv/Scripts/python -m agent install --bundle B --sha256 H  # install/update (refused while a post is between Submit and its result); rollback | login | status | version
 CLIPFLOW_AGENT_BUNDLE=1 .venv/Scripts/python -m pytest tests/test_agent_bundle.py   # opt-in: packaged exe install -> self-update -> rollback
