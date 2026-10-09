@@ -67,6 +67,7 @@ class JobRunner:
         self.retries, self.retry_wait_s = retries, retry_wait_s
         self.cooldown = Cooldown(self.data_dir / "source_cooldown.json")
         self._halt = threading.Event()
+        self._said_old_server = False
         self._thread: threading.Thread | None = None
 
     # --- background loop (used by run_connection) ------------------------------------------
@@ -99,7 +100,15 @@ class JobRunner:
             self.log(f"งาน: พื้นที่ว่างในโฟลเดอร์คลิปเหลือ {gb:.1f} GB (ต้องมีอย่างน้อย "
                      f"{clips_folder.MIN_FREE_BYTES // 1024**3} GB) — ยังไม่รับงานใหม่ ลบหรือย้ายคลิปเก่า หรือเปลี่ยนโฟลเดอร์ด้วย set-folder")
             return None
-        spec = client.claim_job(get_session())
+        session = get_session()
+        if "clip_preview" not in session.features:
+            # Clips stay on this PC (Q-33): a server without the still/checks endpoint could not take
+            # them, and the job would fail after the whole render (seen on staging, 2026-10-09).
+            if not self._said_old_server:
+                self.log("งาน: Server นี้ยังไม่รองรับการเก็บคลิปไว้บนเครื่อง (ต้องอัปเดต Server ก่อน) — ยังไม่รับงานตัดคลิป")
+                self._said_old_server = True
+            return None
+        spec = client.claim_job(session)
         if spec is None:
             return None
         return _Job(self, client, get_session, spec).run()

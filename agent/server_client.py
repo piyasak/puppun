@@ -45,6 +45,7 @@ class Session:
     generation: int
     environment: dict
     heartbeat_interval_s: int
+    features: tuple[str, ...] = ()  # what the server supports; empty from servers before Q-33
 
 
 class ServerClient:
@@ -79,7 +80,8 @@ class ServerClient:
             "username": username, "token": agent_token, "installation_id": installation_id,
             "agent_version": AGENT_VERSION,
         })
-        return Session(body["session_token"], body["generation"], body["environment"], body["heartbeat_interval_s"])
+        return Session(body["session_token"], body["generation"], body["environment"], body["heartbeat_interval_s"],
+                       tuple(body.get("features") or ()))
 
     def heartbeat(self, session: Session) -> dict:
         return self._post("/v1/agent/heartbeat", {"generation": session.generation}, bearer=session.token)

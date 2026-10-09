@@ -41,6 +41,11 @@ def agent_context(request: Request, db: Session = Depends(get_db)) -> AgentConte
     return agent_sessions.resolve(db, raw.strip())
 
 
+# What this server supports, so an Agent never starts work it cannot hand in. "clip_preview" =
+# Q-33 delivery (checks + still via PUT .../preview, the clip stays on the Agent's PC).
+FEATURES = ["clip_preview"]
+
+
 def _session_out(new_or_session, env_name: str, generation: int) -> dict:
     s = new_or_session
     return {
@@ -48,6 +53,7 @@ def _session_out(new_or_session, env_name: str, generation: int) -> dict:
         "expires_at": s.expires_at.isoformat(),
         "heartbeat_interval_s": agent_sessions.HEARTBEAT_INTERVAL_S,
         "environment": {"id": str(s.environment_id), "name": env_name},
+        "features": FEATURES,
     }
 
 
