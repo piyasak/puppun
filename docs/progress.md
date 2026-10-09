@@ -7,9 +7,9 @@ Last updated: 2026-10-07
 ### Latest slice (2026-10-10 00:xx) — Agent download on the web (E-50)
 - API `GET /v1/agents/download` (signed-in users): the setup on offer from `AGENT_SETUP_URL` / `_VERSION` / `_SHA256` / `_SIZE_MB`; offered only with https (http only outside staging/production), a 64-hex SHA-256 and a version, otherwise `available: false`
 - Web `/agents`: "ติดตั้ง Agent บน Windows" card: download button (version, MB) + SHA-256, or "ยังไม่เปิดให้ดาวน์โหลด ติดต่อทีมงาน" when not configured; 5 steps (SmartScreen, the user's own username + link to Agent Token, clips folder on a roomy drive, phone USB debugging, the punpun Agent shortcut)
-- Commands: integration 235 passed / 9 skipped (new test_agent_download 8; an empty size value never stops the server), ruff clean, tsc + oxlint clean (old warnings only); E2E (new download test + axe) **not run**: local Supabase auth stopped answering (/auth/v1/health timeout) → needs a Docker restart
+- Commands: integration 235 passed / 9 skipped (new test_agent_download 8; an empty size value never stops the server), ruff clean, tsc + oxlint clean (old warnings only); E2E 18 passed after the PO restarted Docker (new: no setup configured = "ติดต่อทีมงาน" and no link; configured = link + version/size + SHA-256; axe on /agents clean)
 - Open: where the setup is hosted (PO): e.g. a public Supabase Storage bucket or GitHub Release; then set the AGENT_SETUP_* values in Render
-- Next: E2E after the Docker restart; PO double-clicks the setup on this PC
+- Next: PO double-clicks the setup on this PC; PO picks where the setup is hosted
 
 ### Previous slice (2026-10-09 23:xx) — double-click setup for the Agent (E-50)
 - Gap found by the PO: `punpun-agent` was not a command (the first install needed Python, nothing put the launcher on PATH)

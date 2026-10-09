@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import ntpath
 import os
 import shutil
 import subprocess
@@ -37,7 +38,8 @@ START_MENU_GROUP = "punpun"
 # --- PATH (HKCU\Environment) ----------------------------------------------------------------------
 
 def _norm(entry: str) -> str:
-    return os.path.normcase(os.path.expandvars(entry.strip().strip('"'))).rstrip("\\/")
+    # Windows rules (case-insensitive, either slash) on every OS, so the unit tests mean the same on CI
+    return ntpath.normcase(os.path.expandvars(entry.strip().strip('"'))).rstrip("\\/")
 
 
 def path_with(current: str, folder: Path) -> str | None:
