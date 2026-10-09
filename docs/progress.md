@@ -10,7 +10,8 @@ Last updated: 2026-10-07
 - Found: tables in `public` would be readable through Supabase's REST API with the public key → own schema; S3 region was hard-coded us-east-1 → setting; Supabase free = 50 MB per file (clips often larger) → open item before pilot
 - Commands: staging rehearsal deploy/release/rollback ok (4.3/2.8/2.8 s, 23 tables in clipflow, 0 in public); `test_staging_image.py` 4 passed
 - Gates: G2-05 still No — needs the Render deploy by the PO, then one real release + rollback
-- Next: PO follows `docs/runbooks/staging.md`; then Claude checks the deploy, schema privileges and E-28 on the public URL
+- Hosted (PO, 2026-10-09): https://punpun-staging.onrender.com up after a DB password fix; checks from outside + Supabase schema/privileges ok (see G2-05); fixes: build id from RENDER_GIT_COMMIT, HEAD on web routes
+- Next: merge the fix = first real release, then Render Rollback → confirm build ids; E-28 sign-up on the public URL
 
 ### Previous slice (2026-10-09 15:xx) — dashboard bento (E-47 step 3)
 - PR #5 merged (a38cd26) incl. CI fixes: job-runner test allowed encoder-dependent ms at the last pause; axe measured mid-fade after the theme switch → reduced motion + two frames before measuring (probed: colours final at once)
