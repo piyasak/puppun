@@ -206,7 +206,7 @@ function RecentJobs() {
             <li key={j.id} className="row" data-testid="dash-job">
               <div className="row-main">
                 <Link to={`/jobs/${j.id}`} className="row-title dash-job-link">{sourceLabel(j)}</Link>
-                <span className="hint">{j.planned_clips ?? j.requested_clips} คลิป · {dateFmt.format(new Date(j.created_at))}</span>
+                <span className="hint">{j.planned_clips ?? (j.auto_clips ? 'ตามต้นฉบับ' : j.requested_clips)} คลิป · {dateFmt.format(new Date(j.created_at))}</span>
               </div>
               <span className={`badge badge-${JOB_STATE[j.state].badge}`}>{JOB_STATE[j.state].text}</span>
             </li>

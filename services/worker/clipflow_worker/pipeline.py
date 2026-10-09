@@ -36,17 +36,19 @@ class Plan:
 
 def plan(*, work: Path, count: int, seed: int, min_len: float, max_len: float, url: str | None = None,
          local: Path | None = None, captions: Path | None = None,
-         max_duration: int = DEFAULT_MAX_DURATION_S, info: SourceInfo | None = None) -> Plan:
-    """Everything needed before any clip is cut. Exactly one of `url` / `local`; `info` if already inspected."""
+         max_duration: int = DEFAULT_MAX_DURATION_S, info: SourceInfo | None = None, whole: bool = False) -> Plan:
+    """Everything needed before any clip is cut. Exactly one of `url` / `local`; `info` if already inspected.
+    `whole`: split the entire source into consecutive clips (the count follows the source, Q-32) instead
+    of picking `count` seeded segments."""
     if bool(url) == bool(local):
         raise ValueError("plan needs exactly one of url or local")
     # Every network step of a linked source runs under the SSRF guard (T08, E-38).
     with nullcontext() if local else public_only():
         return _plan(work=work, count=count, seed=seed, min_len=min_len, max_len=max_len, url=url, local=local,
-                     captions=captions, max_duration=max_duration, info=info)
+                     captions=captions, max_duration=max_duration, info=info, whole=whole)
 
 
-def _plan(*, work, count, seed, min_len, max_len, url, local, captions, max_duration, info) -> Plan:
+def _plan(*, work, count, seed, min_len, max_len, url, local, captions, max_duration, info, whole=False) -> Plan:
     info = info or (inspect_local(local) if local else inspect(url))
     check_limits(info, max_duration)
     work.mkdir(parents=True, exist_ok=True)
@@ -56,6 +58,12 @@ def _plan(*, work, count, seed, min_len, max_len, url, local, captions, max_dura
     else:
         captions = fetch_captions(url, info, work)
         pauses, noise_db = detect_pauses(url, work, info.duration_s)
+    if whole:
+        parts = seg.tile(pauses, info.duration_s, min_len, max_len)[:count]
+        selection = seg.Selection(seed=seed, requested=count, segments=parts, candidates=len(parts))
+        return Plan(info=info, url=url, local=local, work=work, cues=seg.load_cues(captions) if captions else [],
+                    caption_track=captions.name if captions else None, pauses=len(pauses), noise_db=noise_db,
+                    selection=selection)
     candidates = seg.pause_candidates(pauses, min_len, max_len)
     if not candidates:
         candidates = seg.time_candidates(info.duration_s, min_len, max_len)

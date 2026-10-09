@@ -34,14 +34,21 @@ class JobIn(BaseModel):
     environment_id: uuid.UUID
     source: SourceIn
     requested_clips: int = Field(default=3, ge=1, le=20)
+    # Q-32: the count follows the source (the whole source is split); requested_clips is then ignored.
+    auto_clips: bool = False
     clip_min_s: int = Field(default=180, ge=15, le=600)  # D02: 3-5 minutes
     clip_max_s: int = Field(default=300, ge=15, le=600)
+    # Q-32: one length instead of a range: clips of 80-100 % of it, cut at pauses (default 300 s in the UI).
+    clip_length_s: int | None = Field(default=None, ge=15, le=600)
     subtitles: bool = True  # Q-12
     review_mode: Literal["review", "auto"] = "review"
     confirm_auto: bool = False  # FR-08: auto mode must be switched on explicitly
 
     @model_validator(mode="after")
     def _check(self):
+        if self.clip_length_s is not None:
+            self.clip_max_s = self.clip_length_s
+            self.clip_min_s = max(15, round(self.clip_length_s * 0.8))
         if self.clip_min_s > self.clip_max_s:
             raise ValueError("clip_min_s_above_clip_max_s")
         if self.review_mode == "auto" and not self.confirm_auto:
@@ -57,6 +64,7 @@ def job_out(db: Session, job: Job, *, with_clips: bool = False) -> dict:
         "source": {"kind": job.source_kind, "url": job.source_url, "file_name": job.source_label},
         "environment_id": str(job.environment_id),
         "requested_clips": job.requested_clips,
+        "auto_clips": job.auto_clips,
         "planned_clips": job.planned_clips,
         "clip_min_s": job.clip_min_s,
         "clip_max_s": job.clip_max_s,
@@ -84,8 +92,8 @@ def create_job(body: JobIn, request: Request, auth: WebAuth = Depends(web_auth),
     job, created = jobs.create(
         db, workspace_id=auth.workspace_id, user_id=auth.user_id, environment_id=body.environment_id,
         idempotency_key=body.idempotency_key, source=body.source.model_dump(),
-        requested_clips=body.requested_clips, clip_min_s=body.clip_min_s, clip_max_s=body.clip_max_s,
-        subtitles=body.subtitles, review_mode=body.review_mode,
+        requested_clips=jobs.AUTO_MAX_CLIPS if body.auto_clips else body.requested_clips, auto_clips=body.auto_clips,
+        clip_min_s=body.clip_min_s, clip_max_s=body.clip_max_s, subtitles=body.subtitles, review_mode=body.review_mode,
     )
     if created:
         audit.record(db, request, "job.create", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
@@ -136,7 +144,7 @@ def _spec(db: Session, job: Job, env_name: str) -> dict:
         "id": str(job.id), "state": job.state, "state_version": job.state_version,
         "environment": {"id": str(job.environment_id), "name": env_name},
         "source": {"kind": job.source_kind, "url": job.source_url, "file_name": job.source_label},
-        "requested_clips": job.requested_clips, "planned_clips": job.planned_clips,
+        "requested_clips": job.requested_clips, "planned_clips": job.planned_clips, "auto_clips": job.auto_clips,
         "clip_min_s": job.clip_min_s, "clip_max_s": job.clip_max_s, "subtitles": job.subtitles,
         "seed": job.seed, "lease_expires_at": job.lease_expires_at.isoformat() if job.lease_expires_at else None,
     }

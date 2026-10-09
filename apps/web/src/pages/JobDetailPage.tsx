@@ -238,7 +238,9 @@ export function JobDetailPage() {
               <Alert kind="info">สร้างได้ {job.clips.filter((c) => c.uploaded).length} จาก {job.planned_clips} คลิป ส่วนที่ไม่สำเร็จไม่ถูกหักโควตา</Alert>
             )}
             <dl className="facts">
-              <dt>คลิป</dt><dd>ขอ {job.requested_clips} • วางแผน {job.planned_clips ?? '—'} • ยาว {mmss(job.clip_min_s * 1000)}–{mmss(job.clip_max_s * 1000)} นาที</dd>
+              <dt>คลิป</dt><dd>{job.auto_clips
+                ? `คำนวณจากต้นฉบับ • ${job.planned_clips == null ? 'รอ Agent วัดความยาว' : `ได้ ${job.planned_clips} คลิป`}`
+                : `ขอ ${job.requested_clips} • วางแผน ${job.planned_clips ?? '—'}`} • ยาว {mmss(job.clip_min_s * 1000)}–{mmss(job.clip_max_s * 1000)} นาที</dd>
               <dt>ต้นฉบับ</dt><dd>{job.source_duration_s ? `ยาว ${mmss(job.source_duration_s * 1000)}` : 'ยังไม่ได้ตรวจ'}</dd>
               <dt>การตรวจ</dt><dd>{job.review_mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'} • ซับ{job.subtitles ? 'จากต้นฉบับ' : ': ไม่ใส่'}</dd>
               <dt>โควตา</dt><dd data-testid="job-quota">จอง {job.quota.reserved} • ใช้ {job.quota.settled} • คืน {job.quota.released}</dd>

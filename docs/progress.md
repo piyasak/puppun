@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 17:xx) — staging image, Render blueprint, rehearsal (G2-05, E-49)
+### Latest slice (2026-10-09 20:xx) — clip count from the source (Q-32) + staging release
+- Staging: PR #7 merged → Render deployed `8bdd0f6` (/healthz), data kept (1 user, 1 workspace, 1 environment, alembic 0010); rollback in Render = PO next
+- PO (Q-32): count follows the source, length in seconds (default 300); whole-source split; over quota → stop for the user
+- Implemented (branch `p7-auto-clips`): `segments.tile` (balanced split at pauses, greedy fallback with a last clip up to 1.2x, short tail joined or left out), `pipeline.plan(whole=)`, Agent passes `auto_clips`; migration 0011 (`jobs.auto_clips`, cap 100, expand-only); API `auto_clips` + `clip_length_s` (80–100 %), last-clip limit shared by the event check and the file check; web: length field (default 300) + "คำนวณจากความยาวต้นฉบับ" (default) / "กำหนดเอง", review and job pages show the source-based count
+- Found: the first tiling cut always at max length lost the tail (130 s of 2,530 s) → balanced split
+- Commands: worker unit 38 (4 new), integration 224 passed / 9 skipped (4 new API + real-pipeline whole split: 4 consecutive clips of a 70 s file, all checks passed), unit 171, E2E 16 (new: default auto count)
+- Next: PO rollback on Render → close G2-05; commit/PR for Q-32 on request
+
+### Previous slice (2026-10-09 17:xx) — staging image, Render blueprint, rehearsal (G2-05, E-49)
 - PO: Render + Supabase punpun
 - Implemented: `Dockerfile` (web build → API image, non-root, BUILD_ID), `deploy/start.sh` (migrate → uvicorn, LF via .gitattributes), `.dockerignore`, `render.yaml`, `DB_SCHEMA` (search_path on every connection, alembic in schema, name validated), `OBJECT_STORAGE_REGION`, `WEB_DIST` (SPA on the API origin, API 404s kept), `VITE_API_URL=same-origin`, dashboard-style DB URLs accepted, `/healthz` build id; CI job "Staging image build + smoke"; `tools/staging_rehearsal.py`; `docs/runbooks/staging.md`; Supabase: private bucket `clipflow-media` created (MCP)
 - Found: tables in `public` would be readable through Supabase's REST API with the public key → own schema; S3 region was hard-coded us-east-1 → setting; Supabase free = 50 MB per file (clips often larger) → open item before pilot

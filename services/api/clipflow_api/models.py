@@ -18,6 +18,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -282,7 +283,7 @@ class Job(Base):
     __table_args__ = (
         UniqueConstraint("workspace_id", "idempotency_key"),
         Index("ix_jobs_claimable", "environment_id", "state", "created_at"),
-        CheckConstraint("requested_clips BETWEEN 1 AND 20", name="ck_jobs_requested_clips"),
+        CheckConstraint("requested_clips BETWEEN 1 AND 100", name="ck_jobs_requested_clips"),
         CheckConstraint("clip_min_s >= 15 AND clip_max_s <= 600 AND clip_min_s <= clip_max_s",
                         name="ck_jobs_clip_bounds"),
     )
@@ -297,6 +298,8 @@ class Job(Base):
     source_label: Mapped[str | None] = mapped_column(String(200))  # file name for local_file; no full path
     rights_acceptance_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("rights_acceptances.id"))
     requested_clips: Mapped[int] = mapped_column(Integer)
+    # Q-32: split the whole source; the count follows the source (requested_clips is then the cap).
+    auto_clips: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     planned_clips: Mapped[int | None] = mapped_column(Integer)
     clip_min_s: Mapped[int] = mapped_column(Integer)
     clip_max_s: Mapped[int] = mapped_column(Integer)

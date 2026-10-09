@@ -193,3 +193,41 @@ def test_ass_contains_title_ending_and_subs_in_their_time_ranges():
     assert "PlayResX: 1080" in ass and "PlayResY: 1920" in ass
     no_subs = build_ass(text, 10.0, Template(burn_subtitles=False))
     assert "ซับ" not in no_subs and "ชื่อเรื่อง" in no_subs
+
+
+# --- Q-32: the clip count follows the source (whole-source split) --------------------------------
+
+def _pauses_every(step, until, width=1.0):
+    return [(t - width / 2, t + width / 2) for t in range(step, until, step)]
+
+
+def test_tile_covers_the_whole_source_at_pauses():
+    # A pause every 50 s; clips of 240–300 s → 9 near-equal clips (~281 s), each cut at a pause.
+    parts = seg.tile(_pauses_every(50, 2530), 2530.0, 240, 300)
+    assert parts[0].start == 0.0 and parts[-1].end == 2530.0
+    assert all(a.end == b.start for a, b in zip(parts, parts[1:], strict=False))  # consecutive, nothing skipped
+    assert all(240 <= p.duration <= 300 for p in parts)  # nothing over the limit, nothing too short
+    assert all(p.method == "tile_audio_pause" for p in parts[:-1])
+    assert len(parts) == 9  # ceil(2530 / 300)
+
+
+def test_tile_short_ending_joins_the_last_clip_or_is_left_out():
+    # 610 s with cuts at 300 → 300 + 300 + 10 s tail: the tail joins clip 2 (310 s ≤ 360).
+    parts = seg.tile([(299.5, 300.5), (599.5, 600.5)], 610.0, 240, 300)
+    assert [(p.start, p.end) for p in parts] == [(0.0, 300.0), (300.0, 610.0)]
+    # 700 s: 300 + 300 leaves 100 s (< 240, and 300 + 100 > 360) → left out, never a too-short clip.
+    parts = seg.tile([(299.5, 300.5), (599.5, 600.5)], 700.0, 240, 300)
+    assert [(p.start, p.end) for p in parts] == [(0.0, 300.0), (300.0, 600.0)]
+
+
+def test_tile_without_pauses_cuts_on_time_and_short_sources_give_nothing():
+    parts = seg.tile([], 1000.0, 240, 300)  # 4 x 250 s: the whole source, no tail lost
+    assert [p.method for p in parts] == ["tile_time", "tile_time", "tile_time", "tile_end"]
+    assert [p.duration for p in parts] == [250.0, 250.0, 250.0, 250.0]
+    assert seg.tile([], 200.0, 240, 300) == []  # shorter than one clip (T09: never padded)
+    assert seg.tile([], 340.0, 240, 300) == [seg.Segment(0.0, 340.0, "tile_end")]  # one stretched clip
+
+
+def test_tile_is_deterministic():
+    pauses = _pauses_every(37, 5000)
+    assert seg.tile(pauses, 5000.0, 180, 300) == seg.tile(pauses, 5000.0, 180, 300)

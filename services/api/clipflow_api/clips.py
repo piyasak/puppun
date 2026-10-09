@@ -21,7 +21,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import mediacheck, quota
+from . import jobs, mediacheck, quota
 from .errors import ApiError
 from .models import Clip, ClipMetadata, Job
 
@@ -80,7 +80,7 @@ def accept_upload(db: Session, storage, job: Job, clip: Clip, temp: Path, size: 
     key = f"{clip.workspace_id}/{job.id}/clip_{clip.clip_index:02d}_{digest[:12]}.mp4"
     storage.put_file(key, temp, "video/mp4")
     result = mediacheck.check(temp, reported_duration_ms=clip.duration_ms, clip_min_s=job.clip_min_s,
-                              clip_max_s=job.clip_max_s)
+                              clip_max_s=jobs.longest_clip_s(job, clip.clip_index))
     clip.storage_key, clip.uploaded_at = key, now()
     clip.check_status, clip.check_results = result["status"], result
     quota.settle_clip(db, job.workspace_id, job.id, job.quota_period, clip.clip_index)

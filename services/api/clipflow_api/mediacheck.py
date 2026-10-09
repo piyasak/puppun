@@ -19,7 +19,7 @@ def ffprobe_path() -> str | None:
     return os.environ.get("FFPROBE") or shutil.which("ffprobe")
 
 
-def check(path: Path, *, reported_duration_ms: int, clip_min_s: int, clip_max_s: int) -> dict:
+def check(path: Path, *, reported_duration_ms: int, clip_min_s: float, clip_max_s: float) -> dict:
     exe = ffprobe_path()
     if not exe:
         return {"status": "skipped", "reason": "ffprobe_not_available", "checks": []}

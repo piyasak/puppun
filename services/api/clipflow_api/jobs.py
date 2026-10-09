@@ -42,8 +42,18 @@ def now() -> datetime:
 
 # --- web side -------------------------------------------------------------------------------
 
+AUTO_MAX_CLIPS = 100  # Q-32: cap for a whole-source split (a 2-hour source at 1 min per clip fits)
+LAST_CLIP_STRETCH = 1.2  # the last clip of a whole-source split may run this much over clip_max_s
+
+
+def longest_clip_s(job: Job, index: int) -> float:
+    """Upper length limit of clip `index`: the last clip of a whole-source split may stretch (Q-32)."""
+    return job.clip_max_s * (LAST_CLIP_STRETCH if job.auto_clips and index == job.planned_clips else 1)
+
+
 def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_key: str, source: dict,
-           requested_clips: int, clip_min_s: int, clip_max_s: int, subtitles: bool, review_mode: str) -> tuple[Job, bool]:
+           requested_clips: int, clip_min_s: int, clip_max_s: int, subtitles: bool, review_mode: str,
+           auto_clips: bool = False) -> tuple[Job, bool]:
     """Create a job, or return the existing one for a repeated idempotency key. Returns (job, created)."""
     existing = db.scalars(select(Job).where(Job.workspace_id == workspace_id,
                                             Job.idempotency_key == idempotency_key)).first()
@@ -74,7 +84,8 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
     job = Job(
         workspace_id=workspace_id, environment_id=env.id, created_by=user_id, idempotency_key=idempotency_key,
         source_kind=kind, source_url=url, source_label=label, rights_acceptance_id=rights.id,
-        requested_clips=requested_clips, clip_min_s=clip_min_s, clip_max_s=clip_max_s, subtitles=subtitles,
+        requested_clips=requested_clips, auto_clips=auto_clips, clip_min_s=clip_min_s, clip_max_s=clip_max_s,
+        subtitles=subtitles,
         review_mode=review_mode, seed=secrets.randbelow(2**31), state="RECEIVED", state_version=1, attempts=0,
     )
     db.add(job)
@@ -194,6 +205,8 @@ def _source_validated(db: Session, job: Job, e: dict, at: datetime) -> None:
                 reason="insufficient_source")
         return
     planned = min(job.requested_clips, possible)
+    # Whole-source split (Q-32): the source decides; if it needs more than the quota left, the job
+    # stops for the user (QUOTA_EXCEEDED below) instead of quietly making only part of it.
     try:
         job.quota_period = quota.reserve(db, job.workspace_id, job.id, planned, at)
     except quota.QuotaExceeded as exc:
@@ -202,7 +215,7 @@ def _source_validated(db: Session, job: Job, e: dict, at: datetime) -> None:
                 detail=f"ต้องใช้ {planned} คลิป แต่โควตาเหลือ {exc.available}", reason="quota_exceeded")
         return
     job.planned_clips = planned
-    job.notice = "INSUFFICIENT_SOURCE" if planned < job.requested_clips else None
+    job.notice = "INSUFFICIENT_SOURCE" if planned < job.requested_clips and not job.auto_clips else None
     job.state = "SOURCE_VALIDATED"
     job.state_version += 1
 
@@ -228,7 +241,7 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
     duration_ms = int(e["duration_ms"])
     if not SHA256_RE.match(sha):
         raise ApiError(422, "VALIDATION_ERROR", "sha256 ไม่ถูกต้อง")
-    if not job.clip_min_s * 1000 - 1000 <= duration_ms <= job.clip_max_s * 1000 + 1000:
+    if not job.clip_min_s * 1000 - 1000 <= duration_ms <= longest_clip_s(job, index) * 1000 + 1000:
         raise ApiError(422, "CLIP_DURATION_OUT_OF_RANGE", "ความยาวคลิปไม่อยู่ในช่วงที่กำหนด")
     existing = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)
                           .with_for_update()).first()
