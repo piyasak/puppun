@@ -9,6 +9,7 @@ the content-rights acceptance (Q-14).
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -56,7 +57,8 @@ def _me(db: Session, user_id, workspace_id) -> dict:
         .order_by(RightsAcceptance.accepted_at.desc())
     ).first()
     return {
-        "user": {"id": str(user.id), "email": user.email, "username": user.username},
+        "user": {"id": str(user.id), "email": user.email, "username": user.username,
+                 "platform_role": user.platform_role},
         "workspace": {"id": str(ws.id), "name": ws.name, "timezone": ws.timezone},
         "role": member.role,
         "rights_declaration": (
@@ -85,7 +87,10 @@ def onboarding(body: OnboardingIn, request: Request, who: Identity = Depends(ide
     db.add(Membership(workspace_id=ws.id, user_id=user.id, role="owner"))
     db.add(RightsAcceptance(workspace_id=ws.id, user_id=user.id, declaration_version=RIGHTS_DECLARATION_VERSION))
     # Every Workspace starts on the demo plan until billing exists (P6, D05).
-    db.add(Subscription(workspace_id=ws.id, plan_id=default_plan(db).id, status="active"))
+    trial = default_plan(db)
+    started = datetime.now(UTC)
+    db.add(Subscription(workspace_id=ws.id, plan_id=trial.id, status="trial", current_period_start=started,
+                        current_period_end=started + timedelta(days=trial.interval_days), paid_cycles_ahead=0))
     audit.record(db, request, "account.onboard", workspace_id=ws.id, actor_user_id=user.id, target_id=user.id)
     db.commit()
     return _me(db, user.id, ws.id)

@@ -56,6 +56,8 @@ class User(Base):
     # unique constraint here: a stale copy must never block a different account.
     email: Mapped[str] = mapped_column(String(254))
     username: Mapped[str] = mapped_column(String(32), unique=True)  # stored lower-cased; pairs with Agent tokens
+    # Platform staff (Q-11, E-46): admin | support | None. Set only by `python -m clipflow_api.manage`.
+    platform_role: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = _created()
 
 
@@ -99,6 +101,8 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(64))
     target_id: Mapped[uuid.UUID | None] = mapped_column()
     request_id: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(String(500))  # required for staff changes (FR-22)
+    details: Mapped[dict | None] = mapped_column(JSONB)  # before/after values, never secrets
     created_at: Mapped[datetime] = _created()
 
 
@@ -117,7 +121,13 @@ class Plan(Base):
     max_registered_agents: Mapped[int] = mapped_column(Integer)
     max_concurrent_sessions: Mapped[int] = mapped_column(Integer)
     max_devices: Mapped[int] = mapped_column(Integer)
-    clips_per_month: Mapped[int] = mapped_column(Integer)  # quota unit = one rendered clip (FR-21)
+    clips_per_month: Mapped[int] = mapped_column(Integer)  # quota unit = one rendered clip (FR-21), per cycle
+    # P6 (E-45): prices are examples until D05; amounts are integer satang, always computed on the server.
+    price_satang: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="THB")
+    interval_days: Mapped[int] = mapped_column(Integer, default=30)
+    is_purchasable: Mapped[bool] = mapped_column(Boolean, default=False)
+    retention_days: Mapped[int] = mapped_column(Integer, default=30)
     created_at: Mapped[datetime] = _created()
 
 
@@ -130,8 +140,14 @@ class Subscription(Base):
     id: Mapped[uuid.UUID] = _uuid()
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), unique=True)
     plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"))
-    status: Mapped[str] = mapped_column(String(16))  # active | past_due | cancelled (billing arrives in P6)
+    status: Mapped[str] = mapped_column(String(16))  # trial | active | expired (billing.effective decides)
+    # The current cycle; quota resets per cycle (ledger period = cycle start date, E-45).
+    current_period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    paid_cycles_ahead: Mapped[int] = mapped_column(Integer, default=0)  # renewals already paid for
+    next_plan_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("plans.id"))  # plan change at next cycle
     created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _created()
 
 
 class Environment(Base):
@@ -293,7 +309,7 @@ class Job(Base):
     error_code: Mapped[str | None] = mapped_column(String(40))
     error_detail: Mapped[str | None] = mapped_column(String(500))
     source_duration_s: Mapped[int | None] = mapped_column(Integer)
-    quota_period: Mapped[str | None] = mapped_column(String(7))  # YYYY-MM (Asia/Bangkok) of the reservation
+    quota_period: Mapped[str | None] = mapped_column(String(40))  # cycle key of the reservation (billing.cycle_key)
     lease_session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_sessions.id", ondelete="SET NULL"))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer)
@@ -349,6 +365,7 @@ class Clip(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approval_mode: Mapped[str | None] = mapped_column(String(8))  # manual | auto
+    file_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # retention (NF-06)
 
 
 class ClipMetadata(Base):
@@ -385,7 +402,7 @@ class QuotaLedger(Base):
     id: Mapped[uuid.UUID] = _uuid()
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
     job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"), index=True)
-    period: Mapped[str] = mapped_column(String(7))
+    period: Mapped[str] = mapped_column(String(40))  # subscription cycle start (UTC, billing.cycle_key)
     entry: Mapped[str] = mapped_column(String(8))  # reserve | settle | release
     units: Mapped[int] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
@@ -479,3 +496,47 @@ class ScheduleItemEvent(Base):
     type: Mapped[str] = mapped_column(String(24))
     detail: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = _created()
+
+
+class Payment(Base):
+    """One checkout (FR-20). Amount, currency and plan version come from the server; status changes
+    only through verified provider events, never from the browser's redirect (PRD §8, E-45)."""
+
+    __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_ref"),
+        UniqueConstraint("workspace_id", "idempotency_key"),
+        CheckConstraint("amount_satang > 0", name="ck_payments_amount_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("plans.id"))
+    amount_satang: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    provider: Mapped[str] = mapped_column(String(24))
+    provider_ref: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(12))  # pending | succeeded | failed | refunded
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    applied: Mapped[str | None] = mapped_column(String(16))  # started | queued | removed: what it did to the subscription
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = _created()
+    succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PaymentEvent(Base):
+    """Verified provider events, unique per (provider, event_id): a repeat changes nothing (PRD §F)."""
+
+    __tablename__ = "payment_events"
+    __table_args__ = (UniqueConstraint("provider", "event_id"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    provider: Mapped[str] = mapped_column(String(24))
+    event_id: Mapped[str] = mapped_column(String(80))
+    payment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payments.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str] = mapped_column(String(40))
+    outcome: Mapped[str] = mapped_column(String(24))  # applied | ignored_out_of_order | ...
+    payload_sha256: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = _created()

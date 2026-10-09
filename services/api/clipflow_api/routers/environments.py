@@ -67,7 +67,7 @@ def workspace_usage(auth: WebAuth = Depends(web_auth), db: Session = Depends(get
     ent = entitlement(db, auth.workspace_id)
     return {
         "plan": {"code": ent.plan.code, "version": ent.plan.version, "name": ent.plan.name,
-                 "is_demo": ent.plan.is_demo, "status": ent.subscription.status},
+                 "is_demo": ent.plan.is_demo, "status": ent.cycle.status},
         "caps": {name: ent.cap(name) for name in LIMITS},
         "allocated": allocated(db, auth.workspace_id),
         "in_use": in_use(db, workspace_id=auth.workspace_id),

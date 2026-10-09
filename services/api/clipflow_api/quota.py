@@ -7,7 +7,8 @@
 Every entry carries a unique idempotency key and is inserted with ON CONFLICT DO NOTHING, so
 a redelivered event or a double click can never charge or refund twice (T10). Reservations
 take the Workspace's subscription row lock, so two jobs cannot both spend the last units (T21).
-Periods are calendar months in Asia/Bangkok (Q-04).
+Periods are subscription cycles: the key is the cycle's start date in Asia/Bangkok (E-45, was
+calendar months, Q-04). A new cycle therefore starts a fresh quota exactly once.
 """
 
 from __future__ import annotations
@@ -26,24 +27,28 @@ from .models import QuotaLedger
 TZ = ZoneInfo("Asia/Bangkok")
 
 
-def period_of(at: datetime) -> str:
-    return at.astimezone(TZ).strftime("%Y-%m")
-
-
 def _add(db: Session, workspace_id, job_id, period: str, entry: str, units: int, key: str, reason: str | None) -> bool:
     """Insert one ledger entry; False when the key already exists (a repeat)."""
     stmt = insert(QuotaLedger).values(
         id=uuid.uuid4(), workspace_id=workspace_id, job_id=job_id, period=period, entry=entry, units=units,
         idempotency_key=key, reason=reason,
-    ).on_conflict_do_nothing(index_elements=["idempotency_key"])
-    return (db.execute(stmt).rowcount or 0) == 1
+    ).on_conflict_do_nothing(index_elements=["idempotency_key"]).returning(QuotaLedger.id)
+    # RETURNING, not rowcount: rowcount is not reliable for this statement (found by test_admin, 2026-10-09).
+    return db.execute(stmt).scalar() is not None
 
 
 def used(db: Session, workspace_id, period: str) -> int:
     signed = case((QuotaLedger.entry == "reserve", QuotaLedger.units),
-                  (QuotaLedger.entry == "release", -QuotaLedger.units), else_=0)
+                  (QuotaLedger.entry == "release", -QuotaLedger.units),
+                  (QuotaLedger.entry == "deduct", QuotaLedger.units), else_=0)  # staff deduction counts as used
     return int(db.scalar(select(func.coalesce(func.sum(signed), 0)).where(
         QuotaLedger.workspace_id == workspace_id, QuotaLedger.period == period)))
+
+
+def granted(db: Session, workspace_id, period: str) -> int:
+    """Extra units staff added to this cycle (E-46). Kept apart so "used" is always real usage."""
+    return int(db.scalar(select(func.coalesce(func.sum(QuotaLedger.units), 0)).where(
+        QuotaLedger.workspace_id == workspace_id, QuotaLedger.period == period, QuotaLedger.entry == "grant")))
 
 
 def job_balance(db: Session, job_id) -> dict[str, int]:
@@ -56,10 +61,12 @@ def job_balance(db: Session, job_id) -> dict[str, int]:
 
 
 def summary(db: Session, workspace_id, at: datetime) -> dict:
-    period = period_of(at)
-    limit = entitlement(db, workspace_id).plan.clips_per_month
+    ent = entitlement(db, workspace_id)
+    period, bonus = ent.cycle.key, granted(db, workspace_id, ent.cycle.key)
+    limit = ent.plan.clips_per_month + bonus
     u = used(db, workspace_id, period)
-    return {"period": period, "limit": limit, "used": u, "available": max(0, limit - u)}
+    return {"period": period, "limit": limit, "used": u, "available": max(0, limit - u), "granted": bonus,
+            "cycle_end": ent.cycle.end.isoformat(), "status": ent.cycle.status}
 
 
 class QuotaExceeded(Exception):
@@ -70,8 +77,8 @@ class QuotaExceeded(Exception):
 def reserve(db: Session, workspace_id, job_id, units: int, at: datetime) -> str:
     """Hold `units` for a job. Raises QuotaExceeded. Returns the period charged."""
     ent = entitlement(db, workspace_id, lock=True)  # serializes reservations per Workspace (T21)
-    period = period_of(at)
-    available = ent.plan.clips_per_month - used(db, workspace_id, period)
+    period = ent.cycle.key
+    available = ent.plan.clips_per_month + granted(db, workspace_id, period) - used(db, workspace_id, period)
     if units > available:
         raise QuotaExceeded(max(0, available))
     _add(db, workspace_id, job_id, period, "reserve", units, f"reserve:{job_id}", "job_reserve")
@@ -91,3 +98,12 @@ def release_outstanding(db: Session, workspace_id, job_id, period: str | None, r
         return 0
     return outstanding if _add(db, workspace_id, job_id, period, "release", outstanding,
                                f"release:{job_id}", reason) else 0
+
+
+def adjust(db: Session, workspace_id, units: int, key: str, reason: str) -> dict:
+    """Staff adjustment in the current cycle: +units gives back, -units takes. Idempotent by `key`."""
+    ent = entitlement(db, workspace_id, lock=True)
+    period = ent.cycle.key
+    entry = "grant" if units > 0 else "deduct"
+    added = _add(db, workspace_id, None, period, entry, abs(units), f"adjust:{key}", reason[:40])
+    return {"applied": added, "period": period, "entry": entry, "units": abs(units)}

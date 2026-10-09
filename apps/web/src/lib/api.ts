@@ -1,7 +1,7 @@
 import { API_URL, supabase } from './supabase'
 
 export type Me = {
-  user: { id: string; email: string; username: string }
+  user: { id: string; email: string; username: string; platform_role: 'admin' | 'support' | null }
   workspace: { id: string; name: string; timezone: string }
   role: string
   rights_declaration: { version: string; accepted_at: string } | null

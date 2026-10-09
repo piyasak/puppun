@@ -114,6 +114,8 @@ def get_clip(clip_id: uuid.UUID, auth: WebAuth = Depends(web_auth), db: Session 
 def clip_media(clip_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
     """Short-lived preview link for the owner only (PRD §E)."""
     clip, _ = _owned(db, auth, clip_id)
+    if clip.file_deleted_at is not None:
+        raise ApiError(410, "CLIP_FILE_EXPIRED", "ไฟล์คลิปนี้ถูกลบตามระยะเวลาเก็บไฟล์ของแพ็กเกจแล้ว")
     if clip.storage_key is None:
         raise ApiError(409, "CLIP_NOT_UPLOADED", "ยังไม่ได้รับไฟล์คลิปนี้จาก Agent")
     ttl = request.app.state.settings.preview_ttl_s

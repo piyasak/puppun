@@ -1,0 +1,202 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { Shell } from '../components/Shell'
+import { Alert } from '../components/ui'
+import { ApiError, api } from '../lib/api'
+import { formatDate } from '../lib/types'
+
+/* P6.4 (E-46): platform staff. Support reads; admin changes, always with a reason that goes to
+   the audit trail together with the values before and after. Customers never see this page
+   (the API answers 404 to them). */
+
+type WorkspaceRow = {
+  id: string; name: string; owner: { username: string; email: string } | null
+  subscription: { status: string; plan: string; cycle_end: string; paid_cycles_ahead: number }
+}
+type WorkspaceDetail = WorkspaceRow & {
+  quota: { used: number; limit: number; available: number }
+  counts: { jobs: number; devices: number }
+  payments: { id: string; status: string; amount_satang?: number; created_at: string }[]
+  audit: { action: string; at: string; reason: string | null; details: Record<string, unknown> | null }[]
+}
+type JobRow = { id: string; workspace_id: string; state: string; source: string; error_code: string | null; created_at: string }
+type PlanRow = { code: string; version: number; name: string; price_satang: number; clips_per_month: number; is_purchasable: boolean }
+
+function ReasonForm({ label, children, onSubmit }: {
+  label: string
+  children?: React.ReactNode
+  onSubmit: (reason: string) => Promise<void>
+}) {
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await onSubmit(reason)
+      setReason('')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form className="admin-action" onSubmit={submit}>
+      {children}
+      <input aria-label={`เหตุผล: ${label}`} placeholder="เหตุผล (อย่างน้อย 10 ตัวอักษร จะถูกบันทึก)" value={reason}
+        onChange={(e) => setReason(e.target.value)} />
+      <button type="submit" className="btn btn-secondary btn-small" disabled={busy || reason.trim().length < 10}>{label}</button>
+    </form>
+  )
+}
+
+export function AdminPage() {
+  const [role, setRole] = useState<string | null>(null)
+  const [q, setQ] = useState('')
+  const [rows, setRows] = useState<WorkspaceRow[]>([])
+  const [detail, setDetail] = useState<WorkspaceDetail | null>(null)
+  const [jobs, setJobs] = useState<JobRow[]>([])
+  const [jobId, setJobId] = useState('')
+  const [plans, setPlans] = useState<PlanRow[]>([])
+  const [error, setError] = useState('')
+  const [days, setDays] = useState(30)
+  const [units, setUnits] = useState(10)
+  const [planCode, setPlanCode] = useState('pro')
+  const [when, setWhen] = useState<'now' | 'next_cycle'>('next_cycle')
+
+  useEffect(() => {
+    api<{ role: string }>('/v1/admin/me').then((r) => setRole(r.role)).catch(() => setRole(''))
+    api<{ items: PlanRow[] }>('/v1/admin/plans').then((r) => setPlans(r.items)).catch(() => undefined)
+  }, [])
+
+  const search = useCallback(async (e?: FormEvent) => {
+    e?.preventDefault()
+    try {
+      setRows((await api<{ items: WorkspaceRow[] }>(`/v1/admin/workspaces?q=${encodeURIComponent(q)}`)).items)
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }, [q])
+
+  async function open(id: string) {
+    setDetail(await api<WorkspaceDetail>(`/v1/admin/workspaces/${id}`))
+  }
+
+  async function act(path: string, body: Record<string, unknown>) {
+    if (!detail) return
+    setError('')
+    try {
+      const out = await api<WorkspaceDetail | { quota: unknown }>(`/v1/admin/workspaces/${detail.id}/${path}`, { method: 'POST', body })
+      if ('audit' in out) setDetail(out)
+      else await open(detail.id)
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
+  async function findJobs(e: FormEvent) {
+    e.preventDefault()
+    try {
+      const qs = jobId.trim() ? `job_id=${encodeURIComponent(jobId.trim())}` : 'state=FAILED'
+      setJobs((await api<{ items: JobRow[] }>(`/v1/admin/jobs?${qs}`)).items)
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
+  if (role === '') return <Shell title="ไม่พบหน้านี้"><p className="muted">ไม่พบหน้านี้</p></Shell>
+  const isAdmin = role === 'admin'
+
+  return (
+    <Shell title="ผู้ดูแลระบบ">
+      {role && <Alert kind="info">สิทธิ์: {isAdmin ? 'Admin (แก้ไขได้ ทุกการแก้ไขต้องมีเหตุผลและถูกบันทึก)' : 'Support (ดูอย่างเดียว)'}</Alert>}
+      {error && <Alert kind="error">{error}</Alert>}
+
+      <section className="card" aria-labelledby="ws-title">
+        <h2 id="ws-title">Workspace / ผู้ใช้</h2>
+        <form className="admin-search" onSubmit={search}>
+          <input aria-label="ค้นหา" placeholder="อีเมล, username หรือชื่อ Workspace" value={q} onChange={(e) => setQ(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-small">ค้นหา</button>
+        </form>
+        <table className="table">
+          <thead><tr><th>Workspace</th><th>เจ้าของ</th><th>แพ็กเกจ</th><th>สถานะ</th><th /></tr></thead>
+          <tbody>
+            {rows.map((w) => (
+              <tr key={w.id} data-testid="admin-ws">
+                <td>{w.name}</td>
+                <td>{w.owner?.username}<div className="hint">{w.owner?.email}</div></td>
+                <td>{w.subscription.plan}</td>
+                <td>{w.subscription.status} • ถึง {formatDate(w.subscription.cycle_end)}</td>
+                <td><button type="button" className="btn btn-secondary btn-small" onClick={() => open(w.id)}>เปิด</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {detail && (
+        <section className="card" aria-labelledby="detail-title" data-testid="admin-detail">
+          <h2 id="detail-title">{detail.name}</h2>
+          <dl className="facts">
+            <dt>แพ็กเกจ</dt><dd>{detail.subscription.plan} • {detail.subscription.status} • ถึง {formatDate(detail.subscription.cycle_end)}</dd>
+            <dt>โควตา</dt><dd data-testid="admin-quota">ใช้ {detail.quota.used} จาก {detail.quota.limit} (เหลือ {detail.quota.available})</dd>
+            <dt>งาน / โทรศัพท์</dt><dd>{detail.counts.jobs} / {detail.counts.devices}</dd>
+          </dl>
+          {isAdmin && (
+            <div className="admin-actions">
+              <ReasonForm label="ขยายรอบ" onSubmit={(reason) => act('extend', { days, reason })}>
+                <input type="number" aria-label="จำนวนวัน" min={1} max={366} value={days} onChange={(e) => setDays(Number(e.target.value))} />
+              </ReasonForm>
+              <ReasonForm label="ปรับโควตา" onSubmit={(reason) => act('quota', { units, reason, idempotency_key: crypto.randomUUID().replace(/-/g, '') })}>
+                <input type="number" aria-label="จำนวนคลิป (+ คืน / − หัก)" value={units} onChange={(e) => setUnits(Number(e.target.value))} />
+              </ReasonForm>
+              <ReasonForm label="เปลี่ยนแพ็กเกจ" onSubmit={(reason) => act('plan', { plan_code: planCode, when, reason })}>
+                <select aria-label="แพ็กเกจ" value={planCode} onChange={(e) => setPlanCode(e.target.value)}>
+                  {[...new Set(plans.map((p) => p.code))].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select aria-label="มีผลเมื่อ" value={when} onChange={(e) => setWhen(e.target.value as 'now' | 'next_cycle')}>
+                  <option value="next_cycle">รอบถัดไป</option><option value="now">ทันที</option>
+                </select>
+              </ReasonForm>
+              <ReasonForm label="สิ้นสุดแพ็กเกจทันที" onSubmit={(reason) => act('end', { reason })} />
+            </div>
+          )}
+          <h3>การชำระเงิน</h3>
+          <ul className="rows">{detail.payments.map((p) => (
+            <li key={p.id} className="row"><span>{formatDate(p.created_at)} • {p.status}{p.amount_satang !== undefined ? ` • ฿${p.amount_satang / 100}` : ''}</span></li>
+          ))}</ul>
+          <h3>Audit</h3>
+          <ul className="rows" data-testid="admin-audit">{detail.audit.map((a, i) => (
+            <li key={i} className="row"><div className="row-main"><strong>{a.action}</strong>
+              <span className="muted">{formatDate(a.at)}{a.reason ? ` • ${a.reason}` : ''}</span></div></li>
+          ))}</ul>
+        </section>
+      )}
+
+      <section className="card" aria-labelledby="jobs-title">
+        <h2 id="jobs-title">ค้นหางาน (Support อ้างอิง Job ID)</h2>
+        <form className="admin-search" onSubmit={findJobs}>
+          <input aria-label="Job ID" placeholder="Job ID (เว้นว่าง = งานที่ล้มเหลวล่าสุด)" value={jobId} onChange={(e) => setJobId(e.target.value)} />
+          <button type="submit" className="btn btn-primary btn-small">ค้นหา</button>
+        </form>
+        <table className="table">
+          <thead><tr><th>Job</th><th>สถานะ</th><th>ต้นฉบับ</th><th>ข้อผิดพลาด</th></tr></thead>
+          <tbody>{jobs.map((j) => (
+            <tr key={j.id}><td><code>{j.id.slice(0, 8)}</code><div className="hint">{formatDate(j.created_at)}</div></td>
+              <td>{j.state}</td><td>{j.source}</td><td>{j.error_code ?? '—'}</td></tr>
+          ))}</tbody>
+        </table>
+      </section>
+
+      <section className="card" aria-labelledby="plans-admin-title">
+        <h2 id="plans-admin-title">แพ็กเกจ (ทุกเวอร์ชัน)</h2>
+        <p className="muted">ราคา/โควตาตั้งค่าที่นี่ภายหลัง (D05) โดยสร้างเวอร์ชันใหม่ ไม่แก้เวอร์ชันที่ลูกค้าจ่ายแล้ว</p>
+        <table className="table">
+          <thead><tr><th>แพ็กเกจ</th><th>ราคา</th><th>คลิป/รอบ</th><th>ขายอยู่</th></tr></thead>
+          <tbody>{plans.map((p) => (
+            <tr key={`${p.code}-${p.version}`}><td>{p.code} v{p.version}<div className="hint">{p.name}</div></td>
+              <td>฿{(p.price_satang / 100).toLocaleString('th-TH')}</td><td>{p.clips_per_month}</td><td>{p.is_purchasable ? 'ใช่' : '—'}</td></tr>
+          ))}</tbody>
+        </table>
+      </section>
+    </Shell>
+  )
+}

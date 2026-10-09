@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import billing
+from .billing import Cycle
 from .errors import ApiError
 from .models import AgentInstallation, AgentSession, Device, Environment, Plan, Subscription
 
@@ -34,20 +36,23 @@ def default_plan(db: Session) -> Plan:
 @dataclass(frozen=True)
 class Entitlement:
     subscription: Subscription
-    plan: Plan
+    plan: Plan  # the plan of the effective cycle (renewals and plan changes applied, E-45)
+    cycle: Cycle
 
     def cap(self, limit: str) -> int:
         return getattr(self.plan, PLAN_CAP[limit])
 
 
 def entitlement(db: Session, workspace_id: uuid.UUID, *, lock: bool = False) -> Entitlement:
+    """With `lock`, the cycle is also rolled forward and saved (under the subscription row lock)."""
     stmt = select(Subscription).where(Subscription.workspace_id == workspace_id)
     if lock:
         stmt = stmt.with_for_update()
     sub = db.scalars(stmt).first()
     if sub is None:
         raise ApiError(403, "NO_SUBSCRIPTION", "Workspace นี้ยังไม่มีแพ็กเกจ")
-    return Entitlement(sub, db.get(Plan, sub.plan_id))
+    cycle = billing.roll(db, sub, billing.now()) if lock else billing.effective(db, sub, billing.now())
+    return Entitlement(sub, cycle.plan, cycle)
 
 
 def allocated(db: Session, workspace_id: uuid.UUID, *, exclude: uuid.UUID | None = None) -> dict[str, int]:

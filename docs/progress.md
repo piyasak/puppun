@@ -1,10 +1,25 @@
 # Progress
 
-## Current phase: P5 done — G5 = Yes (signed off 2026-10-09); next P6. G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes.
+## Current phase: P6 — Billing & administration (sandbox; D05/D06 partially decided). G0 = Yes, G1 = No (5/6), G2 = No (3/5), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-09 01:xx) — G5-06 fencing in the posting path + needs-action list (P5.7)
+### Latest slice (2026-10-09 05:xx) — P6 slice B: admin, audit, support, retention; D05/D06 answers
+- PO: D05 "config ได้ทีหลัง"; D06 Omise + Stripe (config ทีหลัง), **ไม่คืนเงินทุกกรณี** — บันทึกใน decisions, แสดงในหน้าแพ็กเกจ/ชำระ
+- Implemented: migration 0010 (platform_role, audit reason/details, clips.file_deleted_at), `deps.staff/admin_only`, `routers/admin.py` (workspaces, jobs by ID, payments, plans + new version, plan/extend/end/quota with reason + before/after audit, retention run), `retention.py`, `manage.py` (grant-role, retention), quota grant/deduct, `/v1/me` platform_role, storage.delete, preview 410 หลังลบ; เว็บ `/admin` (เมนูเห็นเฉพาะ staff)
+- Found: `quota._add` ใช้ rowcount ที่ไม่น่าเชื่อถือ → บอกว่าไม่ได้บันทึกทั้งที่บันทึกแล้ว (เดิมไม่มีใครใช้ค่าคืน) → ใช้ RETURNING; grant ทำให้ "ใช้" ติดลบ → แยก grant เป็นเพดานเพิ่ม; เทสต์ admin สร้าง plan version ใหม่ในฐานข้อมูลที่ใช้ร่วมกัน → คืนค่าเดิมหลังเทสต์
+- Commands: integration 208 passed / 8 skipped (ใหม่ 7 `test_admin.py`), unit 166, E2E 10 (ใหม่ `admin.spec.ts`), ruff/tsc ผ่าน, dev DB → 0010
+- Gates: G6 3/5 Yes (G6-03, G6-04, G6-05); G6-01 รอราคา/โควตาจริง + ต้นทุน, G6-02 รอ adapter Omise/Stripe
+- Next: adapter Omise/Stripe เมื่อได้บัญชี (D06), ตั้งราคา (D05); P7 UAT/launch readiness; G2-01/G2-05
+
+### Previous slice (2026-10-09 03:xx) — P6 slice A: sandbox billing, subscription cycles
+- Implemented: migration 0009 (ราคาตัวอย่างบน plans, รอบสมาชิก, payments, payment_events, quota period = รอบ), `billing.py` (E-45: effective/roll, checkout, HMAC webhook, dedupe, สถานะเดินหน้า, grant/refund), routes `/v1/billing/plans|subscription|checkout|payments|webhooks/{provider}|sandbox/{id}/simulate`; onboarding = trial 30 วัน; สร้างงานต้องมีรอบที่ใช้งานได้; dispatch รอเมื่อหมดอายุ; เว็บ `/billing` (แพ็กเกจ, รอบ, โควตา, ประวัติ) + `/billing/sandbox/:id` (ผู้ให้บริการจำลอง)
+- Found: quota key แบบวันที่ทำให้ trial กับรอบที่จ่ายวันเดียวกันใช้โควตาร่วมกัน → ใช้เวลาเริ่มรอบเต็ม; downgrade migration ลบแพ็กเกจที่ subscription ยังอ้างอิง → ย้ายกลับ trial ก่อน
+- Commands: integration 201 passed / 8 skipped (ใหม่ 8 `test_billing.py`), E2E 9 (ใหม่ `billing.spec.ts`), dev DB → 0009 (ย้ายข้อมูลเดิมแล้ว), ruff/tsc ผ่าน
+- Gates: G6 2/5 Yes (G6-03, G6-04); G6-01/G6-02 รอ D05/D06; G6-05 = slice B
+- Next: P6 slice B (Admin/Audit/Support/Retention)
+
+### Previous slice (2026-10-09 01:xx) — G5-06 fencing in the posting path + needs-action list (P5.7)
 - Implemented: `test_post_fencing.py` (revoke ระหว่างโอนไฟล์ → Agent หยุด + ลบไฟล์ + token ใหม่ทำต่อ; session เก่าของการติดตั้งเดียวกันถูกตัด; session หมดอายุ; revoke หลังกดโพสต์ → UNKNOWN); `GET /v1/schedule-items?attention=true` (ทุกโพสต์ที่รอคน: NEEDS_ACTION/UNKNOWN ทุกวันที่); หน้า `/schedule` มีกล่อง "ต้องดำเนินการ" พร้อมเหตุผลภาษาไทยและลิงก์ไปจัดการ; `Shop.token_id` ใน test helpers
 - Commands: integration 193 passed / 8 skipped (ใหม่ 4 fencing + 1 attention), unit 166, E2E 8, ruff/oxlint/tsc ผ่าน
 - Gates: **G5 = Yes** — PO ปิยศักดิ์ อนุมัติในแชท 2026-10-09 (6/6)
