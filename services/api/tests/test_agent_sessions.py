@@ -49,6 +49,7 @@ def test_authenticate_returns_session_scoped_to_the_token_environment(setup):
     assert body["session_token"].startswith("cfas_") and body["generation"] == 1
     assert body["environment"] == {"id": setup.env["id"], "name": "office"}
     assert body["heartbeat_interval_s"] == 15
+    assert "clip_preview" in body["features"]  # Q-33: Agents only take jobs from servers that can take kept clips
     assert a.heartbeat().status_code == 200
 
 

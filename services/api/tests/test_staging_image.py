@@ -90,3 +90,8 @@ def test_web_app_is_served_on_the_api_origin(migrated_url, storage, tmp_path):
     assert client.get("/healthz").json()["status"] == "ok"
     assert client.head("/jobs/123").status_code == 200  # HEAD (link checkers, uptime monitors) gets the page too
     assert client.get("/v1/billing/plans").status_code == 200
+    # A missing API endpoint is 404 for every method (an Agent got 405 for PUT .../preview on an old server)
+    put = client.put("/v1/agent/jobs/00000000-0000-0000-0000-000000000000/clips/1/nope", content=b"x")
+    assert put.status_code == 404 and put.json()["code"] == "NOT_FOUND"
+    assert client.post("/v1/no-such-thing").status_code == 404
+    assert client.post("/jobs/123").status_code == 405  # pages are GET/HEAD only

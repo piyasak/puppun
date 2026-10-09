@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 00:xx) — Agent download on the web (E-50)
+### Latest slice (2026-10-10 00:xx) — real Agent on staging: 405 after rendering → Agent 0.3.1
+- PO ran Agent 0.3.0 against staging: job aac04d36 rendered, then "Server ปฏิเสธ 405" → FAILED. Cause: staging runs master (PR #8), which has no `PUT .../clips/{n}/preview` (Q-33 is PR #9); the web catch-all route (GET/HEAD) turned the missing endpoint into 405
+- Fix: the server says what it supports (`features: ["clip_preview"]` in the Agent session); the Agent claims no clip job from a server without it and says once "Server นี้ยังไม่รองรับการเก็บคลิปไว้บนเครื่อง (ต้องอัปเดต Server ก่อน)"; unknown `/v1/...` paths are 404 for every method; Agent 0.3.1 (bundle sha256 a3be47d4…, setup 3362b630…, var/dist)
+- CI fix before this: PATH entries compared with Windows rules on every OS (ntpath) — the setup unit test failed on Linux; CI run 37952640365 green (4/4)
+- Commands: unit 121 passed (new test_job_runner_features 2), integration (sessions, staging image, job runner, client) 33 passed, ruff clean; setup 0.3.1 into a temp folder: version 0.3.1, uninstall ok
+- Next: merge PR #9 → Render deploys migrations 0011/0012 and the preview endpoint; then rerun the job (0.3.0 or 0.3.1)
+
+### Previous slice (2026-10-10 00:xx) — Agent download on the web (E-50)
 - API `GET /v1/agents/download` (signed-in users): the setup on offer from `AGENT_SETUP_URL` / `_VERSION` / `_SHA256` / `_SIZE_MB`; offered only with https (http only outside staging/production), a 64-hex SHA-256 and a version, otherwise `available: false`
 - Web `/agents`: "ติดตั้ง Agent บน Windows" card: download button (version, MB) + SHA-256, or "ยังไม่เปิดให้ดาวน์โหลด ติดต่อทีมงาน" when not configured; 5 steps (SmartScreen, the user's own username + link to Agent Token, clips folder on a roomy drive, phone USB debugging, the punpun Agent shortcut)
 - Commands: integration 235 passed / 9 skipped (new test_agent_download 8; an empty size value never stops the server), ruff clean, tsc + oxlint clean (old warnings only); E2E 18 passed after the PO restarted Docker (new: no setup configured = "ติดต่อทีมงาน" and no link; configured = link + version/size + SHA-256; axe on /agents clean)

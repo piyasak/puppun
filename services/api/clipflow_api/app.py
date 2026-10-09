@@ -135,10 +135,12 @@ def _serve_web(app: FastAPI, dist: Path) -> None:
     app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
     root_files = {p.name for p in dist.iterdir() if p.is_file() and p.name != "index.html"}
 
-    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
-    def web(path: str):
+    @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+    def web(path: str, request: Request):
         if path.startswith(("v1/", "assets/")) or path in ("v1", "healthz"):
-            raise ApiError(404, "NOT_FOUND", "ไม่พบหน้านี้")
+            raise ApiError(404, "NOT_FOUND", "ไม่พบหน้านี้")  # any method: a missing endpoint is not a 405
+        if request.method not in ("GET", "HEAD"):
+            raise ApiError(405, "METHOD_NOT_ALLOWED", "ไม่รองรับคำขอนี้")
         if path in root_files:
             return FileResponse(dist / path)
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
