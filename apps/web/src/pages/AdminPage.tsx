@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Shell } from '../components/Shell'
 import { AdminPlans } from '../components/AdminPlans'
+import { PilotReport } from '../components/PilotReport'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
 import { formatDate } from '../lib/types'
@@ -202,6 +203,7 @@ export function AdminPage() {
         </table>
       </section>
 
+      <PilotReport />
       <AdminPlans isAdmin={role === 'admin'} />
     </Shell>
   )
