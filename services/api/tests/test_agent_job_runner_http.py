@@ -62,7 +62,22 @@ class Shop:
         return resp.json()["id"]
 
     def run(self):
-        return self.runner.run_once(self.client, lambda: self.session)
+        # The real Agent heartbeats beside the job runner; without it a render longer than the 90 s
+        # session (slow CI) ends the session and the runner stops with AGENT_SESSION_ENDED.
+        done = threading.Event()
+
+        def beat():
+            while not done.wait(15):
+                try:
+                    self.client.heartbeat(self.session)
+                except Exception:  # a test may end the session on purpose
+                    return
+
+        threading.Thread(target=beat, daemon=True).start()
+        try:
+            return self.runner.run_once(self.client, lambda: self.session)
+        finally:
+            done.set()
 
     def detail(self, job_id):
         return self.owner.get(f"/v1/jobs/{job_id}").json()
