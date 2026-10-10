@@ -176,6 +176,24 @@ class Environment(Base):
     created_at: Mapped[datetime] = _created()
 
 
+class AgentPairingCode(Base):
+    """A short, single-use code that links an Agent to an Environment (PO 2026-10-10): the web shows
+    it, the Agent sends it once and receives its own Agent token. Only a SHA-256 of the code is kept;
+    it lasts 10 minutes."""
+
+    __tablename__ = "agent_pairing_codes"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_tokens.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+
+
 class AgentToken(Base):
     """Agent credential (FR-12). Only a public prefix and a SHA-256 of the full token are stored;
     the token itself is shown once at creation. Scope = workspace + environment, server-side."""

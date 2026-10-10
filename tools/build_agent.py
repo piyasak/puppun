@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "var" / "dist"
 WORK = ROOT / "var" / "build-agent"
+ICON = ROOT / "agent" / "assets" / "punpun.ico"  # from logo/sub.png
 SERVER = os.environ.get("CLIPFLOW_SETUP_SERVER", "https://punpun-staging.onrender.com")
 
 
@@ -51,7 +52,9 @@ def main(version_override: str | None = None) -> int:
            "--name", "punpun-agent", "--distpath", str(WORK / "dist"), "--workpath", str(WORK / "build"),
            "--specpath", str(WORK), "--paths", str(ROOT), "--paths", str(ROOT / "services" / "worker"),
            "--collect-submodules", "agent", "--collect-submodules", "clipflow_worker",
-           "--collect-submodules", "yt_dlp", str(ROOT / "agent" / "__main__.py")]
+           "--collect-submodules", "yt_dlp", "--icon", str(ICON),
+           "--add-data", f"{ROOT / 'agent' / 'assets'}{os.pathsep}agent/assets",  # logo for the settings window
+           str(ROOT / "agent" / "__main__.py")]
     subprocess.run(cmd, check=True, cwd=ROOT)
     app = WORK / "dist" / "punpun-agent"
     (app / "version.txt").write_text(version, encoding="ascii")  # what the packaged exe reports
@@ -89,6 +92,22 @@ def copy_adb(target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for name in ADB_FILES:
         shutil.copy2(source / name, target / name)
+        if sha256(target / name) != sha256(source / name):
+            raise SystemExit(f"{name} changed while copying")
+    # Apache-2.0 §4: the licence text, the original NOTICE (copied above, unchanged) and a statement
+    # that the binaries are unmodified, next to them (E-51).
+    shutil.copy2(ROOT / "agent" / "licenses" / "Apache-2.0.txt", target / "LICENSE.txt")
+    revision = next((line.split("=", 1)[1].strip() for line in (source / "source.properties").read_text(
+        encoding="utf-8").splitlines() if line.startswith("Pkg.Revision")), "unknown")
+    lines = ["adb for punpun Agent", "",
+             f"adb.exe, AdbWinApi.dll and AdbWinUsbApi.dll are Android SDK Platform-Tools {revision},",
+             "Copyright The Android Open Source Project (Google LLC). They are included UNMODIFIED:",
+             "punpun has not changed their source code or the files themselves.", "",
+             "Licence: LICENSE.txt (Apache License 2.0). Notices of the original package: NOTICE.txt (unchanged).",
+             "Source code: https://android.googlesource.com/platform/packages/modules/adb", "",
+             "SHA-256 (identical to the files in the original Platform-Tools package):"]
+    lines += [f"  {sha256(target / n)}  {n}" for n in ADB_FILES if n.endswith((".exe", ".dll"))]
+    (target / "README.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     probe = subprocess.run([str(target / "adb.exe"), "version"], capture_output=True, text=True, timeout=60)
     if probe.returncode != 0 or "Android Debug Bridge" not in probe.stdout:
         raise SystemExit(f"the copied adb does not start on its own: {probe.stdout or probe.stderr}")
@@ -105,6 +124,7 @@ def build_setup(version: str, bundle: Path, digest: str) -> Path:
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--console",
            "--name", name, "--distpath", str(OUT), "--workpath", str(WORK / "build-setup"),
            "--specpath", str(WORK), "--paths", str(ROOT), "--add-data", f"{payload}{os.pathsep}payload",
+           "--icon", str(ICON),
            str(ROOT / "agent" / "setup_win.py")]
     subprocess.run(cmd, check=True, cwd=ROOT)
     setup = OUT / f"{name}.exe"

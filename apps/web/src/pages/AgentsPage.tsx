@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { PairingCode } from '../components/PairingCode'
 import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
 import { ApiError, api, type Me } from '../lib/api'
@@ -90,13 +91,21 @@ export function AgentsPage() {
         <ol className="steps">
           <li>ดับเบิลคลิกไฟล์ที่ดาวน์โหลด ถ้า Windows ขึ้นว่า "Windows protected your PC" ให้กด More info แล้ว Run anyway</li>
           <li>
-            ใส่ username {username ? <code>{username}</code> : 'ของคุณ'} และวาง Agent Token
-            (สร้างได้ที่ <Link to="/agent-tokens">Agent Token</Link> แสดงครั้งเดียว)
+            หน้าต่าง "ตั้งค่า punpun Agent" จะเปิดขึ้น กด <strong>สร้างรหัสเชื่อมต่อ</strong> ด้านล่าง แล้วพิมพ์รหัสในหน้าต่างนั้น
+            ไม่ต้องคัดลอก token
+            <PairingCode />
           </li>
-          <li>เลือกโฟลเดอร์เก็บคลิปในไดรฟ์ที่มีที่ว่างมาก เช่น <code>D:\punpun\clips</code> (Agent จะไม่รับงานใหม่ถ้าเหลือไม่ถึง 5 GB)</li>
+          <li>
+            กด <strong>เลือก…</strong> เพื่อเลือกโฟลเดอร์เก็บคลิปในไดรฟ์ที่มีที่ว่างมาก เช่น <code>D:\punpun\clips</code>
+            (Agent จะไม่รับงานใหม่ถ้าเหลือไม่ถึง 5 GB) และโฟลเดอร์วิดีโอของคุณ ติ๊ก "เริ่มเองเมื่อเปิดเครื่อง" ได้ถ้าต้องการ
+          </li>
           <li>เสียบโทรศัพท์ Android ทาง USB เปิด USB debugging และ login TikTok ไว้ในโทรศัพท์</li>
-          <li>ดับเบิลคลิก <strong>punpun Agent</strong> บนหน้าจอ desktop แล้วเปิดหน้าต่างทิ้งไว้ระหว่างทำงาน</li>
+          <li>กด <strong>บันทึกและเริ่มทำงาน</strong> (ครั้งต่อไปดับเบิลคลิก <strong>punpun Agent</strong> บน desktop) แล้วเปิดหน้าต่างทิ้งไว้ระหว่างทำงาน</li>
         </ol>
+        <p className="muted">
+          ผู้ใช้ขั้นสูง: ใช้ <Link to="/agent-tokens">Agent Token</Link> กับคำสั่ง <code>punpun-agent login</code>
+          {username ? <> (username <code>{username}</code>)</> : null} แทนรหัสเชื่อมต่อได้
+        </p>
       </section>
       <section className="card" aria-labelledby="agents-title">
         <h2 id="agents-title">Agent ที่ลงทะเบียน</h2>

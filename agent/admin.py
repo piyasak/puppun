@@ -31,7 +31,7 @@ def setup_logging(data_dir: Path) -> Path:
 
 
 def login(args) -> int:
-    from agent.credentials import AgentConfig, CredentialError, save_config, save_token
+    from agent.credentials import AgentConfig, CredentialError, load_config, save_config, save_token
     from agent.identity import load_or_create_installation_id
     from agent.server_client import ServerClient, ServerError
 
@@ -52,7 +52,8 @@ def login(args) -> int:
     except clips_folder.FolderError as exc:
         print(f"clips folder: {exc}")
         return 2
-    save_config(data_dir, AgentConfig(client.base, args.username, str(folder)))
+    old = load_config(data_dir)
+    save_config(data_dir, AgentConfig(client.base, args.username, str(folder), old.media_dir if old else None))
     try:
         save_token(data_dir, token)
         stored = "encrypted for this Windows user"

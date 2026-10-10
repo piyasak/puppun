@@ -47,6 +47,14 @@ def main(argv: list[str] | None = None) -> int:
     p_pow.add_argument("action", choices=["status", "on", "off"])
     sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
     sub.add_parser("version", help="print the Agent version")
+    sub.add_parser("licenses", help="third-party software in this Agent and where its licences are")
+    p_set = sub.add_parser("settings", help="settings window: pairing code, clips/videos folders, start with Windows")
+    p_set.add_argument("--server", default="https://punpun-staging.onrender.com", help="used until one is saved")
+    p_set.add_argument("--data-dir", type=Path, default=None)
+    p_pair = sub.add_parser("pair", help="link this PC with a pairing code from the web (no token to copy)")
+    p_pair.add_argument("--server", required=True)
+    p_pair.add_argument("--code", required=True, help="the XXXX-XXXX code from the Agents page (10 minutes, once)")
+    p_pair.add_argument("--data-dir", type=Path, default=None)
     p_login = sub.add_parser("login", help="save server, username and the Agent token (encrypted for this Windows user)")
     p_login.add_argument("--server", required=True)
     p_login.add_argument("--username", required=True)
@@ -98,6 +106,32 @@ def main(argv: list[str] | None = None) -> int:
 
         print(__version__)
         return 0
+    if args.cmd == "settings":
+        from agent.settings_gui import run
+
+        return run(args.data_dir, args.server)
+    if args.cmd == "pair":
+        from agent import settings
+        from agent.identity import default_data_dir
+
+        try:
+            result = settings.pair(args.data_dir or default_data_dir(), args.server, args.code)
+        except settings.SettingsError as exc:
+            print(f"เชื่อมต่อไม่สำเร็จ: {exc}")
+            return 2
+        print(json.dumps(result | {"token": "encrypted for this Windows user"}, ensure_ascii=False))
+        return 0
+    if args.cmd == "licenses":
+        from agent.adb import bundled_adb
+
+        own = bundled_adb()
+        print(json.dumps({"adb": {
+            "what": "Android SDK Platform-Tools adb (unmodified), Copyright The Android Open Source Project",
+            "licence": str(own.with_name("LICENSE.txt")) if own else None,
+            "notice": str(own.with_name("NOTICE.txt")) if own else None,
+            "readme": str(own.with_name("README.txt")) if own else None,
+            "bundled": own is not None}}, ensure_ascii=False, indent=2))
+        return 0
     if args.cmd in ("login", "logout", "status", "install", "rollback", "set-folder"):
         from agent import admin
 
@@ -106,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         return recover_all()
     if args.cmd == "connect":
         return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check,
-                       None if args.no_jobs else (args.media_dir or Path.cwd()), posts=not args.no_posts,
+                       None if args.no_jobs else (args.media_dir or saved_media_dir(args.data_dir) or Path.cwd()),
+                       posts=not args.no_posts,
                        ui_rehearsal=args.ui_rehearsal)
     if args.cmd == "register-devices":
         return register_devices(args.server, args.username, args.serial, args.data_dir)
@@ -131,6 +166,15 @@ def main(argv: list[str] | None = None) -> int:
     except AdbError as exc:
         print(f"adb error: {exc}")
         return 2
+
+
+def saved_media_dir(data_dir: Path | None) -> Path | None:
+    """The videos folder chosen in the settings window, when it still exists."""
+    from agent.credentials import load_config
+    from agent.identity import default_data_dir
+
+    cfg = load_config(data_dir or default_data_dir())
+    return Path(cfg.media_dir) if cfg and cfg.media_dir and Path(cfg.media_dir).is_dir() else None
 
 
 def connect(server: str, username: str, seconds: float | None, data_dir: Path | None,
