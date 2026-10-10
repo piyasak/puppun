@@ -26,7 +26,8 @@ def stripe_app(migrated_url, storage, monkeypatch):
     def fake_checkout(key, **kw):
         assert key == "sk_test_fake"
         sessions.append(kw)
-        return {"id": f"cs_test_{len(sessions)}_{uuid.uuid4().hex[:6]}", "url": "https://checkout.stripe.com/c/pay/x"}
+        # real Session ids are ~66 characters (the 500 on staging came from a 64-character column)
+        return {"id": f"cs_test_{len(sessions)}_" + uuid.uuid4().hex * 2, "url": "https://checkout.stripe.com/c/pay/x"}
 
     monkeypatch.setattr(stripe_provider, "create_checkout", fake_checkout)
     settings = Settings(app_env="staging", database_url=migrated_url, supabase_url=SUPABASE_URL,
