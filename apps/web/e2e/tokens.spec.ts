@@ -28,7 +28,7 @@ test('environment limits and agent token lifecycle', async ({ page, request }) =
   await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('1 / 2')
 
   // Token: create, shown once, copy
-  await page.getByRole('link', { name: 'Agent Token' }).click()
+  await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'Agent Token' }).click()
   await page.getByLabel('ชื่อ Token').fill('PC หน้าร้าน')
   await page.getByRole('button', { name: 'สร้าง Token' }).click()
   const secret = page.getByTestId('new-token')
