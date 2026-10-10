@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.3.1"  # 0.3.0 + no clip job from a server that cannot take kept clips (Q-33)
+SOURCE_VERSION = "0.3.2"  # own adb + daemon start race (E-51), delete clip files after a verified post (Q-34)
 
 
 def _version() -> str:

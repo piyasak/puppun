@@ -43,6 +43,8 @@ class JobIn(BaseModel):
     subtitles: bool = True  # Q-12
     review_mode: Literal["review", "auto"] = "review"
     confirm_auto: bool = False  # FR-08: auto mode must be switched on explicitly
+    # PO 2026-10-10: delete each clip file on the Agent's PC for good once its post is verified
+    delete_after_post: bool = False
 
     @model_validator(mode="after")
     def _check(self):
@@ -65,6 +67,7 @@ def job_out(db: Session, job: Job, *, with_clips: bool = False) -> dict:
         "environment_id": str(job.environment_id),
         "requested_clips": job.requested_clips,
         "auto_clips": job.auto_clips,
+        "delete_after_post": job.delete_after_post,
         "planned_clips": job.planned_clips,
         "clip_min_s": job.clip_min_s,
         "clip_max_s": job.clip_max_s,
@@ -93,7 +96,7 @@ def create_job(body: JobIn, request: Request, auth: WebAuth = Depends(web_auth),
         db, workspace_id=auth.workspace_id, user_id=auth.user_id, environment_id=body.environment_id,
         idempotency_key=body.idempotency_key, source=body.source.model_dump(),
         requested_clips=jobs.AUTO_MAX_CLIPS if body.auto_clips else body.requested_clips, auto_clips=body.auto_clips,
-        clip_min_s=body.clip_min_s, clip_max_s=body.clip_max_s, subtitles=body.subtitles, review_mode=body.review_mode,
+        delete_after_post=body.delete_after_post, clip_min_s=body.clip_min_s, clip_max_s=body.clip_max_s, subtitles=body.subtitles, review_mode=body.review_mode,
     )
     if created:
         audit.record(db, request, "job.create", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,

@@ -47,3 +47,15 @@ def test_no_new_job_without_room(tmp_path, monkeypatch):
     runner = JobRunner(tmp_path, None, log=logs.append, clips_dir=tmp_path / "clips")
     assert runner.run_once(NoClaim(), lambda: None) is None
     assert "ยังไม่รับงานใหม่" in logs[0]
+
+
+def test_no_new_job_below_5_gb_free(tmp_path, monkeypatch):
+    from collections import namedtuple
+
+    from agent import clips_folder
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(clips_folder.shutil, "disk_usage", lambda p: usage(100 * 1024**3, 0, 5 * 1024**3 - 1))
+    assert not clips_folder.has_room(tmp_path / "not-made-yet")  # measured on the nearest existing folder
+    monkeypatch.setattr(clips_folder.shutil, "disk_usage", lambda p: usage(100 * 1024**3, 0, 5 * 1024**3))
+    assert clips_folder.has_room(tmp_path)

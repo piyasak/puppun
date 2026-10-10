@@ -11,6 +11,11 @@ to the server with an Agent event id (retried with the same id, deduplicated the
 LEASE_LOST / ITEM_NOT_ACTIVE / a lost session stop the post: nothing more is done for it.
 Failures before Submit are reported as RETRYABLE_FAILED; the server decides about redelivery.
 
+Delete after post (PO 2026-10-10): every FREE_SPACE_EVERY_S the runner asks which kept clips the
+server says may go (their job deletes clips once posted, a post of the clip is verified and no other
+post of it is pending or UNKNOWN), deletes each file for good when its SHA-256 still matches, and
+reports it. A file that changed is left alone and reported nowhere.
+
 There is no Submit step here: the server only runs in dry-run (E-40), and the TikTok UI steps
 (account check, Thai caption, Post, verification) are P5.4 and need a separate authorization.
 """
@@ -21,6 +26,7 @@ import contextlib
 import hashlib
 import json
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -33,6 +39,7 @@ from agent.server_client import ServerClient, ServerError
 from agent.tiktok_ui import TikTokUi, UiStop, media_id
 
 STOP_CODES = {"LEASE_LOST", "ITEM_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
+FREE_SPACE_EVERY_S = 300.0
 
 
 class PostStopped(Exception):
@@ -83,7 +90,14 @@ class PostRunner:
             self._thread.join(timeout_s)
 
     def _loop(self, client: ServerClient, get_session) -> None:
+        next_free = 0.0
         while not self._halt.is_set():
+            if time.monotonic() >= next_free:
+                next_free = time.monotonic() + FREE_SPACE_EVERY_S
+                try:
+                    self.delete_posted_clips(client, get_session)
+                except (ServerError, OSError) as exc:
+                    self.log(f"ลบคลิปหลังโพสต์: ทำต่อไม่ได้ชั่วคราว ({exc}); ลองใหม่ภายหลัง")
             try:
                 outcome = self.run_once(client, get_session)
             except (ServerError, OSError, AdbError) as exc:
@@ -91,6 +105,34 @@ class PostRunner:
                 outcome = None
             if outcome is None:
                 self._halt.wait(self.poll_s)  # idle: E-41 (<= 15 s)
+
+    def delete_posted_clips(self, client: ServerClient, get_session) -> list[str]:
+        """Delete (for good) the kept clips the server lists as posted and done. Returns the clip ids reported."""
+        from agent import clips_folder
+
+        session = get_session()
+        reported = []
+        for item in client.deletable_clips(session):
+            name = f"clip_{item['index']:02d}"
+            homes = [f / item["job_id"] for f in clips_folder.search_order(self.data_dir)]
+            video = next((h / f"{name}.mp4" for h in homes if (h / f"{name}.mp4").is_file()), None)
+            if video is not None and sha256_file(video) != item["sha256"]:
+                self.log(f"ลบคลิปหลังโพสต์: ข้าม {video} เพราะไฟล์ไม่ตรงกับที่โพสต์ (ไม่ลบ)")
+                continue
+            freed = 0
+            if video is not None:
+                freed = video.stat().st_size
+                video.unlink()
+                still = video.with_suffix(".jpg")
+                if still.is_file():
+                    freed += still.stat().st_size
+                    still.unlink()
+                with contextlib.suppress(OSError):
+                    video.parent.rmdir()  # only when nothing else is left in the job folder
+                self.log(f"ลบคลิปหลังโพสต์: {video} (ได้พื้นที่คืน {freed / 1024**2:.0f} MB)")
+            client.clip_file_deleted(session, item["clip_id"], found=video is not None)
+            reported.append(item["clip_id"])
+        return reported
 
     def run_once(self, client: ServerClient, get_session) -> str | None:
         """Claim and carry out one post. Returns its final state, "stopped", or None if nothing was due."""

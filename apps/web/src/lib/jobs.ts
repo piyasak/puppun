@@ -14,6 +14,7 @@ export type Job = {
   environment_id: string
   requested_clips: number
   auto_clips: boolean  // Q-32: the count follows the source
+  delete_after_post: boolean  // delete each clip file on the Agent's PC once its post is verified
   planned_clips: number | null
   clip_min_s: number
   clip_max_s: number
@@ -47,6 +48,7 @@ export type Clip = {
   // Q-33: 'agent' = the video stays on the Agent's PC (agent_path); the page shows a still instead
   file_location: 'agent' | 'server'
   agent_path: string | null
+  agent_file_deleted_at: string | null  // deleted on the Agent's PC after its post (job's delete_after_post)
   preview: 'image' | 'video' | null
   checks: { status: 'passed' | 'failed' | 'skipped'; reason?: string; checks: Check[] } | null
   check_status: 'passed' | 'failed' | 'skipped' | null

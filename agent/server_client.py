@@ -119,6 +119,13 @@ class ServerClient:
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)
 
+    def deletable_clips(self, session: Session) -> list[dict]:
+        """Clips this PC keeps whose job deletes them once posted, and whose posts are all settled."""
+        return self._send("GET", "/v1/agent/clips/deletable", None, "application/json", session.token)["items"]
+
+    def clip_file_deleted(self, session: Session, clip_id: str, found: bool) -> dict:
+        return self._post(f"/v1/agent/clips/{clip_id}/file-deleted", {"found": found}, bearer=session.token)
+
     def download(self, url: str, dest: Path, timeout_s: float = 300.0) -> None:
         """Fetch a short-lived signed link the server handed out (no Agent credentials are sent)."""
         parts = urlsplit(url)

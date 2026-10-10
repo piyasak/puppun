@@ -8,10 +8,14 @@ those tests are logic checks, not evidence of device compatibility.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import os
 import re
 import shutil
 import subprocess
+import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -87,18 +91,119 @@ def parse_devices(output: str) -> list[DeviceEntry]:
     return devices
 
 
-def default_runner(adb_path: str | None = None) -> Runner:
-    exe = adb_path or shutil.which("adb")
+# adb could not reach its background server (the "daemon"), so the command never reached a phone and
+# is safe to repeat. Seen on the QA PC, 2026-10-10: two Agent threads started the daemon at the same
+# moment and one got "could not read ok from ADB Server / failed to start daemon".
+DAEMON_DOWN = ("daemon not running", "cannot connect to daemon", "could not read ok from adb server",
+               "failed to start daemon", "failed to check server version")
+_server_lock = threading.Lock()
+
+
+def daemon_down(message: str) -> bool:
+    low = message.lower()
+    return any(m in low for m in DAEMON_DOWN)
+
+
+def bundled_adb() -> Path | None:
+    """The adb shipped inside the packaged Agent (tools/build_agent.py), next to punpun-agent.exe."""
+    if not getattr(sys, "frozen", False):
+        return None
+    exe = Path(sys.executable).with_name("adb") / "adb.exe"
+    return exe if exe.is_file() else None
+
+
+def find_adb() -> str | None:
+    """CLIPFLOW_ADB, then the Agent's own adb, then PATH: the customer needs no Android SDK."""
+    env = os.environ.get("CLIPFLOW_ADB")
+    if env and Path(env).is_file():
+        return env
+    own = bundled_adb()
+    return str(own) if own else shutil.which("adb")
+
+
+def start_server(exe: str, call=subprocess.run) -> None:
+    """Start the adb daemon once at a time: concurrent starts are what fail."""
+    with _server_lock, contextlib.suppress(OSError, subprocess.TimeoutExpired):
+        call([exe, "start-server"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+
+
+def default_runner(adb_path: str | None = None, *, retries: int = 3, wait_s: float = 1.0,
+                   call=subprocess.run, sleep=time.sleep) -> Runner:
+    exe = adb_path or find_adb()
     if not exe:
-        raise AdbError("adb not found on PATH")
+        raise AdbError("adb not found (the Agent's own adb is missing and none is on PATH)")
 
     def run(args: list[str]) -> str:
-        result = subprocess.run([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
-        if result.returncode != 0:
-            raise AdbError((result.stderr or result.stdout).strip())
-        return result.stdout
+        empty_waits = [wait_s, 2 * wait_s, 2 * wait_s]
+        attempt = 0
+        while True:
+            result = call([exe, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+            if result.returncode == 0:
+                if args[:1] == ["devices"] and not parse_devices(result.stdout) and empty_waits:
+                    # A daemon that has just started lists no phone until USB enumeration is done
+                    # (packaged race test, 2026-10-10: 1 of 6 still empty after 1 s). Ask again for ~5 s.
+                    sleep(empty_waits.pop(0))
+                    continue
+                return result.stdout
+            message = (result.stderr or result.stdout).strip()
+            attempt += 1
+            if attempt <= retries and daemon_down(message):
+                start_server(exe, call)  # under the lock; then the command again
+                sleep(wait_s * attempt)
+                continue
+            raise AdbError(message)
 
     return run
+
+
+def _ps(script: str) -> str:
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout.strip()
+
+
+def adb_version(exe: str | None) -> str | None:
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "version"], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"^Version (\S+)", out, re.M)
+    return m.group(1) if m else None
+
+
+def same_file(a: str | None, b: str | None) -> bool:
+    return bool(a and b) and os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def adb_report() -> dict:
+    """Which adb the Agent uses, and which program holds the adb port (5037). Another adb of a different
+    version (phone PC suites, scrcpy, Android Studio) restarts the daemon each time either one runs."""
+    exe = find_adb()
+    report = {"path": exe, "version": adb_version(exe), "bundled": bool(exe) and same_file(exe, str(bundled_adb())),
+              "port_5037": None, "problems": []}
+    if not exe:
+        report["problems"].append("ไม่พบ adb: ติดตั้ง Agent ใหม่ด้วยไฟล์ setup (มี adb มาให้)")
+        return report
+    if sys.platform != "win32":
+        return report
+    owner = _ps("$c=Get-NetTCPConnection -LocalPort 5037 -State Listen -ErrorAction SilentlyContinue|Select-Object -First 1;"
+                "if($c){$p=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue;\"$($c.OwningProcess)|$($p.Path)\"}")
+    if owner:
+        pid, _, path = owner.partition("|")
+        other_version = None if same_file(path, exe) else adb_version(path or None)
+        report["port_5037"] = {"pid": int(pid) if pid.isdigit() else None, "path": path or None,
+                               "version": report["version"] if same_file(path, exe) else other_version}
+        if path and not same_file(path, exe) and other_version != report["version"]:
+            report["problems"].append(
+                f"พอร์ต ADB (5037) ถูกใช้โดย {path} เวอร์ชัน {other_version or 'ไม่ทราบ'} ซึ่งต่างจากของ Agent "
+                f"({report['version']}): ปิดโปรแกรมนั้น (เช่น Mi PC Suite, scrcpy, Android Studio) แล้วเริ่ม Agent ใหม่")
+    return report
 
 
 @dataclass

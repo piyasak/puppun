@@ -12,19 +12,20 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from .. import audit, clips, jobs, schedules
+from .. import audit, clips, jobs, retention, schedules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
 from ..errors import ApiError, not_found
-from ..models import Clip, ClipMetadata, Job
+from ..models import Clip, ClipMetadata, Job, ScheduleItem
 from ..storage import LocalStorage
 from ..tenancy import get_owned
 from .agent import agent_context
 
 agent_router = APIRouter(prefix="/v1/agent/jobs")
+agent_files_router = APIRouter(prefix="/v1/agent/clips")
 web_router = APIRouter(prefix="/v1/clips")
 media_router = APIRouter(prefix="/v1/media")
 
@@ -38,6 +39,7 @@ def clip_out(db: Session, clip: Clip, job: Job) -> dict:
         "size_bytes": clip.size_bytes, "uploaded": clip.uploaded_at is not None,
         # Q-33: where the clip file is. "agent": on the Agent's PC (agent_path), the page shows a still.
         "file_location": clip.file_location, "agent_path": clip.agent_path,
+        "agent_file_deleted_at": clip.agent_file_deleted_at.isoformat() if clip.agent_file_deleted_at else None,
         "preview": ("image" if clip.preview_key else "video" if clip.storage_key else None),
         "checks": clip.check_results, "check_status": clip.check_status,
         "metadata": {"version": meta.version, "caption": meta.caption, "hashtags": meta.hashtags},
@@ -111,6 +113,49 @@ async def upload_preview(job_id: uuid.UUID, index: int, request: Request, ctx: A
         return await run_in_threadpool(store)
     finally:
         temp.unlink(missing_ok=True)
+
+
+# --- delete after post (PO 2026-10-10) -------------------------------------------------------------
+
+def _deletable(ctx: AgentContext):
+    """Clips this installation keeps whose job asks for deletion after posting, once a post of the
+    clip is verified and no other post of it is still to come (or unsettled: UNKNOWN keeps the file
+    for reconciliation)."""
+    return (select(Clip).join(Job, Job.id == Clip.job_id)
+            .where(Clip.workspace_id == ctx.workspace_id, Job.environment_id == ctx.environment_id,
+                   Job.delete_after_post.is_(True), Clip.file_location == "agent",
+                   Clip.agent_installation_id == ctx.installation_ref, Clip.agent_file_deleted_at.is_(None),
+                   exists().where(ScheduleItem.clip_id == Clip.id, ScheduleItem.state == "VERIFIED_SUCCESS"),
+                   ~exists().where(ScheduleItem.clip_id == Clip.id, ScheduleItem.state.not_in(retention.FINISHED_ITEMS))))
+
+
+@agent_files_router.get("/deletable")
+def deletable_clips(ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
+    rows = db.scalars(_deletable(ctx).order_by(Clip.created_at).limit(50)).all()
+    return {"items": [{"clip_id": str(c.id), "job_id": str(c.job_id), "index": c.clip_index,
+                       "sha256": c.render_sha256} for c in rows]}
+
+
+class FileDeletedIn(BaseModel):
+    found: bool  # False: the file was already gone (moved or deleted by hand)
+
+
+@agent_files_router.post("/{clip_id}/file-deleted")
+def clip_file_deleted(clip_id: uuid.UUID, body: FileDeletedIn, request: Request,
+                      ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
+    clip = db.scalars(_deletable(ctx).where(Clip.id == clip_id).with_for_update(of=Clip)).first()
+    if clip is None:
+        done = db.scalars(select(Clip).where(Clip.id == clip_id, Clip.workspace_id == ctx.workspace_id,
+                                             Clip.agent_installation_id == ctx.installation_ref,
+                                             Clip.agent_file_deleted_at.is_not(None))).first()
+        if done is not None:  # repeated report
+            return {"clip_id": str(done.id), "agent_file_deleted_at": done.agent_file_deleted_at.isoformat()}
+        raise not_found()
+    clip.agent_file_deleted_at = clips.now()
+    audit.record(db, request, "clip.agent_file.deleted", workspace_id=clip.workspace_id, target_id=clip.id,
+                 details={"found": body.found})
+    db.commit()
+    return {"clip_id": str(clip.id), "agent_file_deleted_at": clip.agent_file_deleted_at.isoformat()}
 
 
 # --- web ----------------------------------------------------------------------------------------

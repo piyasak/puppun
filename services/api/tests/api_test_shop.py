@@ -60,9 +60,9 @@ class Shop:
             self.acc.patch(f"/v1/devices/{dev['id']}", json={"display_name": "POCO", "expected_account": account})
         return dev["id"]
 
-    def job(self, clips=3, approve=3, mode="review"):
+    def job(self, clips=3, approve=3, mode="review", **extra):
         body = {"idempotency_key": uuid.uuid4().hex, "environment_id": self.env["id"], "requested_clips": clips,
-                "source": {"kind": "url", "url": URL}, "clip_min_s": 15, "clip_max_s": 20, "review_mode": mode}
+                "source": {"kind": "url", "url": URL}, "clip_min_s": 15, "clip_max_s": 20, "review_mode": mode} | extra
         if mode == "auto":
             body["confirm_auto"] = True
         job_id = self.acc.post("/v1/jobs", json=body).json()["id"]

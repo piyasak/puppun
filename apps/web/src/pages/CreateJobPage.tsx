@@ -40,6 +40,7 @@ export function CreateJobPage() {
   const [clips, setClips] = useState(3)
   const [lengthS, setLengthS] = useState(DEFAULT_LENGTH_S)
   const [subtitles, setSubtitles] = useState(true)
+  const [deleteAfterPost, setDeleteAfterPost] = useState(false)
   const [mode, setMode] = useState<'review' | 'auto'>('review')
   const [confirmAuto, setConfirmAuto] = useState(false)
 
@@ -88,7 +89,7 @@ export function CreateJobPage() {
           idempotency_key: idempotencyKey, environment_id: envId,
           source: kind === 'url' ? { kind, url: url.trim() } : { kind, file_name: fileName.trim() },
           auto_clips: countMode === 'auto', requested_clips: countMode === 'auto' ? 1 : clips, clip_length_s: lengthS, subtitles,
-          review_mode: mode, confirm_auto: mode === 'auto' && confirmAuto,
+          review_mode: mode, confirm_auto: mode === 'auto' && confirmAuto, delete_after_post: deleteAfterPost,
         },
       })
       navigate(`/jobs/${job.id}`)
@@ -164,6 +165,10 @@ export function CreateJobPage() {
             </fieldset>
             <label className="check"><input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} />
               <span>ใส่ซับจากต้นฉบับลงในคลิป<br /><span className="hint">ปิดถ้าต้นฉบับมีซับฝังในภาพอยู่แล้ว ไม่งั้นซับจะซ้อนกัน</span></span></label>
+            <label className="check"><input type="checkbox" checked={deleteAfterPost} onChange={(e) => setDeleteAfterPost(e.target.checked)} />
+              <span>ลบไฟล์คลิปออกจากเครื่อง Agent ถาวรหลังโพสต์สำเร็จ<br /><span className="hint">
+                ช่วยไม่ให้พื้นที่เต็ม: ลบทีละคลิปหลังระบบยืนยันว่าโพสต์ขึ้นแล้วเท่านั้น (โพสต์ที่ไม่ทราบผลหรือรอทำต่อจะเก็บไฟล์ไว้)
+                ลบแล้วกู้คืนไม่ได้และโพสต์คลิปนั้นซ้ำไม่ได้</span></span></label>
             <fieldset className="choices">
               <legend>การตรวจก่อนเผยแพร่</legend>
               <label className="check"><input type="radio" name="mode" checked={mode === 'review'} onChange={() => setMode('review')} />
@@ -191,6 +196,7 @@ export function CreateJobPage() {
                 ? `คำนวณจากความยาวต้นฉบับ คลิปละประมาณ ${shortest(lengthS)}–${lengthS} วินาที`
                 : `${clips} คลิป ยาว ${shortest(lengthS)}–${lengthS} วินาที`}</dd>
               <dt>ซับ</dt><dd>{subtitles ? 'ใส่ซับจากต้นฉบับ' : 'ไม่ใส่ซับ'}</dd>
+              <dt>หลังโพสต์</dt><dd data-testid="after-post-preview">{deleteAfterPost ? 'ลบไฟล์คลิปบนเครื่อง Agent ถาวร' : 'เก็บไฟล์คลิปไว้'}</dd>
               <dt>การตรวจ</dt><dd>{mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'}</dd>
               <dt>โควตา</dt>
               <dd data-testid="quota-preview">{countMode === 'auto'

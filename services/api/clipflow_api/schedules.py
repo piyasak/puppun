@@ -54,6 +54,8 @@ def _slot_error(exc: slots.SlotError) -> ApiError:
 
 
 def _exclusion(clip: Clip, live: set[uuid.UUID]) -> str | None:
+    if clip.agent_file_deleted_at is not None:
+        return "FILE_DELETED"  # deleted on the Agent's PC after it was posted (job's delete_after_post)
     if clip.id in live:
         return "ALREADY_SCHEDULED"
     if clip.uploaded_at is None:
@@ -342,6 +344,8 @@ def dispatchable(db: Session, item: ScheduleItem, *, expected_state: str = "SCHE
         return "APPROVAL_CHANGED"
     if clip.render_sha256 != item.clip_sha256 or clip.check_status == "failed":
         return "FILE_CHANGED"
+    if clip.agent_file_deleted_at is not None:
+        return "FILE_DELETED"
     device = db.get(Device, item.device_id)
     if device.unbound_at is not None:
         return "DEVICE_UNBOUND"
