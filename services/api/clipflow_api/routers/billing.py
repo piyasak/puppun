@@ -149,6 +149,34 @@ def payment(payment_id: uuid.UUID, auth: WebAuth = Depends(web_auth), db: Sessio
     return payment_out(db, get_owned(db, Payment, payment_id, auth.workspace_id))
 
 
+@router.post("/payments/{payment_id}/refresh")
+def refresh(payment_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
+    """A pending Stripe payment, asked of Stripe directly (our secret key, HTTPS): settles it when the
+    webhook has not arrived, and gives the Stripe page back while it is still open. The result goes
+    through billing.apply_event like a webhook (once per payment and outcome, forward-only, amount
+    must match), so a later webhook for the same payment changes nothing."""
+    pay = get_owned(db, Payment, payment_id, auth.workspace_id)
+    if pay.provider != "stripe" or pay.status != "pending":
+        return payment_out(db, pay) | {"checkout_url": None}
+    provider(request)  # 503 when Stripe is not set up on this server
+    s = request.app.state.settings
+    try:
+        session = stripe.retrieve_checkout(s.stripe_secret_key, pay.provider_ref)
+    except stripe.StripeError as exc:
+        raise ApiError(502, "PAYMENT_PROVIDER_UNAVAILABLE", "ติดต่อระบบชำระเงินไม่ได้ ลองใหม่อีกครั้ง",
+                       {"detail": str(exc)[:200]}) from None
+    target = stripe.session_status("", session)
+    if target:
+        event = {"event_id": f"retrieve:{pay.id}:{target}", "type": target, "provider_ref": str(session.get("id")),
+                 "amount": int(session.get("amount_total") or 0),
+                 "currency": str(session.get("currency") or "").upper(), "occurred_at": None}
+        billing.apply_event(db, "stripe", event, json.dumps(session, sort_keys=True).encode())
+        db.commit()
+        db.refresh(pay)
+    url = session.get("url") if session.get("status") == "open" else None
+    return payment_out(db, pay) | {"checkout_url": url}
+
+
 @router.post("/webhooks/{provider}")
 async def webhook(provider: str, request: Request, signature: str | None = Header(default=None, alias="X-Sandbox-Signature"),
                   db: Session = Depends(get_db)):

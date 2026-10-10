@@ -13,6 +13,7 @@ PO 2026-10-10: ใช้ Stripe เป็นผู้ให้บริการ
 4. **Developers → Webhooks → Add endpoint:**
    - URL: `https://punpun-staging.onrender.com/v1/billing/webhooks/stripe`
    - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`
+   - หรือ `payment_intent.succeeded` และ `payment_intent.payment_failed` ก็ได้ (ระบบหารายการจาก `metadata.payment_id`) เลือกทั้งสองชุดก็ได้ แต่ละรายการได้สิทธิ์ครั้งเดียว
    - บันทึก แล้วกด **Reveal signing secret** (`whsec_…`)
 
 ## 2. ใน Render (service `punpun-staging` → Environment)
@@ -34,6 +35,14 @@ PO 2026-10-10: ใช้ Stripe เป็นผู้ให้บริการ
 3. **บัตรที่ถูกปฏิเสธ:** `4000 0000 0000 0002` แพ็กเกจต้องไม่เปลี่ยน
 4. **PromptPay (test):** เลือก PromptPay แล้วกด Authorize หรือ Fail ในหน้าทดสอบของ Stripe
 5. ดูผล webhook ที่ Stripe → Developers → Webhooks → endpoint → **Events** ทุก event ควรได้ HTTP 200
+
+### ถ้าจ่ายแล้วยังขึ้น "รอผลการชำระ"
+
+หน้าแพ็กเกจจะถาม Stripe เองเมื่อกลับมาจากหน้าชำระ และเมื่อกด **ไปหน้าชำระ / ตรวจสถานะ** ในประวัติ (E-52) ถ้ายังค้าง ให้ดูที่ Stripe → Developers (Workbench) → Webhooks → endpoint → **Event deliveries**:
+- **ไม่มีรายการส่งเลย:** endpoint สร้างไว้คนละโหมดกับ key (test กับ live หรือคนละ Sandbox) หรือไม่ได้เลือก event ทั้ง 4 ตัว
+- **HTTP 400 "ลายเซ็นไม่ถูกต้อง":** `STRIPE_WEBHOOK_SECRET` ใน Render ไม่ใช่ signing secret ของ endpoint นี้
+- **HTTP 404:** URL ผิด หรือ `BILLING_PROVIDER` ไม่ใช่ `stripe`
+- **HTTP 200 แต่ไม่มีผล:** event ที่เลือกไม่ใช่ชุดข้างบน (ระบบตอบ `{"ignored": true}`) หรือ endpoint ตั้ง payload เป็น **Thin** ให้เปลี่ยนเป็น **Snapshot**
 
 ## 4. เปิดรับเงินจริง (ยังไม่ทำ)
 
