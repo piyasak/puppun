@@ -17,7 +17,7 @@ test('agent registration, presence and deregistration', async ({ page, request }
   await page.getByRole('button', { name: 'สร้าง Environment' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'สำนักงาน' })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Agent Token' }).click()
+  await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'Agent Token' }).click()
   await page.getByLabel('ชื่อ Token').fill('PC หน้าร้าน')
   await page.getByRole('button', { name: 'สร้าง Token' }).click()
   const token = await page.getByTestId('new-token').inputValue()
@@ -100,7 +100,8 @@ test('a pairing code links a PC without copying a token (PO 2026-10-10)', async 
   })
   expect(auth.status()).toBe(200)
   expect((await request.post(`${API}/v1/agent/pair`, { data: { code } })).status()).toBe(400)  // once only
-  await page.getByRole('link', { name: 'Agent Token' }).click()
+  // the sidebar link (the page also links to Agent Token for advanced users)
+  await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'Agent Token' }).click()
   await expect(page.getByText('PC SHOP-PC')).toBeVisible()
   await page.getByRole('link', { name: 'Agent', exact: true }).click()
   await page.screenshot({ path: '../../var/evidence/e2e/agents-pairing.png', fullPage: true })

@@ -71,7 +71,7 @@ export async function agentSession(page: Page, request: APIRequestContext, usern
   await page.getByLabel('ชื่อ Environment').fill('หน้าร้าน')
   await page.getByRole('button', { name: 'สร้าง Environment' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'หน้าร้าน' })).toBeVisible()
-  await page.getByRole('link', { name: 'Agent Token' }).click()
+  await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'Agent Token' }).click()
   await page.getByLabel('ชื่อ Token').fill('PC')
   await page.getByRole('button', { name: 'สร้าง Token' }).click()
   const token = await page.getByTestId('new-token').inputValue()
