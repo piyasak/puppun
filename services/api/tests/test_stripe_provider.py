@@ -81,3 +81,20 @@ def test_checkout_request_carries_the_servers_amount_and_an_idempotency_key():
     assert req.get_header("Idempotency-key") == "checkout-pay-1"
     assert req.get_header("Authorization").startswith("Basic ")
     assert "sk_test_abc" not in req.full_url  # the key travels in the header only
+
+
+def test_retrieve_asks_for_one_session_with_the_key_in_the_header():
+    sent = {}
+
+    def opener(req, timeout):
+        sent["req"] = req
+        return Resp(json.dumps({"id": "cs_test_abc", "status": "complete", "payment_status": "paid"}).encode())
+
+    out = sp.retrieve_checkout("sk_test_abc", "cs_test_abc", opener=opener)
+    assert out["payment_status"] == "paid"
+    assert sent["req"].get_method() == "GET" and sent["req"].full_url == "https://api.stripe.com/v1/checkout/sessions/cs_test_abc"
+    with pytest.raises(sp.StripeError):
+        sp.retrieve_checkout("sk_test_abc", "../customers", opener=opener)  # only Session ids reach the URL
+    assert sp.session_status("", {"status": "complete", "payment_status": "paid"}) == "payment.succeeded"
+    assert sp.session_status("", {"status": "expired", "payment_status": "unpaid"}) == "payment.failed"
+    assert sp.session_status("", {"status": "open", "payment_status": "unpaid"}) is None

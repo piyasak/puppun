@@ -162,8 +162,11 @@ def apply_event(db: Session, provider: str, event: dict, body: bytes) -> dict:
     """Apply one verified provider event, already mapped to {event_id, type, provider_ref, amount,
     currency, occurred_at} (Stripe: stripe_provider.normalize). Returns what happened."""
     try:
-        event_id, kind, ref = str(event["event_id"]), str(event["type"]), str(event["provider_ref"])
+        event_id, kind, ref = str(event["event_id"]), str(event["type"]), event["provider_ref"]
         amount, currency = int(event["amount"]), str(event["currency"])
+        by_id = uuid.UUID(event["payment_id"]) if event.get("payment_id") else None
+        if ref is None and by_id is None:
+            raise KeyError("provider_ref")
     except (KeyError, TypeError, ValueError):
         raise ApiError(400, "BAD_EVENT", "รูปแบบ event ไม่ถูกต้อง") from None
     if kind not in EVENT_STATUS:
@@ -178,8 +181,9 @@ def apply_event(db: Session, provider: str, event: dict, body: bytes) -> dict:
         return {"duplicate": True}
     record = db.get(PaymentEvent, inserted)
 
-    payment = db.scalars(select(Payment).where(Payment.provider == provider, Payment.provider_ref == ref)
-                         .with_for_update()).first()
+    # Found by the provider's ref, or (Stripe PaymentIntent events) by our id from signed metadata
+    match = Payment.id == by_id if by_id is not None else Payment.provider_ref == str(ref)
+    payment = db.scalars(select(Payment).where(Payment.provider == provider, match).with_for_update()).first()
     if payment is None:
         record.outcome = "unknown_payment"
         return {"outcome": record.outcome}

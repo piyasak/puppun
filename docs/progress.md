@@ -4,7 +4,16 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10) — fix: Stripe checkout 500 on staging
+### Latest slice (2026-10-10) — fix: Stripe payments stuck at "รอผลการชำระ" (E-52)
+- PO paid three test payments on staging; all stayed pending: no valid webhook reached the server (the endpoint answers 400 INVALID_SIGNATURE to an unsigned probe, so it is up and Stripe is configured; the delivery problem is on the Stripe side, to be checked in Event deliveries). The history link also opened the sandbox page for Stripe payments
+- `stripe_provider.retrieve_checkout` + `session_status` (shared with webhooks); `POST /v1/billing/payments/{id}/refresh` asks Stripe with our key and applies the result through `billing.apply_event` (event id `retrieve:<payment>:<status>`, once, forward-only, amount must match); open Sessions give their Stripe URL back
+- Web: the return page asks every 4 s until settled; history "ไปหน้าชำระ / ตรวจสถานะ" reopens Stripe's page or settles the row; sandbox rows still open the sandbox page
+- Runbook: troubleshooting for deliveries (no deliveries / 400 / 404 / Thin payload)
+- PO pasted the delivered event: `payment_intent.succeeded` (PromptPay ฿888, succeeded at Stripe), which the server answered 200 "ignored": the endpoint is subscribed to PaymentIntent events, not the Checkout ones. Webhooks now also take `payment_intent.succeeded` / `payment_failed` via `metadata.payment_id` (UUID only; others ignored); test: PromptPay pending → intent succeeded → started, late Checkout event grants nothing, wrong amount → mismatch, foreign intent ignored
+- Commands: stripe + billing tests 25 passed (new: refresh settles once, late webhook grants nothing, expired → failed, other workspace 404, retrieve only takes Session ids), ruff + tsc clean, E2E billing + admin 3 passed
+- Next: commit when asked; PO presses "ตรวจสถานะ" on the three rows after deploy and checks the webhook deliveries
+
+### Slice (2026-10-10) — fix: Stripe checkout 500 on staging
 - PO tried ฿200 on staging with Stripe test keys: "Internal Server Error". Cause: `payments.provider_ref` was VARCHAR(64); a real Checkout Session id is ~66 characters, so saving it failed after Stripe answered (nothing was saved; the unpaid Session expires at Stripe)
 - Migration `0017_payment_ref_length.py` widens it to 255 (expand-only, no-op downgrade); the test fakes now use 74-character Session ids so this shape is covered
 - Commands: stripe/billing/migration tests 22 passed, ruff clean

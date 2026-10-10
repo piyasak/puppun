@@ -129,3 +129,86 @@ def test_live_keys_are_refused_off_production(migrated_url, storage):
     h = onboard(client)
     out = client.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": uuid.uuid4().hex}, headers=h)
     assert out.status_code == 503 and out.json()["code"] == "PAYMENTS_NOT_READY"
+
+
+def test_refresh_settles_a_payment_whose_webhook_never_came(stripe_app, monkeypatch):
+    """Staging 2026-10-10: paid on Stripe's page, but no webhook got through, so the payment stayed
+    pending. Asking Stripe for the Session (our key) settles it, once; a late webhook changes nothing."""
+    client, _ = stripe_app
+    h = onboard(client)
+    pay = client.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": uuid.uuid4().hex},
+                      headers=h).json()
+    ref = _ref(client, pay["id"])
+    stripe_has = {"id": ref, "object": "checkout.session", "status": "open", "payment_status": "unpaid",
+                  "amount_total": 40000, "currency": "thb", "url": "https://checkout.stripe.com/c/pay/again"}
+    asked = []
+
+    def fake_retrieve(key, session_id):
+        asked.append(session_id)
+        return dict(stripe_has)
+
+    monkeypatch.setattr(stripe_provider, "retrieve_checkout", fake_retrieve)
+    still_open = client.post(f"/v1/billing/payments/{pay['id']}/refresh", headers=h).json()
+    assert still_open["status"] == "pending" and still_open["checkout_url"] == stripe_has["url"]  # back to Stripe's page
+
+    stripe_has.update(status="complete", payment_status="paid")
+    paid = client.post(f"/v1/billing/payments/{pay['id']}/refresh", headers=h).json()
+    assert paid["status"] == "succeeded" and paid["applied"] == "started" and paid["checkout_url"] is None
+    assert client.get("/v1/billing/subscription", headers=h).json()["status"] == "active"
+    assert asked == [ref, ref]
+
+    again = client.post(f"/v1/billing/payments/{pay['id']}/refresh", headers=h).json()
+    assert again["status"] == "succeeded" and len(asked) == 2  # settled: Stripe is not asked again
+    late = send(client, completed(ref))
+    assert late.json()["outcome"] == "ignored_out_of_order"  # the webhook arriving later grants nothing more
+    sub = client.get("/v1/billing/subscription", headers=h).json()
+    assert sub["paid_cycles_ahead"] == 0
+
+
+def test_refresh_marks_an_expired_session_failed_and_checks_ownership(stripe_app, monkeypatch):
+    client, _ = stripe_app
+    h = onboard(client)
+    pay = client.post("/v1/billing/checkout", json={"plan_code": "starter", "idempotency_key": uuid.uuid4().hex},
+                      headers=h).json()
+    ref = _ref(client, pay["id"])
+    monkeypatch.setattr(stripe_provider, "retrieve_checkout", lambda key, sid: {
+        "id": ref, "object": "checkout.session", "status": "expired", "payment_status": "unpaid",
+        "amount_total": 20000, "currency": "thb", "url": None})
+    assert client.post(f"/v1/billing/payments/{pay['id']}/refresh", headers=onboard(client)).status_code == 404
+    out = client.post(f"/v1/billing/payments/{pay['id']}/refresh", headers=h).json()
+    assert out["status"] == "failed" and out["checkout_url"] is None
+    assert client.get("/v1/billing/subscription", headers=h).json()["status"] == "trial"
+
+
+def intent(payment_id, amount, kind="payment_intent.succeeded"):
+    """What staging got (2026-10-10): an endpoint subscribed to PaymentIntent events only."""
+    return {"id": f"evt_{uuid.uuid4().hex[:12]}", "type": kind, "created": int(time.time()),
+            "data": {"object": {"object": "payment_intent", "id": f"pi_{uuid.uuid4().hex[:12]}", "amount": amount,
+                                "amount_received": amount if kind.endswith("succeeded") else 0, "currency": "thb",
+                                "metadata": {"payment_id": payment_id}, "status": "succeeded",
+                                "payment_method_types": ["promptpay"]}}}
+
+
+def test_payment_intent_events_settle_by_our_payment_id(stripe_app):
+    client, _ = stripe_app
+    h = onboard(client)
+    pay = client.post("/v1/billing/checkout", json={"plan_code": "business", "idempotency_key": uuid.uuid4().hex},
+                      headers=h).json()
+    ref = _ref(client, pay["id"])
+    assert send(client, completed(ref, 88800, status="unpaid")).json()["outcome"] == "ignored_out_of_order"
+    ok = send(client, intent(pay["id"], 88800))
+    assert ok.status_code == 200 and ok.json()["applied"] == "started"
+    assert client.get("/v1/billing/subscription", headers=h).json()["plan"]["code"] == "business"
+    late = send(client, completed(ref, 88800, kind="checkout.session.async_payment_succeeded"))
+    assert late.json()["outcome"] == "ignored_out_of_order"  # both subscriptions on: granted once
+    assert client.get("/v1/billing/subscription", headers=h).json()["paid_cycles_ahead"] == 0
+
+    h2 = onboard(client)
+    other = client.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": uuid.uuid4().hex},
+                        headers=h2).json()
+    assert send(client, intent(other["id"], 100)).json()["outcome"] == "amount_mismatch"
+    failed = send(client, intent(other["id"], 40000, kind="payment_intent.payment_failed"))
+    assert failed.json()["outcome"] == "applied"
+    assert client.get(f"/v1/billing/payments/{other['id']}", headers=h2).json()["status"] == "failed"
+    stray = send(client, intent("not-ours", 5000))  # a dashboard payment without our metadata
+    assert stray.status_code == 200 and stray.json() == {"ignored": True}

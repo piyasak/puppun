@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
@@ -17,7 +17,9 @@ type Subscription = {
 type Payment = {
   id: string; plan: { code: string; name: string }; amount_satang: number; currency: string
   status: 'pending' | 'succeeded' | 'failed' | 'refunded'; applied: string | null; created_at: string
+  provider: string
 }
+type Refreshed = Payment & { checkout_url: string | null }
 
 const STATUS: Record<Subscription['status'], { text: string; badge: string }> = {
   trial: { text: 'ทดลองใช้', badge: 'warn' },
@@ -60,12 +62,40 @@ export function BillingPage() {
   }, [])
 
   const watched = history.find((h) => h.id === watching)
+  const settled = !!watched && watched.status !== 'pending'
   useEffect(() => {
     void load()
-    if (!watching) return
-    const timer = window.setInterval(() => void load(), 3000)  // the result comes from the provider event
+    if (!watching || settled) return
+    // Back from Stripe: ask Stripe about this payment too, in case its webhook is slow or never comes
+    const tick = async () => {
+      await api(`/v1/billing/payments/${watching}/refresh`, { method: 'POST' }).catch(() => undefined)
+      await load()
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 4000)
     return () => window.clearInterval(timer)
-  }, [load, watching])
+  }, [load, watching, settled])
+
+  async function resume(h: Payment) {
+    if (h.provider !== 'stripe') {
+      navigate(`/billing/sandbox/${h.id}`)
+      return
+    }
+    setBusy(h.id)
+    setError('')
+    try {
+      const out = await api<Refreshed>(`/v1/billing/payments/${h.id}/refresh`, { method: 'POST' })
+      if (out.checkout_url && /^https:\/\//.test(out.checkout_url)) {
+        window.location.assign(out.checkout_url)  // still open at Stripe: carry on paying there
+        return
+      }
+      await load()
+      if (out.status === 'pending') setError('รายการนี้ยังรอผลจากผู้ให้บริการ ลองใหม่อีกครั้งภายหลัง')
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+    setBusy('')
+  }
 
   async function buy(code: string) {
     setBusy(code)
@@ -151,7 +181,8 @@ export function BillingPage() {
                   <td>{h.plan.name}</td>
                   <td>{baht(h.amount_satang)}</td>
                   <td><span className={`badge badge-${PAY[h.status].badge}`}>{PAY[h.status].text}</span>
-                    {h.status === 'pending' && <> <Link to={`/billing/sandbox/${h.id}`}>ไปหน้าชำระ</Link></>}</td>
+                    {h.status === 'pending' && <> <button type="button" className="btn btn-secondary btn-small" disabled={busy !== ''} onClick={() => void resume(h)}>
+                      {busy === h.id ? 'กำลังตรวจสอบ…' : 'ไปหน้าชำระ / ตรวจสถานะ'}</button></>}</td>
                 </tr>
               ))}
             </tbody>
