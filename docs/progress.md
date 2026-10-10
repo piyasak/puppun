@@ -10,7 +10,9 @@ Last updated: 2026-10-07
 - G7 record refreshed: tools for G7-01/02 cited; G7-05 cost part done (G1-06), support load still unknown; stale G6 blocker removed. Still 0/5: no pilot users yet (D07)
 - Commands (after the PO restarted Docker): `test_pilot_report.py` 2 passed; test-integration 280 passed, 9 skipped (opt-in); test-unit 203 passed; lint exit 0 (only the existing set-state-in-effect warnings), tsc clean
 - C: drive: was full (0 GB); pip + npm caches purged at the PO's request → 13.6 GB free
-- Setup hosting (E-53): public repo https://github.com/piyasak/punpun-agent, release v0.3.4 (setup .exe + .sha256); anonymous download verified (HTTP 200, hash matches). PO sets `AGENT_SETUP_URL/VERSION/SHA256/SIZE_MB` in Render. Licence review of the bundled adb/scrcpy still open before outside users
+- Setup hosting (E-53): public repo https://github.com/piyasak/punpun-agent, release v0.3.4 (setup .exe + .sha256); anonymous download verified (HTTP 200, hash matches). PO sets `AGENT_SETUP_URL/VERSION/SHA256/SIZE_MB` in Render. PO reviewed the bundled adb/scrcpy licences 2026-10-11 (E-54)
+- PO set `AGENT_SETUP_*` in Render 2026-10-11 and confirmed the staging Agents page (signed in): download button for 0.3.4, 46.5 MB, SHA-256 3e919626…98186, link to the public release. Setup is ready to hand to pilot users
+- PO set `AGENT_SETUP_*` in Render 2026-10-11. Staging up (/healthz 200; /v1/agents/download needs a login, 401). The Agents page download button is not yet confirmed by a signed-in user
 
 ### Slice (2026-10-10) — cost sheet; G1-06 and G6-01 Yes (Q-41)
 - PO inputs: 1 USD = 35 THB, Render $7, Supabase free at first, Stripe 3 %, domain 48 / 3 years (assumed USD), 50 customers in 3 months, Finance approver ปิยศักดิ์
