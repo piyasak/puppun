@@ -17,7 +17,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -53,7 +53,7 @@ def longest_clip_s(job: Job, index: int) -> float:
 
 def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_key: str, source: dict,
            requested_clips: int, clip_min_s: int, clip_max_s: int, subtitles: bool, review_mode: str,
-           auto_clips: bool = False) -> tuple[Job, bool]:
+           auto_clips: bool = False, delete_after_post: bool = False) -> tuple[Job, bool]:
     """Create a job, or return the existing one for a repeated idempotency key. Returns (job, created)."""
     existing = db.scalars(select(Job).where(Job.workspace_id == workspace_id,
                                             Job.idempotency_key == idempotency_key)).first()
@@ -84,7 +84,8 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
     job = Job(
         workspace_id=workspace_id, environment_id=env.id, created_by=user_id, idempotency_key=idempotency_key,
         source_kind=kind, source_url=url, source_label=label, rights_acceptance_id=rights.id,
-        requested_clips=requested_clips, auto_clips=auto_clips, clip_min_s=clip_min_s, clip_max_s=clip_max_s,
+        requested_clips=requested_clips, auto_clips=auto_clips, delete_after_post=delete_after_post,
+        clip_min_s=clip_min_s, clip_max_s=clip_max_s,
         subtitles=subtitles,
         review_mode=review_mode, seed=secrets.randbelow(2**31), state="RECEIVED", state_version=1, attempts=0,
     )
@@ -180,6 +181,9 @@ def apply_event(db: Session, ctx: AgentContext, job_id: uuid.UUID, event: dict) 
     if handler is None:
         raise ApiError(422, "UNKNOWN_EVENT", "ไม่รู้จักชนิด event", {"type": kind})
     handler(db, job, event, at)
+    if kind == "clip_rendered":  # the file stays on this installation's PC (Q-33): only it can delete it
+        db.execute(update(Clip).where(Clip.job_id == job.id, Clip.clip_index == int(event["index"]))
+                   .values(agent_installation_id=ctx.installation_ref))
     db.add(JobEvent(workspace_id=job.workspace_id, job_id=job.id, event_id=event_id, type=kind))
     if job.state not in TERMINAL:
         job.lease_expires_at = at + timedelta(seconds=LEASE_S)

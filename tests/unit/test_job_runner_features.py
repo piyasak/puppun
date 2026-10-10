@@ -17,9 +17,11 @@ class Client:
 
 
 def runner(tmp_path, monkeypatch, logs):
-    monkeypatch.setattr(clipflow_worker.media, "ensure_on_path", lambda: "")
+    from agent import clips_folder
     from agent.job_runner import JobRunner
 
+    monkeypatch.setattr(clipflow_worker.media, "ensure_on_path", lambda: "")
+    monkeypatch.setattr(clips_folder, "has_room", lambda folder: True)  # not this PC's free space
     return JobRunner(tmp_path / "data", tmp_path / "media", log=logs.append, clips_dir=tmp_path / "clips")
 
 

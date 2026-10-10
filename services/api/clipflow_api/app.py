@@ -107,6 +107,7 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(jobs.agent_router)
     app.include_router(clips.web_router)
     app.include_router(clips.agent_router)
+    app.include_router(clips.agent_files_router)
     app.include_router(clips.media_router)
     app.include_router(schedules.web_router)
     app.include_router(schedules.items_router)

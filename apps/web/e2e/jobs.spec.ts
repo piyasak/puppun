@@ -132,7 +132,9 @@ test('by default the clip count follows the source, with clips of about 300 s', 
   await expect(page.getByLabel('คำนวณจากความยาวต้นฉบับ')).toBeChecked()
   await expect(page.getByText('ตัดตรงช่วงเงียบ ยาวประมาณ 240–300 วินาที (5.0 นาที)')).toBeVisible()
   await expect(page.getByLabel('จำนวนคลิป')).toHaveCount(0)  // no count to type
+  await expect(page.getByLabel(/ลบไฟล์คลิปออกจากเครื่อง Agent ถาวรหลังโพสต์สำเร็จ/)).not.toBeChecked()  // kept unless asked
   await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByTestId('after-post-preview')).toHaveText('เก็บไฟล์คลิปไว้')
   await expect(page.getByTestId('clips-preview')).toHaveText('คำนวณจากความยาวต้นฉบับ คลิปละประมาณ 240–300 วินาที')
   await expect(page.getByTestId('quota-preview')).toContainText('ใช้ตามจำนวนที่ต้นฉบับตัดได้')
   await page.getByRole('button', { name: 'สร้างงาน' }).click()
@@ -154,9 +156,12 @@ test('a clip kept on the Agent shows its frames and where the file is, and can b
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ไลฟ์.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await page.getByLabel('ความยาวต่อคลิป').fill('40')
+  await page.getByLabel(/ลบไฟล์คลิปออกจากเครื่อง Agent ถาวรหลังโพสต์สำเร็จ/).check()  // chosen when creating the job
   await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByTestId('after-post-preview')).toHaveText('ลบไฟล์คลิปบนเครื่อง Agent ถาวร')
   await page.getByRole('button', { name: 'สร้างงาน' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('job-after-post')).toHaveText('ลบไฟล์คลิปบนเครื่อง Agent ถาวรเมื่อโพสต์สำเร็จ')
   const jobId = page.url().split('/').pop()!
   expect((await agent.claim()).id).toBe(jobId)
   await agent.event(jobId, 'source_validated', { duration_s: 80, possible_clips: 2 })

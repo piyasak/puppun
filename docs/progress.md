@@ -4,7 +4,25 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 00:xx) — real Agent on staging: 405 after rendering → Agent 0.3.1
+### Latest slice (2026-10-10 02:xx) — delete clip files after a verified post (Q-34)
+- PO: set when creating the job; delete permanently once posted, so the clips folder does not fill up
+- Migration 0013 (expand-only): `jobs.delete_after_post` (default false), `clips.agent_installation_id` (set from the session on clip_rendered), `clips.agent_file_deleted_at`
+- API: job create/detail `delete_after_post`; Agent `GET /v1/agent/clips/deletable` (this installation's kept clips of such jobs with a VERIFIED_SUCCESS post and no post still to come or unsettled; UNKNOWN keeps the file) and `POST /v1/agent/clips/{id}/file-deleted` (idempotent, audited); a deleted clip is excluded from scheduling and refused at dispatch (FILE_DELETED)
+- Agent (post runner, every 5 min): deletes clip_NN.mp4 + .jpg for good only while the SHA-256 still matches, removes the empty job folder, logs the space freed, reports (found or already gone)
+- Web: create wizard checkbox (off by default, Thai warning: verified posts only, cannot be undone or posted again), review row, job page row, clip still says when the file was deleted; schedule reason FILE_DELETED
+- Note: posting is dry-run here, so nothing is deleted until real posts are verified (dry runs never count)
+- Commands: integration 245 passed / 9 skipped (new test_delete_after_post 9); the job runner HTTP tests no longer depend on this PC's free space (C: 3.8 GB is below the 5 GB rule, which now has its own unit test); unit 128; E2E jobs + schedule + quality 9 passed (new: option off by default, chosen → review + job page say so); ruff/tsc clean
+- Agent 0.3.2 rebuilt with E-51 + Q-34: bundle sha256 c9735502…, setup e5d1babd… (var/dist); packaged adb race recheck below
+- Next: commit/PR when asked; PO: licence check for the bundled adb (E-51)
+
+### Previous slice (2026-10-10 01:xx) — Agent 0.3.2: own adb, daemon start race (E-51)
+- PO saw on a real post: "daemon not running ... could not read ok from ADB Server ... failed to start daemon" (retryable, before transfer). This PC: port 5037 = the SDK adb 34.0.4, phone listed; cause = two Agent threads starting the daemon at once
+- PO chose A + B + C: (A) one daemon start at `connect` under a lock; daemon-down errors restart it and repeat the command (≤ 3, only errors where the command never reached a phone); an empty `devices` right after a start is asked again for ~5 s; (B) `status`/`doctor` show the adb in use (path, version, bundled) and who holds port 5037, with a Thai hint when it is another adb version; (C) the bundle carries adb (adb.exe, 2 DLLs, NOTICE.txt, source.properties) and the Agent prefers it over PATH
+- Commands: unit 127 passed (new test_adb_daemon 6; test_job_runner_features no longer depends on this PC's free space — C: is under 5 GB); packaged 0.3.2 with no Android SDK on PATH: status says bundled adb 34.0.4, phone seen; race (kill daemon, 6 parallel `devices`, 3 rounds) 18/18 saw the phone vs plain adb 1/6; doctor ready. Evidence var/evidence/agent_0.3.2_adb.json; bundle 0.3.2 sha256 038f2913…, setup 50e3ba2a… (var/dist)
+- Open: the Android SDK licence limits redistributing platform-tools → PO/legal before giving the setup to outside customers (E-51)
+- Next: delete clip files after a verified post (PO request, option set when creating the job)
+
+### Previous slice (2026-10-10 00:xx) — real Agent on staging: 405 after rendering → Agent 0.3.1
 - PO ran Agent 0.3.0 against staging: job aac04d36 rendered, then "Server ปฏิเสธ 405" → FAILED. Cause: staging runs master (PR #8), which has no `PUT .../clips/{n}/preview` (Q-33 is PR #9); the web catch-all route (GET/HEAD) turned the missing endpoint into 405
 - Fix: the server says what it supports (`features: ["clip_preview"]` in the Agent session); the Agent claims no clip job from a server without it and says once "Server นี้ยังไม่รองรับการเก็บคลิปไว้บนเครื่อง (ต้องอัปเดต Server ก่อน)"; unknown `/v1/...` paths are 404 for every method; Agent 0.3.1 (bundle sha256 a3be47d4…, setup 3362b630…, var/dist)
 - CI fix before this: PATH entries compared with Windows rules on every OS (ntpath) — the setup unit test failed on Linux; CI run 37952640365 green (4/4)

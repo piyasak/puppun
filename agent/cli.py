@@ -118,8 +118,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps([asdict(d) | {"ready": d.ready} for d in devices], ensure_ascii=False, indent=2))
             return 0 if devices else 1
         if args.cmd == "doctor":
+            from agent.adb import adb_report
+
             report = adb.doctor(args.serial)
-            print(json.dumps(asdict(report) | {"ready": report.ready}, ensure_ascii=False, indent=2))
+            print(json.dumps(asdict(report) | {"ready": report.ready, "adb": adb_report()}, ensure_ascii=False, indent=2))
             return 0 if report.ready else 1
         if args.cmd == "power":
             return power_command(adb, args.serial, args.action)
@@ -160,9 +162,12 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
     try:
         with ProcessLock(data_dir):
             installation_id = load_or_create_installation_id(data_dir)
+            from agent.adb import find_adb, start_server
             from agent.device_registry import DeviceSync
             from agent.server_client import run_connection
 
+            if exe := find_adb():
+                start_server(exe)  # one daemon start before the phone check and post threads use adb
             # Q-25: on start, read the phones' serials, register new ones and say where to finish setup.
             sync = DeviceSync(lambda: Adb(default_runner())) if phone_check else None
             # P3.3: claim clip jobs and make them on this PC (one at a time).

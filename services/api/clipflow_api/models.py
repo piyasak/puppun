@@ -300,6 +300,8 @@ class Job(Base):
     requested_clips: Mapped[int] = mapped_column(Integer)
     # Q-32: split the whole source; the count follows the source (requested_clips is then the cap).
     auto_clips: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # PO 2026-10-10: delete each clip's file on the Agent's PC once it is posted (verified), to keep space
+    delete_after_post: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     planned_clips: Mapped[int | None] = mapped_column(Integer)
     clip_min_s: Mapped[int] = mapped_column(Integer)
     clip_max_s: Mapped[int] = mapped_column(Integer)
@@ -373,6 +375,10 @@ class Clip(Base):
     approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     approval_mode: Mapped[str | None] = mapped_column(String(8))  # manual | auto
     file_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # retention (NF-06)
+    # The installation that rendered the clip and keeps its file (Q-33), and when it deleted it after posting
+    agent_installation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_installations.id", ondelete="SET NULL"))
+    agent_file_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ClipMetadata(Base):

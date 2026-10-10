@@ -11,8 +11,9 @@ It also builds the double-click setup (E-50): var/dist/punpun-agent-setup-<versi
 one PyInstaller onefile exe that carries the bundle, its SHA-256 and the default server
 (CLIPFLOW_SETUP_SERVER, default the staging URL) and runs agent/setup_win.py.
 
-FFmpeg and adb are not bundled: they are separate downloads the setup guide points to, and
-`agent.cli status`/`doctor` report when they are missing.
+adb comes with the Agent (E-51: adb.exe + its two DLLs, NOTICE.txt and source.properties from
+Android platform-tools, in an adb folder next to the exe). FFmpeg is not bundled: it is a separate download, and
+`agent.cli status`/`doctor` report when it is missing.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ def main(version_override: str | None = None) -> int:
     subprocess.run(cmd, check=True, cwd=ROOT)
     app = WORK / "dist" / "punpun-agent"
     (app / "version.txt").write_text(version, encoding="ascii")  # what the packaged exe reports
+    copy_adb(app / "adb")
     files = {p.relative_to(app).as_posix(): sha256(p) for p in sorted(app.rglob("*")) if p.is_file()}
     manifest = {"version": version, "files": files}
     OUT.mkdir(parents=True, exist_ok=True)
@@ -70,6 +72,26 @@ def main(version_override: str | None = None) -> int:
                       "setup": str(setup), "setup_sha256": sha256(setup),
                       "setup_size_mb": round(setup.stat().st_size / 1e6, 1), "server": SERVER}, indent=2))
     return 0
+
+
+ADB_FILES = ("adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll", "NOTICE.txt", "source.properties")
+
+
+def copy_adb(target: Path) -> None:
+    """The Agent's own adb (E-51) from Android platform-tools (CLIPFLOW_PLATFORM_TOOLS, else the adb on
+    PATH), so a customer PC needs no Android SDK. Its licence notice and version travel with it."""
+    folder = os.environ.get("CLIPFLOW_PLATFORM_TOOLS")
+    source = Path(folder) if folder else Path(shutil.which("adb") or "").parent
+    missing = [n for n in ADB_FILES if not (source / n).is_file()]
+    if missing:
+        raise SystemExit(f"platform-tools not found or incomplete at {source} (missing {missing}); "
+                         "set CLIPFLOW_PLATFORM_TOOLS")
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ADB_FILES:
+        shutil.copy2(source / name, target / name)
+    probe = subprocess.run([str(target / "adb.exe"), "version"], capture_output=True, text=True, timeout=60)
+    if probe.returncode != 0 or "Android Debug Bridge" not in probe.stdout:
+        raise SystemExit(f"the copied adb does not start on its own: {probe.stdout or probe.stderr}")
 
 
 def build_setup(version: str, bundle: Path, digest: str) -> Path:

@@ -74,7 +74,7 @@ function ItemTimeEditor({ item, onDone }: { item: Item; onDone: (msg?: string) =
 const INTERVALS = [1, 2, 3, 6, 12, 24]
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
 const EXCLUDED: Record<string, string> = {
-  NOT_APPROVED: 'ยังไม่อนุมัติ', ALREADY_SCHEDULED: 'ตั้งเวลาไว้แล้ว', CHECKS_FAILED: 'ไม่ผ่านการตรวจไฟล์', NOT_UPLOADED: 'ยังไม่ได้รับไฟล์',
+  NOT_APPROVED: 'ยังไม่อนุมัติ', ALREADY_SCHEDULED: 'ตั้งเวลาไว้แล้ว', CHECKS_FAILED: 'ไม่ผ่านการตรวจไฟล์', NOT_UPLOADED: 'ยังไม่ได้รับไฟล์', FILE_DELETED: 'ลบไฟล์แล้วหลังโพสต์',
 }
 const ITEM_STATE: Record<string, { text: string; badge: string }> = {
   SCHEDULED: { text: 'รอเวลาโพสต์', badge: 'active' },
@@ -94,6 +94,7 @@ const REASON: Record<string, string> = {
   FILE_UNAVAILABLE: 'ไฟล์คลิปไม่อยู่บนเครื่อง Agent ที่รับงาน — คลิปเก็บไว้บนเครื่องที่ตัด (ไม่ได้อัปโหลด) ตรวจว่าไฟล์ยังอยู่ในโฟลเดอร์คลิป แล้วกดลองใหม่',
   APPROVAL_CHANGED: 'ข้อความเปลี่ยนหลังตั้งเวลา — อนุมัติข้อความล่าสุดของคลิปนี้เพื่อให้โพสต์ต่อ',
   DEVICE_UNBOUND: 'โทรศัพท์ถูกยกเลิกการผูก — ยกเลิกรายการนี้แล้วตั้งเวลาใหม่กับเครื่องอื่น',
+  FILE_DELETED: 'ไฟล์คลิปถูกลบจากเครื่อง Agent แล้วหลังโพสต์สำเร็จ (ตั้งไว้ตอนสร้างงาน) โพสต์ซ้ำไม่ได้',
   NOT_APPROVED: 'คลิปนี้ยังไม่ได้อนุมัติเวอร์ชันล่าสุด — ตรวจและอนุมัติแล้วรายการจะกลับมารอโพสต์',
   AGENT_LOST: 'Agent หยุดตอบหลายครั้งก่อนเริ่มโพสต์ — ตรวจเครื่อง Windows แล้วตั้งเวลาใหม่',
   AGENT_LOST_AFTER_SUBMIT: 'Agent หายไปหลังกดโพสต์ จึงไม่รู้ว่าโพสต์ขึ้นหรือไม่ — ตรวจในแอป TikTok ก่อน ระบบจะไม่ลองโพสต์ซ้ำเอง',

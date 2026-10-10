@@ -57,8 +57,10 @@ function AgentStill({ clip }: { clip: Clip }) {
         ? <img src={url} alt={`ภาพจาก 3 ช่วงของคลิป ${clip.index}`} width={810} height={480} onError={() => setError('โหลดภาพไม่ได้')} />
         : <div className="agent-still-empty">{error || 'กำลังโหลดภาพ…'}</div>}
       <figcaption>
-        <span className="hint">วิดีโอเก็บไว้บนเครื่อง Agent (ไม่ได้อัปโหลด) — เปิดดูจากโฟลเดอร์นี้บนเครื่องนั้น</span>
-        {clip.agent_path && (
+        {clip.agent_file_deleted_at
+          ? <span className="hint" data-testid="agent-file-deleted">ลบไฟล์วิดีโอจากเครื่อง Agent แล้วหลังโพสต์สำเร็จ ({formatDate(clip.agent_file_deleted_at)})</span>
+          : <span className="hint">วิดีโอเก็บไว้บนเครื่อง Agent (ไม่ได้อัปโหลด) — เปิดดูจากโฟลเดอร์นี้บนเครื่องนั้น</span>}
+        {clip.agent_path && !clip.agent_file_deleted_at && (
           <span className="agent-path">
             <code data-testid="agent-path">{clip.agent_path}</code>
             <button type="button" className="btn btn-secondary btn-small" onClick={copy}>{copied ? 'คัดลอกแล้ว' : 'คัดลอก path'}</button>
@@ -284,6 +286,7 @@ export function JobDetailPage() {
                 : `ขอ ${job.requested_clips} • วางแผน ${job.planned_clips ?? '—'}`} • ยาว {mmss(job.clip_min_s * 1000)}–{mmss(job.clip_max_s * 1000)} นาที</dd>
               <dt>ต้นฉบับ</dt><dd>{job.source_duration_s ? `ยาว ${mmss(job.source_duration_s * 1000)}` : 'ยังไม่ได้ตรวจ'}</dd>
               <dt>การตรวจ</dt><dd>{job.review_mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'} • ซับ{job.subtitles ? 'จากต้นฉบับ' : ': ไม่ใส่'}</dd>
+              <dt>หลังโพสต์</dt><dd data-testid="job-after-post">{job.delete_after_post ? 'ลบไฟล์คลิปบนเครื่อง Agent ถาวรเมื่อโพสต์สำเร็จ' : 'เก็บไฟล์คลิปไว้'}</dd>
               <dt>โควตา</dt><dd data-testid="job-quota">จอง {job.quota.reserved} • ใช้ {job.quota.settled} • คืน {job.quota.released}</dd>
               <dt>Seed</dt><dd><code>{job.seed}</code> (ใช้เลือกช่วงซ้ำได้)</dd>
               <dt>สร้าง</dt><dd>{formatDate(job.created_at)}{job.finished_at && ` • จบ ${formatDate(job.finished_at)}`}</dd>

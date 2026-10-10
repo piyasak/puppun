@@ -69,7 +69,11 @@ class Shop:
 
 
 @pytest.fixture
-def shop(onboard, server_url, media_dir, tmp_path):
+def shop(onboard, server_url, media_dir, tmp_path, monkeypatch):
+    from agent import clips_folder
+
+    # The 5 GB free-space rule is unit-tested (tests/unit/test_clips_folder.py); here it would test this PC's C:
+    monkeypatch.setattr(clips_folder, "has_room", lambda folder: True)
     return Shop(onboard(), server_url, media_dir, tmp_path / "agent-data")
 
 
