@@ -6,7 +6,9 @@ import hashlib
 import os
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.concurrency import run_in_threadpool
@@ -225,6 +227,33 @@ def approve_clip(clip_id: uuid.UUID, body: ApproveIn, request: Request, auth: We
                  target_id=clip.id)
     db.commit()
     return clip_out(db, clip, job)
+
+
+class PostNowIn(BaseModel):
+    device_id: uuid.UUID
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
+@web_router.post("/{clip_id}/post-now", status_code=201)
+def post_now(clip_id: uuid.UUID, body: PostNowIn, request: Request, auth: WebAuth = Depends(web_auth),
+             db: Session = Depends(get_db)):
+    """PO 2026-10-10: post this one clip now. A one-item schedule due now (the time is the server's,
+    PRD §G.5), so every check of a scheduled post applies: approved version, file, phone, account,
+    one post at a time per phone. Posting mode is the server's (dry-run stops before Post)."""
+    from ..routers.schedules import series_out
+
+    clip, job = _owned(db, auth, clip_id)
+    tz = ZoneInfo("Asia/Bangkok")
+    start = datetime.now(tz).strftime("%Y-%m-%dT%H:%M")
+    req = schedules.Request(job_id=job.id, device_id=body.device_id, start_local=start, timezone="Asia/Bangkok",
+                            window_start="00:00", window_end="24:00", interval_hours=1, offline_policy="defer",
+                            clip_ids=(clip.id,))
+    series, created = schedules.create(db, auth.workspace_id, auth.user_id, body.idempotency_key, req)
+    if created:
+        audit.record(db, request, "clip.post_now", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                     target_id=clip.id, details={"series_id": str(series.id)})
+    db.commit()
+    return series_out(db, series, with_items=True) | {"posting_mode": request.app.state.posting_mode}
 
 
 @web_router.post("/{clip_id}/unapprove")

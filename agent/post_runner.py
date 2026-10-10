@@ -63,7 +63,7 @@ def sha256_file(path: Path) -> str:
 class PostRunner:
     def __init__(self, data_dir: Path, adb_factory, log=print, poll_s: float = 15.0, cleanup: bool = True,
                  retries: int = 3, retry_wait_s: float = 2.0, ui_rehearsal: bool = False, ui_factory=None,
-                 grant_source=None, crash_after_submit: bool = False):
+                 grant_source=None, crash_after_submit: bool = False, screens=None):
         self.data_dir, self.adb_factory, self.log = Path(data_dir), adb_factory, log
         self.poll_s, self.cleanup = poll_s, cleanup
         # Q-27: in dry runs, also go through TikTok up to (never including) Post, then close it.
@@ -71,6 +71,7 @@ class PostRunner:
         self.ui_factory = ui_factory
         # Q-29: a live post needs a one-time grant (agent.authorization.take) handed in explicitly.
         self.grant_source = grant_source
+        self.screens = screens  # phone screen windows: view-only on a phone while a post runs on it
         self.crash_after_submit = crash_after_submit  # fault injection for G5-04: stop dead after Post
         self.retries, self.retry_wait_s = retries, retry_wait_s
         self.journal = AttemptJournal(self.data_dir / "attempts.jsonl")
@@ -144,7 +145,9 @@ class PostRunner:
         if post is None:
             return None
         phone = phones.get(normalize_serial(post["device"]["serial"]))
-        return _Post(self, client, get_session, post, adb, phone).run()
+        lock = self.screens.locked(phone.adb_serial) if self.screens and phone else contextlib.nullcontext()
+        with lock:  # a click on the PC must never meet the Agent's taps on the same phone
+            return _Post(self, client, get_session, post, adb, phone).run()
 
 
 class _Post:

@@ -192,6 +192,27 @@ class SettingsWindow:
         self.clips.trace_add("write", lambda *_: self.show_free())
         self.show_free()
 
+        # --- phone screens on this PC (PO 2026-10-10) ---
+        screens = Card(page, "หน้าจอโทรศัพท์", family)
+        screens.pack(fill="x", pady=6)
+        sc = screens.body
+        self.show_screens = tk.BooleanVar(value=state.show_screens)
+        self.screens_control = tk.StringVar(value="control" if state.screens_control else "view")
+        self.check(sc, "แสดงหน้าจอโทรศัพท์บน PC เรียงตามชื่อโทรศัพท์บนเว็บ", self.show_screens).grid(
+            row=1, column=0, columnspan=3, sticky="w")
+        modes = tk.Frame(sc, bg=CARD)
+        modes.grid(row=2, column=0, columnspan=3, sticky="w", padx=(22, 0), pady=(4, 0))
+        for value, text in (("control", "ควบคุมได้ (ล็อกเป็นดูอย่างเดียวระหว่าง Agent โพสต์บนเครื่องนั้น)"),
+                            ("view", "ดูอย่างเดียว")):
+            tk.Radiobutton(modes, text=text, value=value, variable=self.screens_control, bg=CARD, fg=TEXT,
+                           activebackground=CARD, activeforeground=TEXT, selectcolor=FIELD, highlightthickness=0,
+                           bd=0, font=(family, 10), cursor="hand2").pack(anchor="w")
+        from agent.screens import find_scrcpy
+
+        if find_scrcpy() is None:
+            self.muted(sc, "ไม่พบ scrcpy ในเครื่องนี้ — ติดตั้ง Agent ด้วยไฟล์ setup เวอร์ชันล่าสุด", 9).grid(
+                row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
         # --- start with Windows + actions ---
         self.autostart = tk.BooleanVar(value=state.autostart)
         box = tk.Checkbutton(page, text="เริ่ม punpun Agent เองเมื่อเปิดเครื่อง (login Windows)", variable=self.autostart,
@@ -214,6 +235,11 @@ class SettingsWindow:
         if launcher is None:
             self.start_button.set_enabled(False)
         code_entry.focus_set()
+
+    def check(self, parent, text: str, var: tk.BooleanVar) -> tk.Checkbutton:
+        return tk.Checkbutton(parent, text=text, variable=var, bg=CARD, fg=TEXT, activebackground=CARD,
+                              activeforeground=TEXT, selectcolor=FIELD, highlightthickness=0, bd=0,
+                              font=(self.family, 10), cursor="hand2")
 
     def muted(self, parent, text: str, size: int = 10) -> tk.Label:
         return tk.Label(parent, text=text, bg=CARD, fg=MUTED if size < 10 else TEXT, font=(self.family, size))
@@ -279,6 +305,7 @@ class SettingsWindow:
     def save(self) -> bool:
         try:
             settings.save_folders(self.data_dir, self.clips.get(), self.media.get())
+            settings.save_screens(self.data_dir, self.show_screens.get(), self.screens_control.get() == "control")
             if self.launcher is not None and self.autostart.get() != settings.autostart_on():
                 settings.set_autostart(self.autostart.get(), self.launcher)
         except settings.SettingsError as exc:

@@ -183,6 +183,13 @@ test('a clip kept on the Agent shows its frames and where the file is, and can b
   await expect(first.getByTestId('approval')).toHaveText('อนุมัติแล้ว')
   await page.screenshot({ path: '../../var/evidence/e2e/clip-kept-on-agent.png', fullPage: true })
 
+  // PO 2026-10-10: "โพสต์ทันที" on an approved clip asks for a ready phone first
+  await first.getByRole('button', { name: 'โพสต์ทันที' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('ยังไม่มีโทรศัพท์ที่พร้อม', { exact: false })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'โพสต์ทันที' })).toBeDisabled()
+  await dialog.getByRole('button', { name: 'ยกเลิก' }).click()
+
   // PO 2026-10-10: the clips folder moved on the PC -> start the job again from its page
   await page.getByRole('button', { name: 'เริ่มงานใหม่' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'เริ่มงานใหม่' }).click()

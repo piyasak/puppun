@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 import uuid
 from typing import Literal
@@ -13,10 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import audit, billing, quota
+from .. import stripe_provider as stripe
 from ..deps import WebAuth, get_db, web_auth
 from ..entitlements import default_plan, entitlement
 from ..errors import ApiError, not_found
-from ..models import Payment, Plan
+from ..models import Payment, Plan, User
 from ..tenancy import get_owned, scoped
 
 router = APIRouter(prefix="/v1/billing")
@@ -57,6 +59,25 @@ def payment_out(db: Session, pay: Payment) -> dict:
             "succeeded_at": pay.succeeded_at.isoformat() if pay.succeeded_at else None}
 
 
+def provider(request: Request) -> str:
+    """The payment provider this server uses (D06): "stripe" only with an allowed key and a webhook secret."""
+    s = request.app.state.settings
+    if s.billing_provider != "stripe":
+        return "sandbox"
+    if not (stripe.key_allowed(s.stripe_secret_key, s.app_env) and s.stripe_webhook_secret):
+        raise ApiError(503, "PAYMENTS_NOT_READY", "ระบบชำระเงินยังตั้งค่าไม่ครบ ติดต่อทีมงาน")
+    return "stripe"
+
+
+def provider_note(request: Request) -> str:
+    s = request.app.state.settings
+    if s.billing_provider == "stripe":
+        if stripe.test_mode(s.stripe_secret_key):
+            return "ชำระผ่าน Stripe (โหมดทดสอบ) — ยังไม่ตัดเงินจริง ใช้บัตรทดสอบของ Stripe"
+        return "ชำระผ่าน Stripe (บัตร / PromptPay)"
+    return "ระบบชำระเงินยังเป็น sandbox — ยังไม่รับเงินจริง (G6-01/G6-02)"
+
+
 class CheckoutIn(BaseModel):
     plan_code: str = Field(max_length=32)
     idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
@@ -70,7 +91,7 @@ class SimulateIn(BaseModel):
 def plans(request: Request, db: Session = Depends(get_db)):
     return {"items": [plan_out(p) for p in billing.purchasable(db)],
             "trial": trial_out(db, request.app.state.settings.default_plan_version),
-            "note": "ระบบชำระเงินยังเป็น sandbox — ยังไม่รับเงินจริง (G6-01/G6-02)",
+            "note": provider_note(request),
             "refund_policy": "ไม่คืนเงินทุกกรณี"}
 
 
@@ -86,13 +107,34 @@ def subscription(auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db
 
 @router.post("/checkout")
 def checkout(body: CheckoutIn, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
-    sandbox_allowed(request)
-    payment, created = billing.checkout(db, auth.workspace_id, auth.user_id, body.plan_code, body.idempotency_key)
+    via = provider(request)
+    if via == "sandbox":
+        sandbox_allowed(request)
+    payment, created = billing.checkout(db, auth.workspace_id, auth.user_id, body.plan_code, body.idempotency_key,
+                                        provider=via)
     if created:
         audit.record(db, request, "billing.checkout", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
-                     target_id=payment.id)
+                     target_id=payment.id, details={"provider": via})
+    if payment.provider == "sandbox":
+        db.commit()
+        out = payment_out(db, payment) | {"checkout_url": f"/billing/sandbox/{payment.id}"}
+        return JSONResponse(out, status_code=201 if created else 200)
+    # Stripe Checkout: the payment id is the idempotency key, so a repeat returns the same Session
+    s = request.app.state.settings
+    plan = db.get(Plan, payment.plan_id)
+    back = f"{s.web_origin.rstrip('/')}/billing?payment={payment.id}"
+    try:
+        session = stripe.create_checkout(
+            s.stripe_secret_key, payment_id=str(payment.id), amount_satang=payment.amount_satang,
+            currency=payment.currency, product=f"punpun {plan.name} ({plan.interval_days} วัน)",
+            success_url=back, cancel_url=f"{back}&cancelled=1", email=db.get(User, auth.user_id).email)
+    except stripe.StripeError as exc:
+        db.rollback()
+        raise ApiError(502, "PAYMENT_PROVIDER_UNAVAILABLE", "ติดต่อระบบชำระเงินไม่ได้ ลองใหม่อีกครั้ง",
+                       {"detail": str(exc)[:200]}) from None
+    payment.provider_ref = session["id"]  # webhooks name the Session; nothing else ties them to us
     db.commit()
-    out = payment_out(db, payment) | {"checkout_url": f"/billing/sandbox/{payment.id}"}
+    out = payment_out(db, payment) | {"checkout_url": session["url"]}
     return JSONResponse(out, status_code=201 if created else 200)
 
 
@@ -111,6 +153,8 @@ def payment(payment_id: uuid.UUID, auth: WebAuth = Depends(web_auth), db: Sessio
 async def webhook(provider: str, request: Request, signature: str | None = Header(default=None, alias="X-Sandbox-Signature"),
                   db: Session = Depends(get_db)):
     """Provider callbacks. The signature is checked over the raw bytes before anything is parsed."""
+    if provider == "stripe":
+        return await stripe_webhook(request, db)
     if provider != "sandbox":
         raise not_found()
     sandbox_allowed(request)
@@ -118,6 +162,24 @@ async def webhook(provider: str, request: Request, signature: str | None = Heade
     if not billing.verify(sandbox_secret(request), body, signature):
         raise ApiError(400, "INVALID_SIGNATURE", "ลายเซ็นไม่ถูกต้อง")
     result = billing.handle_event(db, provider, body)
+    db.commit()
+    return result
+
+
+async def stripe_webhook(request: Request, db: Session) -> dict:
+    s = request.app.state.settings
+    if s.billing_provider != "stripe" or not s.stripe_webhook_secret:
+        raise not_found()
+    body = await request.body()
+    if not stripe.verify(s.stripe_webhook_secret, body, request.headers.get("Stripe-Signature")):
+        raise ApiError(400, "INVALID_SIGNATURE", "ลายเซ็นไม่ถูกต้อง")
+    try:
+        event = stripe.normalize(json.loads(body))
+    except (KeyError, TypeError, ValueError):
+        raise ApiError(400, "BAD_EVENT", "รูปแบบ event ไม่ถูกต้อง") from None
+    if event is None:
+        return {"ignored": True}  # an event we do not act on: 200, so Stripe does not keep resending it
+    result = billing.apply_event(db, "stripe", event, body)
     db.commit()
     return result
 

@@ -16,6 +16,7 @@ is deliberately no live-post command here (PRD section I).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 import uuid
@@ -51,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     p_set = sub.add_parser("settings", help="settings window: pairing code, clips/videos folders, start with Windows")
     p_set.add_argument("--server", default="https://punpun-staging.onrender.com", help="used until one is saved")
     p_set.add_argument("--data-dir", type=Path, default=None)
+    p_scr = sub.add_parser("screens", help="show the phone screens now, in the order of their names on the web")
+    p_scr.add_argument("--view-only", action="store_true")
+    p_scr.add_argument("--data-dir", type=Path, default=None)
     p_pair = sub.add_parser("pair", help="link this PC with a pairing code from the web (no token to copy)")
     p_pair.add_argument("--server", required=True)
     p_pair.add_argument("--code", required=True, help="the XXXX-XXXX code from the Agents page (10 minutes, once)")
@@ -110,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
         from agent.settings_gui import run
 
         return run(args.data_dir, args.server)
+    if args.cmd == "screens":
+        return show_screens(args.data_dir, not args.view_only)
     if args.cmd == "pair":
         from agent import settings
         from agent.identity import default_data_dir
@@ -168,6 +174,67 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+def show_screens(data_dir: Path | None, control: bool) -> int:
+    """Open the phone windows until Ctrl+C (names from the web when this PC is linked)."""
+    import time
+
+    from agent.adb import find_adb
+    from agent.credentials import CredentialError, load_config, load_token
+    from agent.identity import default_data_dir, load_or_create_installation_id
+    from agent.screens import ScreenWall, ScreenWorker, find_scrcpy
+    from agent.server_client import ServerClient
+
+    scrcpy = find_scrcpy()
+    if scrcpy is None:
+        print("ไม่พบ scrcpy (ติดตั้ง Agent ใหม่ด้วยไฟล์ setup ซึ่งมี scrcpy มาให้)")
+        return 2
+    data_dir = data_dir or default_data_dir()
+    worker = ScreenWorker(ScreenWall(scrcpy, find_adb(), control=control), lambda: Adb(default_runner()))
+    cfg = load_config(data_dir)
+    client, session = None, None
+    try:
+        token = load_token(data_dir)
+    except CredentialError:
+        token = None
+    if cfg and token:
+        try:
+            client = ServerClient(cfg.server)
+            session = client.authenticate(cfg.username, token, load_or_create_installation_id(data_dir))
+        except Exception:  # noqa: BLE001 - offline: the windows still open, in serial order
+            client = None
+
+    class _NoNames:
+        def devices(self, _session):
+            return []
+
+    try:
+        shown = worker.refresh(client or _NoNames(), lambda: session)
+        print(json.dumps({"phones": [p.title for p in shown]}, ensure_ascii=False))
+        while True:
+            time.sleep(30)
+            worker.refresh(client or _NoNames(), lambda: session)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        worker.wall.close()
+        if client is not None and session is not None:
+            with contextlib.suppress(Exception):
+                client.end(session)
+
+
+def screen_wall(cfg, adb_exe: str | None):
+    """The phone screen windows when they are switched on in the settings window and scrcpy is here."""
+    if not cfg or not cfg.show_screens:
+        return None
+    from agent.screens import ScreenWall, find_scrcpy
+
+    scrcpy = find_scrcpy()
+    if scrcpy is None:
+        print("หน้าจอโทรศัพท์: ไม่พบ scrcpy (ติดตั้ง Agent ใหม่ด้วยไฟล์ setup ซึ่งมี scrcpy มาให้)")
+        return None
+    return ScreenWall(scrcpy, adb_exe, control=cfg.screens_control)
+
+
 def saved_media_dir(data_dir: Path | None) -> Path | None:
     """The videos folder chosen in the settings window, when it still exists."""
     from agent.credentials import load_config
@@ -210,7 +277,8 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
             from agent.device_registry import DeviceSync
             from agent.server_client import run_connection
 
-            if exe := find_adb():
+            exe = find_adb()
+            if exe:
                 start_server(exe)  # one daemon start before the phone check and post threads use adb
             # Q-25: on start, read the phones' serials, register new ones and say where to finish setup.
             sync = DeviceSync(lambda: Adb(default_runner())) if phone_check else None
@@ -219,8 +287,14 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
             from agent.post_runner import PostRunner
 
             workers = [JobRunner(data_dir, media_dir)] if media_dir else []
+            wall = screen_wall(load_config(data_dir), exe)  # phone screens on the PC (PO 2026-10-10)
             if posts:  # P5: scheduled posts, dry-run only (the server refuses Submit, E-40)
-                workers.append(PostRunner(data_dir, lambda: Adb(default_runner()), ui_rehearsal=ui_rehearsal))
+                workers.append(PostRunner(data_dir, lambda: Adb(default_runner()), ui_rehearsal=ui_rehearsal,
+                                          screens=wall))
+            if wall is not None:
+                from agent.screens import ScreenWorker
+
+                workers.append(ScreenWorker(wall, lambda: Adb(default_runner())))
             result = run_connection(ServerClient(server), username, token, installation_id, seconds,
                                     on_session=sync, worker=workers)
             print(json.dumps({"heartbeats": result.heartbeats, "stopped_because": result.stopped_because},

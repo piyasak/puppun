@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { PostNow } from '../components/PostNow'
 import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
@@ -151,7 +152,9 @@ function MetadataEditor({ clip, onSaved }: { clip: Clip; onSaved: (c: Clip) => v
   )
 }
 
-function ClipCard({ clip, jobCancelled, onChange }: { clip: Clip; jobCancelled: boolean; onChange: (c: Clip) => void }) {
+function ClipCard({ clip, jobCancelled, environmentId, onChange }: {
+  clip: Clip; jobCancelled: boolean; environmentId: string; onChange: (c: Clip) => void
+}) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const failedChecks = clip.checks?.checks.filter((c) => !c.ok) ?? []
@@ -202,7 +205,10 @@ function ClipCard({ clip, jobCancelled, onChange }: { clip: Clip; jobCancelled: 
         {error && <Alert kind="error">{error}</Alert>}
         <div className="row-actions">
           {clip.approval.approved ? (
-            <button type="button" className="btn btn-secondary" onClick={() => act('unapprove')} disabled={busy}>ยกเลิกการอนุมัติ</button>
+            <>
+              <button type="button" className="btn btn-secondary" onClick={() => act('unapprove')} disabled={busy}>ยกเลิกการอนุมัติ</button>
+              {!jobCancelled && !clip.agent_file_deleted_at && <PostNow clipId={clip.id} environmentId={environmentId} />}
+            </>
           ) : (
             <button type="button" className="btn btn-primary" onClick={() => act('approve')}
               disabled={busy || jobCancelled || !clip.uploaded || clip.check_status === 'failed'}>
@@ -332,7 +338,7 @@ export function JobDetailPage() {
             )}
             <ul className="clip-list">
               {job.clips.map((c) => (
-                <ClipCard key={c.id} clip={c} jobCancelled={job.state === 'CANCELLED'} onChange={replaceClip} />
+                <ClipCard key={c.id} clip={c} jobCancelled={job.state === 'CANCELLED'} environmentId={job.environment_id} onChange={replaceClip} />
               ))}
             </ul>
           </section>

@@ -31,9 +31,12 @@ class ScheduleIn(BaseModel):
     window_end: str = Field(default="21:00", pattern=r"^\d{1,2}:\d{2}$")
     interval_hours: int = Field(ge=1, le=slots.MAX_INTERVAL_HOURS)
     offline_policy: Literal["defer", "skip"] = "defer"
+    clip_ids: list[uuid.UUID] | None = Field(default=None, max_length=200)  # default: every eligible clip
 
     def request(self) -> schedules.Request:
-        return schedules.Request(**self.model_dump())
+        data = self.model_dump()
+        data["clip_ids"] = tuple(self.clip_ids) if self.clip_ids is not None else None
+        return schedules.Request(**data)
 
 
 class ResumeIn(BaseModel):
@@ -100,7 +103,7 @@ def preview(body: ScheduleIn, auth: WebAuth = Depends(web_auth), db: Session = D
 
 @web_router.post("")
 def create(body: CreateIn, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
-    req = schedules.Request(**body.model_dump(exclude={"idempotency_key"}))
+    req = ScheduleIn(**body.model_dump(exclude={"idempotency_key"})).request()
     series, created = schedules.create(db, auth.workspace_id, auth.user_id, body.idempotency_key, req)
     if created:
         audit.record(db, request, "schedule.create", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,

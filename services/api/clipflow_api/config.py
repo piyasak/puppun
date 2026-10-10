@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is
     # "production". The secret signs/verifies sandbox webhooks; random per process when empty.
     billing_sandbox_secret: str = ""
+    # D06 (PO 2026-10-10): "sandbox" (internal) or "stripe" (Checkout + webhooks, docs/runbooks/stripe.md).
+    # Keys only from the environment; a live key is refused unless app_env is "production".
+    billing_provider: str = "sandbox"
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
     # The Agent's double-click setup (E-50) offered on the Agents page. Hosting is the operator's
     # choice; the page shows the version, size and SHA-256 next to the link. Empty url = not offered.
     agent_setup_url: str = ""

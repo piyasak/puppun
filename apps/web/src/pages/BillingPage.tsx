@@ -74,7 +74,11 @@ export function BillingPage() {
       const pay = await api<Payment & { checkout_url: string }>('/v1/billing/checkout', {
         method: 'POST', body: { plan_code: code, idempotency_key: crypto.randomUUID().replace(/-/g, '') },
       })
-      navigate(pay.checkout_url)
+      if (/^https:\/\//.test(pay.checkout_url)) {
+        window.location.assign(pay.checkout_url)  // Stripe's hosted payment page (D06); it returns to ?payment=
+      } else {
+        navigate(pay.checkout_url)  // the internal sandbox page
+      }
     } catch (err) {
       const ae = err as ApiError
       setError(ae.code === 'CHANGE_PENDING' ? 'มีการเปลี่ยนแพ็กเกจรอรอบถัดไปอยู่แล้ว' : ae.message)
@@ -85,8 +89,13 @@ export function BillingPage() {
   return (
     <Shell title="แพ็กเกจและการชำระเงิน">
       {error && <Alert kind="error">{error}</Alert>}
-      <Alert kind="info">{note || 'ระบบชำระเงินยังเป็น sandbox'} — ยังไม่มีการเก็บเงินจริง</Alert>
-      {watched && watched.status === 'pending' && <Alert kind="info">กำลังรอผลการชำระเงินจากผู้ให้บริการ…</Alert>}
+      <Alert kind="info">{note || 'ระบบชำระเงินยังเป็น sandbox — ยังไม่มีการเก็บเงินจริง'}</Alert>
+      {watched && watched.status === 'pending' && params.get('cancelled') && (
+        <Alert kind="info">ยกเลิกการชำระเงินแล้ว ไม่มีการเปลี่ยนแพ็กเกจ</Alert>
+      )}
+      {watched && watched.status === 'pending' && !params.get('cancelled') && (
+        <Alert kind="info">กำลังรอผลการชำระเงินจากผู้ให้บริการ… (PromptPay อาจใช้เวลาสักครู่)</Alert>
+      )}
       {watched && watched.status === 'succeeded' && <Alert kind="success">ชำระเงินสำเร็จ ({watched.plan.name})</Alert>}
       {watched && watched.status === 'failed' && <Alert kind="error">ชำระเงินไม่สำเร็จ ไม่มีการเปลี่ยนแพ็กเกจ</Alert>}
 

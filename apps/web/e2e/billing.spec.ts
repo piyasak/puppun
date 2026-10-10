@@ -8,7 +8,7 @@ import { signUpAndOnboard } from './helpers'
 
 test('buy a plan through the sandbox provider: fail, then succeed', async ({ page, request }) => {
   await signUpAndOnboard(page, request)
-  await page.getByRole('link', { name: 'แพ็กเกจ' }).click()
+  await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'แพ็กเกจ' }).click()
   const sub = page.getByTestId('subscription')
   await expect(sub).toContainText('ทดลองใช้')
   await expect(page.getByText('sandbox', { exact: false }).first()).toBeVisible()

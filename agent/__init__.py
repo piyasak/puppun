@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.3.3"  # 0.3.2 + find moved clip files by hash, remake on a job reset (Q-38)
+SOURCE_VERSION = "0.3.4"  # 0.3.3 + phone screens on the PC (scrcpy, ordered by web names, view-only lock)
 
 
 def _version() -> str:

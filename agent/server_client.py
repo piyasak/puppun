@@ -123,6 +123,10 @@ class ServerClient:
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)
 
+    def devices(self, session: Session) -> list[dict]:
+        """This Environment's phones with the names set on the web (for the phone screen windows)."""
+        return self._send("GET", "/v1/agent/devices", None, "application/json", session.token)["items"]
+
     def deletable_clips(self, session: Session) -> list[dict]:
         """Clips this PC keeps whose job deletes them once posted, and whose posts are all settled."""
         return self._send("GET", "/v1/agent/clips/deletable", None, "application/json", session.token)["items"]

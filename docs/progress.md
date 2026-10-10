@@ -4,7 +4,23 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 07:xx) — start a job again when the video location changed (Q-38)
+### Latest slice (2026-10-10 09:xx) — Stripe as the payment provider (D06)
+- PO: connect payments through Stripe. `stripe_provider.py` (stdlib only): Checkout Session per cycle in THB for the server's amount (payment id = idempotency key, client_reference_id + metadata), Stripe-Signature check over the raw body (HMAC-SHA256, 5-minute tolerance, several v1 values while a secret rotates), event mapping (completed paid → succeeded; completed unpaid → pending (PromptPay); async succeeded/failed; expired → failed; others ignored with 200)
+- `billing.apply_event` is now provider-neutral (sandbox and Stripe share unique events, forward-only statuses, amount/currency match); `BILLING_PROVIDER=stripe|sandbox`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (render.yaml, sync:false); a live key off production → 503 PAYMENTS_NOT_READY; Stripe down → 502, nothing saved
+- Web: "ซื้อแพ็กเกจนี้" goes to Stripe's page and back to /billing?payment= (waits for the webhook; "ยกเลิกการชำระเงินแล้ว" on cancel); the note says Stripe test mode
+- Runbook `docs/runbooks/stripe.md`: test mode, PromptPay, webhook endpoint + events, Render keys, test cards
+- Commands: test_stripe_provider 9 + test_stripe_billing 4 passed (signed webhooks, no network), billing 12 passed, ruff + tsc clean; earlier full run integration 261 / unit 140; E2E 20/20 after the Docker restart (19 + billing again after scoping its "แพ็กเกจ" click to the sidebar: the dashboard links to it too)
+- Not tested live: needs the PO's Stripe test keys in Render (never in chat)
+- Next: E2E after the Docker restart; PO sets Stripe test keys and tries card 4242…; commit into PR #14 when asked
+
+### Previous slice (2026-10-10 08:xx) — phone screens on the PC (Q-39) + post now (Q-40)
+- Q-39: scrcpy 4.1 (PO allowed the download; SHA-256 = winget's 5b12172b…; var/vendor) bundled without its own adb; the Agent passes its adb (ADB=...). `agent/screens.py` lays one window per phone in a grid filling the work area, ordered by the phone names on the web (natural sort; unnamed last), titled "name • @account"; a phone the Agent posts on is reopened view-only and given back afterwards; nothing on the phone is changed. Settings window: show/hide + controllable/view-only; `punpun-agent screens [--view-only]`; `GET /v1/agent/devices`
+- Q-40: `POST /v1/clips/{id}/post-now` — one-item schedule due now (server time) through every scheduled-post check; schedules can take `clip_ids`; job page: "โพสต์ทันที" on approved clips (phone picker, dry-run note)
+- Agent 0.3.4 (bundle 5511fa91…, setup 3e919626…): the packaged `screens --view-only` opened the QA phone's real screen at the grid position, titled "(ดูอย่างเดียว)" (var/evidence/agent-screens.png, captured from that window only)
+- Commands: unit test_screens 6, integration test_post_now 3; full run integration 261 passed / 9 skipped, unit 140, ruff clean
+- Next: commit into PR #14 when asked; PO: licences of bundled third-party binaries (adb, scrcpy DLLs)
+
+### Previous slice (2026-10-10 07:xx) — start a job again when the video location changed (Q-38)
 - PO: if the video location changes while posts wait, the job cannot continue → the owner or an admin should reset it
 - Agent: `clips_folder.find_clip` finds a kept clip by SHA-256 (own place → old folder → a `<job id>` folder moved up to 4 levels deep); the post runner uses it; on a reset the job runner moves found files back, re-reports kept ones and renders only what is really missing
 - Server (migration 0016 `jobs.remake_requested_at`, `reset_count`): `jobs.reset` — delivered clips → remake the not-yet-posted, not-deleted ones with the same seed (same file/hash keeps approvals; a new hash needs approval again and parks bound posts), no quota charged again, FILE_UNAVAILABLE posts go back to their schedule at the next allowed time; nothing delivered → restart from the source; cancelled jobs and > 10 resets refused

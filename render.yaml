@@ -53,3 +53,11 @@ services:
         sync: false
       - key: AGENT_SETUP_SIZE_MB
         sync: false
+      # Payments (D06, PO 2026-10-10): docs/runbooks/stripe.md. Staging takes Stripe TEST keys only
+      # (sk_test_...); a live key is refused unless APP_ENV=production. Unset = the internal sandbox.
+      - key: BILLING_PROVIDER
+        sync: false                 # stripe | sandbox
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
