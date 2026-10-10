@@ -76,3 +76,32 @@ test('agents page offers the double-click setup with its SHA-256 (E-50)', async 
   await expect(install.getByTestId('setup-sha256')).toHaveText(sha)
   await page.screenshot({ path: '../../var/evidence/e2e/agents-download.png', fullPage: true })
 })
+
+test('a pairing code links a PC without copying a token (PO 2026-10-10)', async ({ page, request }) => {
+  const user = await signUpAndOnboard(page, request)
+  await page.getByRole('link', { name: 'Environments' }).click()
+  await page.getByLabel('ชื่อ Environment').fill('ร้านหลัก')
+  await page.getByRole('button', { name: 'สร้าง Environment' }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'ร้านหลัก' })).toBeVisible()
+  await page.getByRole('link', { name: 'Agent', exact: true }).click()
+
+  await page.getByRole('button', { name: 'สร้างรหัสเชื่อมต่อ' }).click()
+  const code = (await page.getByTestId('pairing-code').textContent())!.trim()
+  expect(code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+  await expect(page.getByTestId('pairing')).toContainText('Environment ร้านหลัก')
+
+  // What the Agent's settings window sends: the code once, then it holds its own token
+  const paired = await request.post(`${API}/v1/agent/pair`, { data: { code, computer_name: 'SHOP-PC' } })
+  expect(paired.status()).toBe(200)
+  const body = await paired.json()
+  expect(body.username).toBe(user.username)
+  const auth = await request.post(`${API}/v1/agent/authenticate`, {
+    data: { username: body.username, token: body.token, installation_id: randomUUID(), agent_version: '0.3.2' },
+  })
+  expect(auth.status()).toBe(200)
+  expect((await request.post(`${API}/v1/agent/pair`, { data: { code } })).status()).toBe(400)  // once only
+  await page.getByRole('link', { name: 'Agent Token' }).click()
+  await expect(page.getByText('PC SHOP-PC')).toBeVisible()
+  await page.getByRole('link', { name: 'Agent', exact: true }).click()
+  await page.screenshot({ path: '../../var/evidence/e2e/agents-pairing.png', fullPage: true })
+})

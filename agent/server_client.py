@@ -75,6 +75,10 @@ class ServerClient:
             raise ServerError(exc.code, err.get("code", "HTTP_ERROR"), err.get("message", str(exc)),
                               err.get("details")) from None
 
+    def pair(self, code: str, computer_name: str) -> dict:
+        """A pairing code from the web -> this PC's own Agent token (+ username, Environment)."""
+        return self._post("/v1/agent/pair", {"code": code, "computer_name": computer_name})
+
     def authenticate(self, username: str, agent_token: str, installation_id: str) -> Session:
         body = self._post("/v1/agent/authenticate", {
             "username": username, "token": agent_token, "installation_id": installation_id,

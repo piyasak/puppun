@@ -9,8 +9,9 @@ SHA-256, and per Windows user, with no admin rights:
 2. adds the install folder to the user's PATH, so `punpun-agent` works in a new terminal;
 3. makes "punpun Agent" shortcuts (Start menu and desktop) that start `connect` in a window that
    stays open, so errors stay readable;
-4. when no token is stored yet, asks for the username and runs `login` (the token is typed at the
-   hidden prompt, never put on a command line; the clips folder is asked there, Q-33).
+4. opens the settings window (`agent/settings_gui.py`): a pairing code from the web instead of a
+   username and token, the clips folder (Q-33), the customer's videos folder (Q-17) and whether
+   the Agent starts with Windows. A "ตั้งค่า punpun Agent" shortcut opens it again later.
 
 `--uninstall` removes the PATH entry, the shortcuts and the program folder. The Agent's data
 (installation_id, token, journal) and the clips folder are kept.
@@ -32,6 +33,9 @@ from agent import updater
 from agent.identity import default_data_dir
 
 SHORTCUT = "punpun Agent.lnk"
+SETTINGS_SHORTCUT = "ตั้งค่า punpun Agent.lnk"
+DESCRIPTIONS = {"connect": "punpun Agent: เชื่อมต่อ server และทำงานที่ตั้งไว้",
+                "settings": "punpun Agent: บัญชี โฟลเดอร์คลิป โฟลเดอร์วิดีโอ และการเริ่มเองตอนเปิดเครื่อง"}
 START_MENU_GROUP = "punpun"
 
 
@@ -103,17 +107,20 @@ def shortcut_dirs() -> list[Path]:
     return [Path(programs) / START_MENU_GROUP, Path(desktop)]
 
 
-def make_shortcut(lnk: Path, launcher: Path, workdir: Path) -> None:
-    """A shortcut to `connect` in a console that stays open after the Agent stops (errors readable).
-    Values travel in environment variables, so no path is ever quoted into the script."""
+def make_shortcut(lnk: Path, launcher: Path, workdir: Path, *, command: str = "connect", minimized: bool = False,
+                  keep_open: bool = True, icon: Path | None = None) -> None:
+    """A shortcut to `connect` (or another command) in a console that stays open after the Agent stops,
+    so errors stay readable. Values travel in environment variables, so no path is ever quoted into
+    the script."""
     lnk.parent.mkdir(parents=True, exist_ok=True)
     comspec = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe")
     _powershell("$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:PP_LNK);"
                 "$s.TargetPath=$env:PP_TARGET;$s.Arguments=$env:PP_ARGS;$s.WorkingDirectory=$env:PP_WD;"
-                "$s.Description=$env:PP_DESC;$s.IconLocation=$env:PP_ICON;$s.Save()",
-                {"PP_LNK": str(lnk), "PP_TARGET": comspec, "PP_ARGS": f'/k ""{launcher}" connect"',
-                 "PP_WD": str(workdir), "PP_DESC": "punpun Agent: เชื่อมต่อ server และทำงานที่ตั้งไว้",
-                 "PP_ICON": f"{comspec},0"})
+                "$s.Description=$env:PP_DESC;$s.IconLocation=$env:PP_ICON;$s.WindowStyle=[int]$env:PP_STYLE;$s.Save()",
+                {"PP_LNK": str(lnk), "PP_TARGET": comspec,
+                 "PP_ARGS": f'{"/k" if keep_open else "/c"} ""{launcher}" {command}"',
+                 "PP_WD": str(workdir), "PP_DESC": DESCRIPTIONS.get(command, "punpun Agent"),
+                 "PP_ICON": f"{icon},0" if icon and icon.is_file() else f"{comspec},0", "PP_STYLE": "7" if minimized else "1"})
 
 
 # --- setup / uninstall ----------------------------------------------------------------------------
@@ -143,6 +150,10 @@ def setup(args) -> int:
         print(f"ติดตั้งไม่สำเร็จ: {exc}")
         return 1
     launcher = root / "punpun-agent.cmd"
+    icon = root / "punpun.ico"  # a stable path for the shortcuts' icon (the exe moves with each version)
+    bundled_icon = root / "versions" / version / "_internal" / "agent" / "assets" / "punpun.ico"
+    if bundled_icon.is_file():
+        shutil.copy2(bundled_icon, icon)
     print(f"ติดตั้งเวอร์ชัน {version} ที่ {root}")
     report = {"installed": version, "launcher": str(launcher), "path_added": False, "shortcuts": []}
     if not args.no_path:
@@ -150,34 +161,26 @@ def setup(args) -> int:
         print("เพิ่มคำสั่ง punpun-agent ใน PATH แล้ว (ใช้ได้ในหน้าต่าง terminal ที่เปิดใหม่)"
               if report["path_added"] else "คำสั่ง punpun-agent อยู่ใน PATH อยู่แล้ว")
     if not args.no_shortcuts:
-        workdir = Path.home() / "Videos"  # `connect` reads the customer's own files from here (Q-17)
+        # Fallback videos folder for `connect` when none is chosen in the settings window (Q-17)
+        workdir = Path.home() / "Videos"
         for folder in ([args.shortcut_dir] if args.shortcut_dir else shortcut_dirs()):
-            make_shortcut(folder / SHORTCUT, launcher, workdir if workdir.is_dir() else Path.home())
-            report["shortcuts"].append(str(folder / SHORTCUT))
-        print("สร้าง shortcut \"punpun Agent\" ที่ Start menu และหน้าจอ desktop แล้ว")
+            make_shortcut(folder / SHORTCUT, launcher, workdir if workdir.is_dir() else Path.home(), icon=icon)
+            make_shortcut(folder / SETTINGS_SHORTCUT, launcher, Path.home(), command="settings", minimized=True,
+                          keep_open=False, icon=icon)
+            report["shortcuts"] += [str(folder / SHORTCUT), str(folder / SETTINGS_SHORTCUT)]
+        print("สร้าง shortcut \"punpun Agent\" และ \"ตั้งค่า punpun Agent\" ที่ Start menu และหน้าจอ desktop แล้ว")
+    notices = root / "versions" / version / "adb"
+    if notices.is_dir():  # Apache-2.0 §4: say where the licence and notices of the bundled adb are
+        print(f"ซอฟต์แวร์ของบุคคลที่สาม (adb จาก Android): สัญญาอนุญาตและประกาศอยู่ที่ {notices}")
     if not args.no_login:
-        report["login"] = _login(launcher, data, server)
+        # The settings window: pairing code, clips folder, videos folder, start with Windows
+        print("เปิดหน้าต่างตั้งค่า: ใส่รหัสเชื่อมต่อจากหน้า Agent บนเว็บ แล้วเลือกโฟลเดอร์")
+        settings = [str(launcher), "settings", "--server", server]
+        if args.data_dir:
+            settings += ["--data-dir", str(data)]
+        report["settings"] = subprocess.run(settings).returncode
     print(json.dumps(report, ensure_ascii=False))
     return 0
-
-
-def _login(launcher: Path, data: Path, server: str) -> str:
-    if (data / "token.bin").exists():
-        print("เครื่องนี้ login ไว้แล้ว (เปลี่ยนได้ด้วย punpun-agent login)")
-        return "already"
-    print("\nเชื่อม Agent กับบัญชีของคุณ: ใช้ username ที่ตั้งบนเว็บ และ Agent token จากหน้า Agent tokens")
-    username = _ask("Username (Enter = ทำทีหลัง): ")
-    if not username:
-        print(f"ทำทีหลังได้ด้วย: punpun-agent login --server {server} --username <username>")
-        return "skipped"
-    for _ in range(3):
-        # The token is typed at the Agent's hidden prompt, never put on a command line
-        if subprocess.run([str(launcher), "login", "--server", server, "--username", username]).returncode == 0:
-            return "done"
-        if _ask("ลองใหม่? (y/N): ").lower() != "y":
-            break
-    print(f"login ทีหลังได้ด้วย: punpun-agent login --server {server} --username {username}")
-    return "failed"
 
 
 def uninstall(args) -> int:
@@ -190,8 +193,13 @@ def uninstall(args) -> int:
         remove_from_user_path(root)
     for folder in ([args.shortcut_dir] if args.shortcut_dir else shortcut_dirs()):
         (folder / SHORTCUT).unlink(missing_ok=True)
+        (folder / SETTINGS_SHORTCUT).unlink(missing_ok=True)
         if folder.name == START_MENU_GROUP and folder.is_dir() and not any(folder.iterdir()):
             folder.rmdir()
+    if not args.shortcut_dir:  # start with Windows (settings window)
+        from agent.settings import STARTUP_LINK, startup_folder
+
+        (startup_folder() / STARTUP_LINK).unlink(missing_ok=True)
     shutil.rmtree(root, ignore_errors=True)
     print(f"ถอนการติดตั้งแล้ว (ข้อมูล Agent และโฟลเดอร์คลิปยังอยู่: {args.data_dir or default_data_dir()})")
     return 0

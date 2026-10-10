@@ -67,6 +67,7 @@ CLIPFLOW_LOAD=1 .venv/Scripts/python -m pytest services/api/tests/test_dispatch_
 .venv/Scripts/python tools/staging_rehearsal.py               # G2-05: real staging image, deploy v1 -> release v2 -> rollback v1 on a throwaway DB (DB_SCHEMA=clipflow); runbook docs/runbooks/staging.md
 .venv/Scripts/python tools/build_agent.py [version]          # PyInstaller bundle -> var/dist/punpun-agent-<v>.zip (+ .sha256), E-44 + double-click var/dist/punpun-agent-setup-<v>.exe (E-50: PATH, shortcuts, login; --uninstall)
 .venv/Scripts/python -m agent install --bundle B --sha256 H  # install/update (refused while a post is between Submit and its result); rollback | login | status | version
+.venv/Scripts/python -m agent settings | pair --server S --code XXXX-XXXX   # Q-35: settings window (pairing code, clips/videos folders, start with Windows) | link without a token | licenses
 CLIPFLOW_AGENT_BUNDLE=1 .venv/Scripts/python -m pytest tests/test_agent_bundle.py   # opt-in: packaged exe install -> self-update -> rollback
 CLIPFLOW_AUTHORIZED_POST=<decision> .venv/Scripts/python -m pytest services/api/tests/test_authorized_real_post.py -s   # ONLY with a recorded PO grant (Q-29 is used up); one real post
 .venv/Scripts/python -m agent.cli ui-rehearsal --serial S --file clip.mp4 --caption "..." --account HANDLE   # Q-27: TikTok steps up to Post on the QA phone, never presses Post, force-stops TikTok

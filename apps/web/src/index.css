@@ -424,3 +424,10 @@ a.btn { display: inline-block; text-decoration: none; }
 .download .btn { text-decoration: none; }
 .hash { word-break: break-all; font-size: 0.8rem; }
 .steps { margin: 12px 0 0; padding-left: 1.4em; display: grid; gap: 6px; }
+
+/* Pairing code (PO 2026-10-10) */
+.pairing { display: grid; gap: 8px; margin: 8px 0 4px; }
+.pairing-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.pairing-row .field { margin: 0; min-width: 200px; }
+.pairing-code { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0; }
+.pairing-code code { font-size: 1.6rem; letter-spacing: 0.12em; padding: 6px 14px; border-radius: var(--radius-sm); background: var(--surface-strong); color: var(--text); }

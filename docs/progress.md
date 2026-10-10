@@ -4,7 +4,25 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 02:xx) — delete clip files after a verified post (Q-34)
+### Latest slice (2026-10-10 04:xx) — Agent settings window + pairing code (Q-35)
+- PO: simpler setup for the clips folder, the videos folder, username and token; chose a short pairing code and account + 2 folders + start with Windows
+- Server: migration 0014 `agent_pairing_codes` (SHA-256 only, 10 min, single use, ≤ 5 open per Environment); `POST /v1/agent-pairing-codes` (web) and `POST /v1/agent/pair` (Agent; sign-in rate limit; wrong/used/expired answer alike) → the PC's own Agent token "PC <name>" (365 days)
+- Agent: `agent/settings.py` (pair, folders, Startup shortcut) + `agent/settings_gui.py` (tkinter, Leelawadee UI so Thai is readable); `punpun-agent settings` / `pair`; config keeps `media_dir`, `connect` uses it; the setup opens the window instead of console prompts and adds a "ตั้งค่า punpun Agent" shortcut; uninstall removes it and the Startup shortcut
+- Web: Agents page "สร้างรหัสเชื่อมต่อ" (Environment picker when several, big code, countdown); steps rewritten; token + `login` kept for advanced users
+- Commands: integration 251 passed / 9 skipped (new test_pairing 6), unit 134 (new test_agent_settings 6), ruff/tsc clean; packaged 0.3.2 (bundle f7459beb…, setup 5e78a54f…): tkinter bundled, the settings window opens from the exe (var/evidence/agent-settings-packaged.png); E2E 17 passed after the PO restarted Docker (new: pairing code on the web → the Agent pairs → signs in → the code cannot be reused)
+- PO: the window should look like the web theme, not a grey Windows app, with the logo from `logo/`: dark tokens from apps/web/src/index.css (bg #050506, cards #0c0c0f with 16 px rounded borders drawn on canvases, fields #0f0f12 with the focus ring colour, indigo primary #5e6ad2 rounded buttons with hover), messages shown in the window instead of Windows message boxes, dark title bar (DWM immersive dark mode), DPI-aware; header = the logo mark + "punpun Agent"
+- Logo: `agent/assets/` made from logo/sub.png with ffmpeg (white removed): mark-40/96.png for the window, punpun.ico for the exe, the setup exe and the shortcuts (copied to the install root so the path stays the same across versions)
+- Packaged 0.3.2 (bundle 3c971050…, setup 3058d0b1…): window opens from the exe with the logo and dark title bar (var/evidence/agent-settings-packaged.png); assets and icon present in the install
+- Next: PO tries the setup on this PC; commit into PR #11 when asked
+
+### Previous slice (2026-10-10 03:xx) — bundled adb: Apache-2.0 §4 notices (E-51)
+- PO sent the 4 Apache-2.0 duties; done in the bundle's `adb` folder: LICENSE.txt (full Apache 2.0, `agent/licenses/Apache-2.0.txt`), NOTICE.txt from platform-tools unchanged, README.txt saying the binaries are unmodified (with their SHA-256 and the AOSP source link), copyright untouched (the build checks each copied file's SHA-256 against the original)
+- Visible to the user: the setup prints where the notices are; new `punpun-agent licenses` command
+- Checked on the packaged 0.3.2 (bundle sha256 2618ac4f…, setup 5c441d2b…): LICENSE.txt = repo text, NOTICE.txt byte-identical to the SDK's, adb.exe SHA-256 = the SDK's
+- Still the PO's call: the prebuilt adb.exe is distributed by Google under the Android SDK License Agreement; Apache 2.0 covers the AOSP source. Building adb from AOSP source would make it Apache-only
+- Next: commit into PR #11 when asked
+
+### Previous slice (2026-10-10 02:xx) — delete clip files after a verified post (Q-34)
 - PO: set when creating the job; delete permanently once posted, so the clips folder does not fill up
 - Migration 0013 (expand-only): `jobs.delete_after_post` (default false), `clips.agent_installation_id` (set from the session on clip_rendered), `clips.agent_file_deleted_at`
 - API: job create/detail `delete_after_post`; Agent `GET /v1/agent/clips/deletable` (this installation's kept clips of such jobs with a VERIFIED_SUCCESS post and no post still to come or unsettled; UNKNOWN keeps the file) and `POST /v1/agent/clips/{id}/file-deleted` (idempotent, audited); a deleted clip is excluded from scheduling and refused at dispatch (FILE_DELETED)
