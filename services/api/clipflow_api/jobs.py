@@ -17,7 +17,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ from . import billing, clips, quota
 from .agent_sessions import AgentContext
 from .entitlements import entitlement
 from .errors import ApiError
-from .models import Clip, Environment, Job, JobEvent, RightsAcceptance
+from .models import Clip, Environment, Job, JobEvent, RightsAcceptance, ScheduleItem
 from .sources import check_file_label, classify_url
 
 LEASE_S = 300
@@ -78,7 +78,8 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
 
     billing.require_active(entitlement(db, workspace_id).cycle)  # an expired subscription makes no new jobs
     # Early, friendly check; the binding reservation happens when the clip count is known (E-04).
-    if quota.summary(db, workspace_id, now())["available"] <= 0:
+    clips = quota.summary(db, workspace_id, now())
+    if not clips["unlimited"] and clips["available"] <= 0:
         raise ApiError(409, "QUOTA_EXHAUSTED", "โควตาคลิปของเดือนนี้หมดแล้ว")
 
     job = Job(
@@ -106,6 +107,54 @@ def _finish(db: Session, job: Job, state: str, *, code: str | None = None, detai
     job.lease_session_id, job.lease_expires_at = None, None
     job.finished_at = job.updated_at = now()
     job.state_version += 1
+
+
+MAX_RESETS = 10
+
+
+def remake_indexes(db: Session, job: Job) -> list[int]:
+    """Delivered clips kept on an Agent's PC that may still be posted: not deleted after posting and
+    not already posted (a posted clip needs no file)."""
+    posted = select(ScheduleItem.clip_id).where(ScheduleItem.state == "VERIFIED_SUCCESS")
+    rows = db.scalars(select(Clip.clip_index).where(
+        Clip.job_id == job.id, Clip.uploaded_at.is_not(None), Clip.file_location == "agent",
+        Clip.agent_file_deleted_at.is_(None), Clip.id.not_in(posted)).order_by(Clip.clip_index)).all()
+    return list(rows)
+
+
+def reset(db: Session, job: Job) -> str:
+    """Start a job again (PO 2026-10-10). Returns "remake" or "restart".
+
+    - remake: clips were delivered and their files stay on an Agent's PC (Q-33). The Agent makes the
+      missing files again from the same source with the same seed (same selection; usually the same
+      file and hash) or finds them where they were moved. Nothing is charged again (quota is settled
+      once per clip). Posts parked because the file was missing go back to their schedule when done.
+    - restart: nothing was delivered (e.g. the source file was not found). The job starts over from
+      the source; quota is reserved again when the Agent validates it (it was released on failure).
+    """
+    if job.state not in TERMINAL or job.state == "CANCELLED":
+        raise ApiError(409, "JOB_NOT_RESETTABLE", "เริ่มงานใหม่ได้เฉพาะงานที่จบแล้วหรือล้มเหลว (ยกเลิกแล้วเริ่มใหม่ไม่ได้)",
+                       {"state": job.state})
+    if job.reset_count >= MAX_RESETS:
+        raise ApiError(409, "TOO_MANY_RESETS", "เริ่มงานนี้ใหม่หลายครั้งแล้ว สร้างงานใหม่แทน")
+    at = now()
+    delivered = db.scalar(select(func.count()).select_from(Clip).where(Clip.job_id == job.id,
+                                                                        Clip.uploaded_at.is_not(None)))
+    if delivered:
+        if not remake_indexes(db, job):
+            raise ApiError(409, "NOTHING_TO_REMAKE", "ไม่มีคลิปที่ต้องทำไฟล์ใหม่ (โพสต์แล้วหรือลบไฟล์แล้วทั้งหมด)")
+        job.state, mode = "SOURCE_VALIDATED", "remake"
+        job.remake_requested_at = at
+    else:
+        db.execute(delete(Clip).where(Clip.job_id == job.id))  # reported but never delivered
+        job.state, mode = "RECEIVED", "restart"
+        job.planned_clips, job.quota_period, job.source_duration_s, job.notice = None, None, None, None
+    job.error_code = job.error_detail = None
+    job.lease_session_id, job.lease_expires_at = None, None
+    job.attempts, job.finished_at, job.updated_at = 0, None, at
+    job.reset_count += 1
+    job.state_version += 1
+    return mode
 
 
 def cancel(db: Session, job: Job) -> None:
@@ -255,8 +304,14 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
             if existing.uploaded_at is None and checks is not None:
                 existing.check_results, existing.agent_path = checks, agent_path
             return
-        if existing.uploaded_at is not None:  # delivered files are never swapped
+        if existing.uploaded_at is not None and job.remake_requested_at is None:  # delivered files are never swapped
             raise ApiError(409, "CLIP_CONFLICT", "คลิปลำดับนี้ถูกรายงานแล้วด้วยไฟล์อื่น")
+        if existing.uploaded_at is not None:
+            # Remake (PO 2026-10-10) gave a different file: it must be delivered and approved again; scheduled
+            # posts bound to the old hash are parked by the approval rules (FILE_CHANGED), never posted blindly.
+            existing.uploaded_at = existing.preview_key = None
+            existing.approved_sha256 = existing.approved_metadata_version = existing.approved_at = None
+            existing.approval_mode = existing.approved_by = None
         # Reported but never delivered: an Agent that restarted mid-job rendered it again (E-37).
         existing.start_ms, existing.end_ms, existing.duration_ms = int(e["start_ms"]), int(e["end_ms"]), duration_ms
         existing.render_sha256, existing.size_bytes = sha, int(e["size_bytes"])
@@ -290,11 +345,29 @@ def _completed(db: Session, job: Job, e: dict, at: datetime) -> None:
         return
     if len(delivered) < (job.planned_clips or 0):
         job.notice = "PARTIAL_RENDER"
+    if job.remake_requested_at is not None:
+        _after_remake(db, job, at)
     _finish(db, job, "READY_FOR_REVIEW", reason="job_completed_short")
+
+
+def _after_remake(db: Session, job: Job, at: datetime) -> None:
+    """The files are back: posts parked as FILE_UNAVAILABLE return to their schedule (next allowed time)."""
+    from . import posts, schedules
+
+    job.remake_requested_at = None
+    items = db.scalars(select(ScheduleItem).join(Clip, Clip.id == ScheduleItem.clip_id).where(
+        Clip.job_id == job.id, ScheduleItem.state == "NEEDS_ACTION", ScheduleItem.reason == "FILE_UNAVAILABLE")
+        .with_for_update(of=ScheduleItem)).all()
+    for item in items:
+        if schedules.dispatchable(db, item, expected_state="NEEDS_ACTION") is None:
+            posts.retry(db, item, item.state_version)
+    for clip in db.scalars(select(Clip).where(Clip.job_id == job.id)).all():
+        schedules.sync_clip_items(db, clip)  # a remade clip with a new file parks its posts until approved
 
 
 def _failed(db: Session, job: Job, e: dict, at: datetime) -> None:
     code = str(e.get("code") or "AGENT_ERROR")[:40]
+    job.remake_requested_at = None  # a failed remake leaves the delivered clips as they were
     delivered = db.scalars(select(Clip.id).where(Clip.job_id == job.id, Clip.uploaded_at.is_not(None))).first()
     if delivered is not None:  # keep what was delivered (uploaded); the rest is released
         job.notice = "PARTIAL_RENDER"

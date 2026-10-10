@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from .. import audit, billing, quota
 from ..deps import WebAuth, get_db, web_auth
-from ..entitlements import entitlement
+from ..entitlements import default_plan, entitlement
 from ..errors import ApiError, not_found
 from ..models import Payment, Plan
 from ..tenancy import get_owned, scoped
@@ -42,6 +42,13 @@ def plan_out(p: Plan) -> dict:
                        "devices": p.max_devices, "clips_per_cycle": p.clips_per_month}}
 
 
+def trial_out(db: Session, version: int | None = None) -> dict:
+    """What a new Workspace gets (the latest trial version), for the landing page and the plan list."""
+    p = default_plan(db, version)
+    return {"days": p.interval_days, "clips": p.clips_per_month, "devices": p.max_devices,
+            "registered_agents": p.max_registered_agents, "price_satang": p.price_satang}
+
+
 def payment_out(db: Session, pay: Payment) -> dict:
     plan = db.get(Plan, pay.plan_id)
     return {"id": str(pay.id), "plan": {"code": plan.code, "version": plan.version, "name": plan.name},
@@ -60,9 +67,10 @@ class SimulateIn(BaseModel):
 
 
 @router.get("/plans")
-def plans(db: Session = Depends(get_db)):
+def plans(request: Request, db: Session = Depends(get_db)):
     return {"items": [plan_out(p) for p in billing.purchasable(db)],
-            "note": "ราคาเป็นตัวอย่าง ยังไม่อนุมัติ (D05) — ระบบชำระเงินเป็น sandbox เท่านั้น",
+            "trial": trial_out(db, request.app.state.settings.default_plan_version),
+            "note": "ระบบชำระเงินยังเป็น sandbox — ยังไม่รับเงินจริง (G6-01/G6-02)",
             "refund_policy": "ไม่คืนเงินทุกกรณี"}
 
 

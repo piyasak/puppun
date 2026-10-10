@@ -7,6 +7,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { api } from '../lib/api'
+import { baht, clipsLabel, type PlanList } from '../lib/plans'
 import './landing.css'
 
 const STEPS = [
@@ -24,12 +26,24 @@ const AUDIENCES = [
 
 const FAQ = [
   { q: 'ต้องมีอะไรบ้าง?', a: 'คอมพิวเตอร์ Windows สำหรับติดตั้ง Agent, โทรศัพท์ Android ที่เปิด USB debugging และแอป TikTok ที่ล็อกอินบัญชีของคุณไว้แล้ว' },
-  { q: 'วิดีโอของฉันถูกส่งขึ้นเซิร์ฟเวอร์ไหม?', a: 'การดาวน์โหลด ตัด และเรนเดอร์ทำบนเครื่องของคุณ ระบบรับเฉพาะคลิปที่ตัดเสร็จแล้วมาให้ดูตัวอย่างและอนุมัติ และลบไฟล์ตามระยะเวลาเก็บของแพ็กเกจ' },
+  { q: 'วิดีโอของฉันถูกส่งขึ้นเซิร์ฟเวอร์ไหม?', a: 'ไม่ส่ง การดาวน์โหลด ตัด และเรนเดอร์ทำบนเครื่องของคุณ คลิปเก็บอยู่ในโฟลเดอร์ที่คุณเลือก ระบบรับแค่ผลตรวจไฟล์และภาพนิ่งไว้ให้ดูและอนุมัติ และตั้งให้ลบไฟล์หลังโพสต์สำเร็จได้' },
+  { q: 'ทดลองฟรีแล้วต้องจ่ายอัตโนมัติไหม?', a: 'ไม่ ช่วงทดลองไม่ต้องใช้บัตร เมื่อครบกำหนดระบบจะหยุดสร้างงานใหม่จนกว่าคุณเลือกแพ็กเกจเอง' },
   { q: 'จะโพสต์ซ้ำหรือผิดบัญชีได้ไหม?', a: 'ก่อนโพสต์ Agent ตรวจว่าโทรศัพท์ล็อกอินบัญชีที่ตั้งไว้ ถ้าไม่ตรงจะหยุดทันที และถ้าไม่แน่ใจว่าโพสต์สำเร็จหรือไม่ ระบบจะหยุดรอให้คุณตรวจ ไม่ส่งซ้ำเอง' },
   { q: 'โทรศัพท์รุ่นไหนใช้ได้?', a: 'ตอนนี้อยู่ในช่วงทดสอบกับรุ่นที่ผ่านการตรวจแล้ว เครื่องที่ยังไม่ได้ทดสอบจะถูกแจ้งในหน้าโทรศัพท์และไม่ถูกใช้โพสต์' },
   { q: 'ใช้กับวิดีโอของคนอื่นได้ไหม?', a: 'ไม่ได้ ใช้ได้เฉพาะเนื้อหาที่คุณเป็นเจ้าของหรือได้รับอนุญาต ระบบไม่ลบลายน้ำและไม่ดัดแปลงภาพเพื่อหลบการตรวจของแพลตฟอร์ม' },
   { q: 'คลิปยาวเท่าไร?', a: 'ค่าเริ่มต้น 3–5 นาที และเลือก 1–3 นาที หรือ 30–60 วินาทีได้ ถ้าต้นฉบับสั้นเกิน ระบบแจ้งจำนวนที่ทำได้จริง ไม่เติมคลิปซ้ำให้ครบ' },
 ]
+
+/** The live plan list (prices are set by admins, so the page never shows a stale price). */
+function usePlans(): PlanList | null {
+  const [plans, setPlans] = useState<PlanList | null>(null)
+  useEffect(() => {
+    let alive = true
+    api<PlanList>('/v1/billing/plans').then((p) => alive && setPlans(p)).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+  return plans
+}
 
 /** Fade/slide sections in once as they enter the viewport. */
 function useReveal(root: React.RefObject<HTMLElement | null>) {
@@ -77,6 +91,8 @@ export function LandingPage() {
   const page = useRef<HTMLDivElement>(null)
   const hero = useRef<HTMLElement>(null)
   const [menu, setMenu] = useState(false)
+  const plans = usePlans()
+  const trialDays = plans?.trial.days ?? 5
   useReveal(page)
   useHeroParallax(hero)
   useEffect(() => { document.title = 'punpun — ตัดคลิปสั้นและตั้งเวลาโพสต์ TikTok จากวิดีโอของคุณ' }, [])
@@ -88,7 +104,7 @@ export function LandingPage() {
       <header className="lp-nav">
         <a className="auth-brand lp-brand" href="#top"><span className="brand-mark" aria-hidden="true">p</span> punpun</a>
         <nav aria-label="ส่วนของหน้า" className={`lp-links${menu ? ' open' : ''}`} onClick={() => setMenu(false)}>
-          <a href="#how">ทำงานอย่างไร</a><a href="#features">จุดเด่น</a><a href="#who">เหมาะกับใคร</a><a href="#faq">คำถามที่พบบ่อย</a>
+          <a href="#how">ทำงานอย่างไร</a><a href="#features">จุดเด่น</a><a href="#who">เหมาะกับใคร</a><a href="#pricing">ราคา</a><a href="#faq">คำถามที่พบบ่อย</a>
         </nav>
         <div className="lp-nav-actions">
           <ThemeToggle />
@@ -113,7 +129,7 @@ export function LandingPage() {
             </h1>
             <p className="lp-lead">punpun ตัดคลิปแนวตั้งพร้อมซับไทยบนเครื่องของคุณ ให้คุณตรวจและอนุมัติ แล้วโพสต์ผ่านโทรศัพท์ของคุณตามตาราง พร้อมยืนยันว่าโพสต์ขึ้นบัญชีที่ถูกต้อง</p>
             <div className="lp-cta">
-              <Link to="/signup" className="btn btn-primary lp-btn-lg">ทดลองใช้ฟรี 30 วัน</Link>
+              <Link to="/signup" className="btn btn-primary lp-btn-lg">ทดลองใช้ฟรี {trialDays} วัน</Link>
               <a href="#how" className="btn btn-secondary lp-btn-lg">ดูวิธีทำงาน</a>
             </div>
             <p className="lp-note">ไม่ต้องใช้บัตรเครดิตตอนสมัคร</p>
@@ -196,6 +212,37 @@ export function LandingPage() {
           </div>
         </section>
 
+        <section id="pricing" className="lp-section" aria-labelledby="pricing-title">
+          <p className="lp-eyebrow lp-reveal">ราคา</p>
+          <h2 id="pricing-title" className="lp-h2 lp-reveal">เริ่มฟรี แล้วเลือกตามจำนวนโทรศัพท์</h2>
+          <div className="lp-pricing" data-testid="lp-pricing">
+            <article className="lp-card lp-price lp-reveal" data-testid="lp-plan-trial">
+              <h3>ทดลองฟรี</h3>
+              <p className="lp-price-amount">฿0<span> / {trialDays} วัน</span></p>
+              <ul>
+                <li>{clipsLabel(plans?.trial.clips ?? 30)}</li>
+                <li>โทรศัพท์ {plans?.trial.devices ?? 1} เครื่อง • PC {plans?.trial.registered_agents ?? 1} เครื่อง</li>
+                <li>ไม่ต้องใช้บัตร</li>
+              </ul>
+              <Link to="/signup" className="btn btn-secondary">ทดลองใช้ฟรี</Link>
+            </article>
+            {plans?.items.map((p, i) => (
+              <article key={p.code} className={`lp-card lp-price lp-reveal${i === 1 ? ' lp-price-pick' : ''}`} data-testid={`lp-plan-${p.code}`}>
+                {i === 1 && <span className="lp-tag">ยอดนิยม</span>}
+                <h3>{p.name}{p.example_price && <span className="badge badge-warn"> Demo</span>}</h3>
+                <p className="lp-price-amount">{baht(p.price_satang)}<span> / เดือน</span></p>
+                <ul>
+                  <li>{clipsLabel(p.limits.clips_per_cycle)} ต่อเดือน</li>
+                  <li>โทรศัพท์ {p.limits.devices} เครื่อง • PC {p.limits.registered_agents} เครื่อง</li>
+                  <li>ตัดคลิป ซับไทย ตั้งเวลาโพสต์ครบ</li>
+                </ul>
+                <Link to="/signup" className={`btn ${i === 1 ? 'btn-primary' : 'btn-secondary'}`}>เริ่มทดลองฟรี</Link>
+              </article>
+            ))}
+          </div>
+          {plans && <p className="lp-note lp-reveal">ราคารวมทุกฟีเจอร์ • ต่ออายุทีละเดือน ไม่ผูกสัญญา • {plans.refund_policy}</p>}
+        </section>
+
         <section id="faq" className="lp-section" aria-labelledby="faq-title">
           <p className="lp-eyebrow lp-reveal">คำถามที่พบบ่อย</p>
           <h2 id="faq-title" className="lp-h2 lp-reveal">ก่อนเริ่มใช้</h2>
@@ -208,7 +255,7 @@ export function LandingPage() {
 
         <section className="lp-final lp-reveal" aria-labelledby="final-title">
           <h2 id="final-title" className="lp-display lp-display-sm"><span className="lp-nw">เริ่มจากวิดีโอ</span> <span className="lp-nw">ที่คุณมีอยู่แล้ว</span></h2>
-          <p className="lp-lead">ทดลองใช้ฟรี 30 วัน แล้วเลือกแพ็กเกจที่เหมาะกับจำนวนคลิปและโทรศัพท์ของคุณหลังสมัคร</p>
+          <p className="lp-lead">ทดลองใช้ฟรี {trialDays} วัน แล้วเลือกแพ็กเกจที่เหมาะกับจำนวนคลิปและโทรศัพท์ของคุณ</p>
           <div className="lp-cta lp-cta-center">
             <Link to="/signup" className="btn btn-primary lp-btn-lg">สมัครและทดลองใช้ฟรี</Link>
             <Link to="/login" className="btn btn-secondary lp-btn-lg">มีบัญชีแล้ว เข้าสู่ระบบ</Link>

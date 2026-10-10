@@ -50,3 +50,37 @@ test('staff find a workspace and change it with an audited reason', async ({ pag
   grantRole(staff.email, 'none')
   await ctx.close()
 })
+
+test('admins set a price and open or close a plan for sale themselves (PO 2026-10-10)', async ({ page, request }) => {
+  const staff = await signUpAndOnboard(page, request)
+  grantRole(staff.email, 'admin')
+  await page.goto('/admin')
+  const starter = page.getByTestId('plan-starter')
+  await expect(starter).toContainText('฿200')
+  await expect(starter).toContainText('เปิดขาย')
+  const reason = 'ทดสอบเปิดปิดการขายจากหน้า Admin'
+
+  // Close for sale: the public plan list (landing page, checkout) no longer offers it
+  await starter.getByLabel('เหตุผล: starter').fill(reason)
+  await starter.getByRole('button', { name: 'ปิดขาย' }).click()
+  await expect(page.getByText('starter: ปิดขายแล้ว')).toBeVisible()
+  const listed = async () => ((await (await request.get('http://127.0.0.1:8001/v1/billing/plans')).json()).items as { code: string }[]).map((p) => p.code)
+  expect(await listed()).not.toContain('starter')
+
+  // Open again, then a new price as a new version
+  await page.getByTestId('plan-starter').getByLabel('เหตุผล: starter').fill(reason)
+  await page.getByTestId('plan-starter').getByRole('button', { name: 'เปิดขาย (Go live)' }).click()
+  await expect(page.getByText('starter: เปิดขายแล้ว')).toBeVisible()
+  expect(await listed()).toContain('starter')
+  const editor = page.getByTestId('plan-starter')
+  await editor.getByLabel('ราคา (บาท)').fill('250')
+  await editor.getByLabel('เหตุผล: starter').fill(reason)
+  await editor.getByRole('button', { name: 'บันทึกราคา/สิทธิ์ (เวอร์ชันใหม่)' }).click()
+  await expect(page.getByTestId('plan-starter')).toContainText('฿250')
+  await page.screenshot({ path: '../../var/evidence/e2e/admin-plans.png', fullPage: true })
+  // Back to the launch price for the rest of the run
+  await page.getByTestId('plan-starter').getByLabel('ราคา (บาท)').fill('200')
+  await page.getByTestId('plan-starter').getByLabel('เหตุผล: starter').fill(reason)
+  await page.getByTestId('plan-starter').getByRole('button', { name: 'บันทึกราคา/สิทธิ์ (เวอร์ชันใหม่)' }).click()
+  await expect(page.getByTestId('plan-starter')).toContainText('฿200')
+})

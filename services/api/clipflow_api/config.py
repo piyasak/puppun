@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     agent_setup_version: str = ""
     agent_setup_sha256: str = ""
     agent_setup_size_mb: str = ""  # text, so an empty dashboard value never stops the server
+    # Which trial version new Workspaces get; None = the latest (production). Tests pin the original demo
+    # trial (v1: 2 PCs / 2 sessions / 3 phones) that their limits were written against.
+    default_plan_version: int | None = None
     # Built web app (apps/web/dist) to serve from this process, same origin as the API (staging image).
     web_dist: str = ""
 

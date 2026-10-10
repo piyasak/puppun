@@ -11,7 +11,7 @@ export type Usage = {
   caps: Limits
   allocated: Limits
   in_use: Limits
-  clips: { period: string; limit: number; used: number; available: number }
+  clips: { period: string; limit: number | null; used: number; available: number | null; unlimited?: boolean }  // null = unlimited
 }
 
 export type AgentToken = {

@@ -182,4 +182,13 @@ test('a clip kept on the Agent shows its frames and where the file is, and can b
   await first.getByRole('button', { name: 'อนุมัติคลิปนี้ (ข้อความเวอร์ชัน 1)' }).click()
   await expect(first.getByTestId('approval')).toHaveText('อนุมัติแล้ว')
   await page.screenshot({ path: '../../var/evidence/e2e/clip-kept-on-agent.png', fullPage: true })
+
+  // PO 2026-10-10: the clips folder moved on the PC -> start the job again from its page
+  await page.getByRole('button', { name: 'เริ่มงานใหม่' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'เริ่มงานใหม่' }).click()
+  await expect(page.getByText('Agent จะหาไฟล์คลิปที่ถูกย้ายหรือทำไฟล์ใหม่', { exact: false })).toBeVisible()
+  const again = await agent.claim() as unknown as { id: string; remake: number[] }
+  expect(again.id).toBe(jobId)
+  expect(again.remake).toEqual([1, 2])  // both kept clips: found where they were moved, or made again
+  await expect(first.getByTestId('approval')).toHaveText('อนุมัติแล้ว')  // nothing is lost by asking
 })

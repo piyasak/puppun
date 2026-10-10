@@ -17,8 +17,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .. import audit, billing, quota, retention
+from .. import jobs as job_rules
 from ..deps import StaffAuth, admin_only, get_db, staff
-from ..entitlements import entitlement
+from ..entitlements import DEFAULT_PLAN_CODE, entitlement
 from ..errors import ApiError, not_found
 from ..models import AuditEvent, Device, Job, Membership, Payment, Plan, Subscription, User, Workspace
 
@@ -47,12 +48,21 @@ class QuotaAdjust(Reason):
 class NewPlanVersion(Reason):
     price_satang: int | None = Field(default=None, ge=0)
     clips_per_month: int | None = Field(default=None, ge=0)
+    unlimited_clips: bool | None = None  # True: no clip cap (stored as NULL); False with clips_per_month: a cap again
     max_registered_agents: int | None = Field(default=None, ge=0)
     max_concurrent_sessions: int | None = Field(default=None, ge=0)
     max_devices: int | None = Field(default=None, ge=0)
     retention_days: int | None = Field(default=None, ge=1, le=3650)
     is_purchasable: bool | None = None
     name: str | None = Field(default=None, max_length=100)
+    interval_days: int | None = Field(default=None, ge=1, le=366)  # e.g. the trial's 5 days
+    is_demo: bool | None = None  # shown as an example price ("Demo") rather than a real one
+
+
+class PlanStatus(Reason):
+    """Switches that change no entitlement anyone paid for, so they apply to the latest version in place."""
+    selling: bool | None = None  # offered on the plans page / checkout
+    demo: bool | None = None  # labelled as an example price (Demo) instead of a live price
 
 
 class RetentionRun(Reason):
@@ -215,7 +225,8 @@ def plans(who: StaffAuth = Depends(staff), db: Session = Depends(get_db)):
     return {"items": [{"id": str(p.id), "code": p.code, "version": p.version, "name": p.name, "price_satang": p.price_satang,
                        "clips_per_month": p.clips_per_month, "max_registered_agents": p.max_registered_agents,
                        "max_concurrent_sessions": p.max_concurrent_sessions, "max_devices": p.max_devices,
-                       "retention_days": p.retention_days, "is_purchasable": p.is_purchasable, "example": p.is_demo}
+                       "retention_days": p.retention_days, "interval_days": p.interval_days,
+                       "is_purchasable": p.is_purchasable, "example": p.is_demo}
                       for p in rows]}
 
 
@@ -226,7 +237,9 @@ def new_version(code: str, body: NewPlanVersion, request: Request, who: StaffAut
     base = db.scalars(select(Plan).where(Plan.code == code).order_by(Plan.version.desc())).first()
     if base is None:
         raise ApiError(404, "PLAN_NOT_FOUND", "ไม่พบแพ็กเกจนี้")
-    changes = body.model_dump(exclude={"reason"}, exclude_none=True)
+    changes = body.model_dump(exclude={"reason", "unlimited_clips"}, exclude_none=True)
+    if body.unlimited_clips:
+        changes["clips_per_month"] = None
     if not changes:
         raise ApiError(422, "VALIDATION_ERROR", "ไม่มีค่าที่เปลี่ยน")
     plan = billing.new_plan_version(db, base, changes, billing.now())
@@ -236,6 +249,47 @@ def new_version(code: str, body: NewPlanVersion, request: Request, who: StaffAut
                  details={"code": code, "from_version": base.version, "to_version": plan.version, "changes": changes})
     db.commit()
     return {"code": plan.code, "version": plan.version}
+
+
+@router.post("/plans/{code}/status")
+def plan_status(code: str, body: PlanStatus, request: Request, who: StaffAuth = Depends(admin_only),
+                db: Session = Depends(get_db)):
+    """Open or close a plan for sale, or switch its Demo label, without a new version (PO 2026-10-10)."""
+    latest = db.scalars(select(Plan).where(Plan.code == code).order_by(Plan.version.desc()).with_for_update()).first()
+    if latest is None:
+        raise ApiError(404, "PLAN_NOT_FOUND", "ไม่พบแพ็กเกจนี้")
+    if body.selling is None and body.demo is None:
+        raise ApiError(422, "VALIDATION_ERROR", "ไม่มีค่าที่เปลี่ยน")
+    if code == DEFAULT_PLAN_CODE and body.selling:
+        raise ApiError(422, "TRIAL_NOT_FOR_SALE", "แพ็กเกจทดลองใช้ให้ทุก Workspace ใหม่อัตโนมัติ ไม่เปิดขาย")
+    before = {"selling": latest.is_purchasable, "demo": latest.is_demo}
+    if body.selling is not None:
+        if body.selling:  # one purchasable version per plan
+            for older in db.scalars(select(Plan).where(Plan.code == code, Plan.id != latest.id)).all():
+                older.is_purchasable = False
+        latest.is_purchasable = body.selling
+    if body.demo is not None:
+        latest.is_demo = body.demo
+    after = {"selling": latest.is_purchasable, "demo": latest.is_demo}
+    audit.record(db, request, "admin.plan.status", actor_user_id=who.user_id, target_id=latest.id, reason=body.reason,
+                 details={"code": code, "version": latest.version, "before": before, "after": after})
+    db.commit()
+    return {"code": code, "version": latest.version, **after}
+
+
+@router.post("/jobs/{job_id}/reset")
+def admin_reset_job(job_id: uuid.UUID, body: Reason, request: Request, who: StaffAuth = Depends(admin_only),
+                    db: Session = Depends(get_db)):
+    """Support: start a customer's job again (missing clip files, new video location), with a reason."""
+    job = db.scalars(select(Job).where(Job.id == job_id).with_for_update()).first()
+    if job is None:
+        raise ApiError(404, "NOT_FOUND", "ไม่พบงานนี้")
+    before = job.state
+    mode = job_rules.reset(db, job)
+    audit.record(db, request, "admin.job.reset", workspace_id=job.workspace_id, actor_user_id=who.user_id,
+                 target_id=job.id, reason=body.reason, details={"mode": mode, "before": before})
+    db.commit()
+    return {"id": str(job.id), "state": job.state, "reset": mode}
 
 
 @router.post("/retention")

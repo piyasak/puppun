@@ -248,12 +248,18 @@ class _Job:
             planned = spec["planned_clips"] or 0
             if possible < planned:  # same seed, different source content: never mix two selections
                 raise JobFailure("SOURCE_CHANGED", f"ต้นฉบับตัดได้ {possible} คลิป แต่วางแผนไว้ {planned}")
+        remake = set(spec.get("remake") or [])  # start again (PO 2026-10-10): files missing on this PC
         todo = [(i, s) for i, s in enumerate(p.selection.segments[:planned], start=1)
-                if not self.reported.get(i, {}).get("uploaded")]
+                if i in remake or not self.reported.get(i, {}).get("uploaded")]
+        if remake:
+            self._bring_back_moved(remake)
+            self.r.log(f"งาน {self.id[:8]}: เริ่มใหม่ — หาหรือทำไฟล์คลิป {sorted(remake)} ใหม่")
 
         self.stage("DOWNLOADING")
         parts = {}
         for index, segment in todo:
+            if self._kept(index):
+                continue  # the file is here: re-report it, nothing to download
             parts[index] = self._guarded(url, lambda segment=segment: pipeline.fetch_part(p, segment,
                                                                                            self.r.max_height))
             self.check()
@@ -267,7 +273,7 @@ class _Job:
             self.check()
             out = self.home / f"clip_{index:02d}.mp4"
             earlier = self.reported.get(index)
-            if earlier and out.is_file() and _sha256(out) == earlier["sha256"]:
+            if self._kept(index):
                 # Rendered and reported before a restart: check it again and send what is missing.
                 self._deliver(index, out, earlier["duration_ms"], resend=True)
                 self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} แล้ว (ไฟล์เดิม)")
@@ -294,6 +300,28 @@ class _Job:
             self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} แล้ว")
         if failures and len(failures) == len(todo) and not any(c.get("uploaded") for c in self.reported.values()):
             raise JobFailure("RENDER_FAILED", f"render ไม่ผ่านทุกคลิป ({failures})")
+
+    def _kept(self, index: int) -> bool:
+        """This clip's reported file is in the job folder with the reported hash."""
+        earlier = self.reported.get(index)
+        out = self.home / f"clip_{index:02d}.mp4"
+        return bool(earlier) and out.is_file() and _sha256(out) == earlier["sha256"]
+
+    def _bring_back_moved(self, indexes: set[int]) -> None:
+        """A job folder moved by hand: put the files whose hash matches back where posting looks first."""
+        self.home.mkdir(parents=True, exist_ok=True)
+        for index in sorted(indexes):
+            earlier = self.reported.get(index)
+            out = self.home / f"clip_{index:02d}.mp4"
+            if not earlier or out.is_file():
+                continue
+            found = clips_folder.find_clip(self.r.data_dir, self.id, index, earlier["sha256"])
+            if found is not None and found != out:
+                shutil.move(str(found), str(out))
+                still = found.with_suffix(".jpg")
+                if still.is_file():
+                    shutil.move(str(still), str(out.with_suffix(".jpg")))
+                self.r.log(f"งาน {self.id[:8]}: พบคลิป {index} ที่ {found.parent} ย้ายกลับมาที่ {self.home}")
 
     def _checks(self, index: int, path: Path, duration_ms: int) -> dict:
         """The server's file checks, made here because the file never leaves this PC (Q-33)."""

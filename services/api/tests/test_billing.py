@@ -69,14 +69,16 @@ def ws_id(acc):
     return acc.body["workspace"]["id"]
 
 
-def test_plans_are_examples_and_checkout_prices_come_from_the_server(onboard):
+def test_launch_plans_and_checkout_prices_come_from_the_server(onboard):  # PO 2026-10-10 (D05)
     acc = onboard()
     plans = acc.get("/v1/billing/plans").json()
-    assert [p["code"] for p in plans["items"]] == ["starter", "pro", "business"]
-    assert all(p["example_price"] for p in plans["items"]) and "ตัวอย่าง" in plans["note"]
+    assert [(p["code"], p["price_satang"], p["limits"]["devices"], p["limits"]["registered_agents"],
+             p["limits"]["clips_per_cycle"]) for p in plans["items"]] == [
+        ("starter", 20000, 5, 1, 1000), ("pro", 40000, 10, 1, 2000), ("business", 88800, 20, 1, None)]
+    assert not any(p["example_price"] for p in plans["items"]) and "sandbox" in plans["note"]
     key = uuid.uuid4().hex
     first = acc.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": key, "amount_satang": 1})
-    assert first.status_code == 201 and first.json()["amount_satang"] == 99000  # client amount ignored
+    assert first.status_code == 201 and first.json()["amount_satang"] == 40000  # client amount ignored
     again = acc.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": key})
     assert again.status_code == 200 and again.json()["id"] == first.json()["id"]
     assert first.json()["status"] == "pending" and first.json()["checkout_url"].startswith("/billing/sandbox/")
@@ -96,7 +98,7 @@ def test_success_fail_and_pending_through_the_sandbox(onboard):  # G6-02
     out = acc.post(f"/v1/billing/sandbox/{paid['id']}/simulate", json={"outcome": "succeeded"}).json()
     assert out["payment"]["status"] == "succeeded" and out["payment"]["applied"] == "started"
     state = sub_state(acc)
-    assert (state["status"], state["plan"]["code"], state["quota"]["limit"], state["quota"]["used"]) == ("active", "pro", 150, 0)
+    assert (state["status"], state["plan"]["code"], state["quota"]["limit"], state["quota"]["used"]) == ("active", "pro", 2000, 0)
     history = acc.get("/v1/billing/payments").json()["items"]
     assert [p["status"] for p in history] == ["succeeded", "pending", "failed"]
 
@@ -105,7 +107,7 @@ def test_forged_repeated_and_late_events_never_grant_twice(onboard, client, app)
     acc = onboard()
     pay = buy(acc)
     ref = ref_of(app, pay["id"])
-    forged, _, _ = deliver(client, app, ref, "payment.succeeded", 99000, sign_with=b"not-the-secret")
+    forged, _, _ = deliver(client, app, ref, "payment.succeeded", 40000, sign_with=b"not-the-secret")
     assert forged.status_code == 400 and forged.json()["code"] == "INVALID_SIGNATURE"
     unsigned = client.post("/v1/billing/webhooks/sandbox", content=b'{"event_id":"x"}')
     assert unsigned.status_code == 400
@@ -113,14 +115,14 @@ def test_forged_repeated_and_late_events_never_grant_twice(onboard, client, app)
     assert cheap.json()["outcome"] == "amount_mismatch"
     assert sub_state(acc)["status"] == "trial"
 
-    ok, body, sig = deliver(client, app, ref, "payment.succeeded", 99000)
+    ok, body, sig = deliver(client, app, ref, "payment.succeeded", 40000)
     assert ok.json()["applied"] == "started"
     end = sub_state(acc)["cycle_end"]
     replay = client.post("/v1/billing/webhooks/sandbox", content=body, headers={SECRET_HEADER: sig})
     assert replay.json() == {"duplicate": True}
-    late, _, _ = deliver(client, app, ref, "payment.failed", 99000)  # arrives after success
+    late, _, _ = deliver(client, app, ref, "payment.failed", 40000)  # arrives after success
     assert late.json()["outcome"] == "ignored_out_of_order"
-    again, _, _ = deliver(client, app, ref, "payment.succeeded", 99000)  # a second success event id
+    again, _, _ = deliver(client, app, ref, "payment.succeeded", 40000)  # a second success event id
     assert again.json()["outcome"] == "ignored_out_of_order"
     state = sub_state(acc)
     assert state["cycle_end"] == end and state["paid_cycles_ahead"] == 0  # granted exactly once
@@ -146,7 +148,7 @@ def test_renewal_and_plan_change_take_over_at_the_cycle_boundary(onboard, app): 
     move_cycle(app, ws_id(acc), end_in=-timedelta(minutes=1))  # the pro cycle is over
     after = sub_state(acc)
     assert (after["status"], after["plan"]["code"], after["paid_cycles_ahead"]) == ("active", "business", 0)
-    assert after["cycle_start"] != start["cycle_start"] and after["quota"]["limit"] == 500
+    assert after["cycle_start"] != start["cycle_start"] and after["quota"]["unlimited"] and after["quota"]["limit"] is None
     assert after["quota"]["period"] == billing.cycle_key(datetime.fromisoformat(after["cycle_start"]))
 
 

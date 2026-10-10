@@ -13,19 +13,19 @@ test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
 test('environment limits and agent token lifecycle', async ({ page, request }) => {
   await signUpAndOnboard(page, request)
 
-  // Environments: demo plan caps, allocation, cap enforcement
+  // Environments: trial caps (1 PC, PO 2026-10-10), allocation, cap enforcement
   await page.getByRole('link', { name: 'Environments' }).click()
-  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('0 / 2')
+  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('0 / 1')
   await page.getByLabel('ชื่อ Environment').fill('สำนักงาน')
   await page.getByRole('button', { name: 'สร้าง Environment' }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'สำนักงาน' })).toBeVisible()
-  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('1 / 2')
+  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('1 / 1')
 
   await page.getByLabel('ชื่อ Environment').fill('บ้าน')
   await page.getByRole('spinbutton', { name: 'Agent ที่ลงทะเบียนได้', exact: true }).fill('2')
   await page.getByRole('button', { name: 'สร้าง Environment' }).click()
   await expect(page.getByRole('alert')).toHaveText('เกินจำนวนที่แพ็กเกจอนุญาต เมื่อรวมกับ Environment อื่นทั้งหมด')
-  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('1 / 2')
+  await expect(page.getByTestId('usage-registered_agent_limit')).toHaveText('1 / 1')
 
   // Token: create, shown once, copy
   await page.getByRole('navigation', { name: 'เมนูหลัก' }).getByRole('link', { name: 'Agent Token' }).click()

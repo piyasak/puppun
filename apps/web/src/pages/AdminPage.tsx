@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Shell } from '../components/Shell'
+import { AdminPlans } from '../components/AdminPlans'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
 import { formatDate } from '../lib/types'
+import { quotaText, type Quota } from '../lib/plans'
 
 /* P6.4 (E-46): platform staff. Support reads; admin changes, always with a reason that goes to
    the audit trail together with the values before and after. Customers never see this page
@@ -13,13 +15,13 @@ type WorkspaceRow = {
   subscription: { status: string; plan: string; cycle_end: string; paid_cycles_ahead: number }
 }
 type WorkspaceDetail = WorkspaceRow & {
-  quota: { used: number; limit: number; available: number }
+  quota: Quota
   counts: { jobs: number; devices: number }
   payments: { id: string; status: string; amount_satang?: number; created_at: string }[]
   audit: { action: string; at: string; reason: string | null; details: Record<string, unknown> | null }[]
 }
 type JobRow = { id: string; workspace_id: string; state: string; source: string; error_code: string | null; created_at: string }
-type PlanRow = { code: string; version: number; name: string; price_satang: number; clips_per_month: number; is_purchasable: boolean }
+type PlanRow = { code: string }
 
 function ReasonForm({ label, children, onSubmit }: {
   label: string
@@ -92,6 +94,17 @@ export function AdminPage() {
     }
   }
 
+  /** Start a customer's job again (missing clip files, new video location), with a reason. */
+  async function resetJob(jobId: string, reason: string) {
+    setError('')
+    try {
+      const out = await api<{ id: string; state: string; reset: string }>(`/v1/admin/jobs/${jobId}/reset`, { method: 'POST', body: { reason } })
+      setJobs((rows) => rows.map((r) => (r.id === out.id ? { ...r, state: out.state, error_code: null } : r)))
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
   async function findJobs(e: FormEvent) {
     e.preventDefault()
     try {
@@ -137,7 +150,7 @@ export function AdminPage() {
           <h2 id="detail-title">{detail.name}</h2>
           <dl className="facts">
             <dt>แพ็กเกจ</dt><dd>{detail.subscription.plan} • {detail.subscription.status} • ถึง {formatDate(detail.subscription.cycle_end)}</dd>
-            <dt>โควตา</dt><dd data-testid="admin-quota">ใช้ {detail.quota.used} จาก {detail.quota.limit} (เหลือ {detail.quota.available})</dd>
+            <dt>โควตา</dt><dd data-testid="admin-quota">{quotaText(detail.quota)}</dd>
             <dt>งาน / โทรศัพท์</dt><dd>{detail.counts.jobs} / {detail.counts.devices}</dd>
           </dl>
           {isAdmin && (
@@ -178,25 +191,18 @@ export function AdminPage() {
           <button type="submit" className="btn btn-primary btn-small">ค้นหา</button>
         </form>
         <table className="table">
-          <thead><tr><th>Job</th><th>สถานะ</th><th>ต้นฉบับ</th><th>ข้อผิดพลาด</th></tr></thead>
+          <thead><tr><th>Job</th><th>สถานะ</th><th>ต้นฉบับ</th><th>ข้อผิดพลาด</th>{isAdmin && <th>เริ่มงานใหม่</th>}</tr></thead>
           <tbody>{jobs.map((j) => (
-            <tr key={j.id}><td><code>{j.id.slice(0, 8)}</code><div className="hint">{formatDate(j.created_at)}</div></td>
-              <td>{j.state}</td><td>{j.source}</td><td>{j.error_code ?? '—'}</td></tr>
+            <tr key={j.id} data-testid="admin-job"><td><code>{j.id.slice(0, 8)}</code><div className="hint">{formatDate(j.created_at)}</div></td>
+              <td>{j.state}</td><td>{j.source}</td><td>{j.error_code ?? '—'}</td>
+              {isAdmin && (
+                <td><ReasonForm label="เริ่มงานใหม่" onSubmit={(reason) => resetJob(j.id, reason)} /></td>
+              )}</tr>
           ))}</tbody>
         </table>
       </section>
 
-      <section className="card" aria-labelledby="plans-admin-title">
-        <h2 id="plans-admin-title">แพ็กเกจ (ทุกเวอร์ชัน)</h2>
-        <p className="muted">ราคา/โควตาตั้งค่าที่นี่ภายหลัง (D05) โดยสร้างเวอร์ชันใหม่ ไม่แก้เวอร์ชันที่ลูกค้าจ่ายแล้ว</p>
-        <table className="table">
-          <thead><tr><th>แพ็กเกจ</th><th>ราคา</th><th>คลิป/รอบ</th><th>ขายอยู่</th></tr></thead>
-          <tbody>{plans.map((p) => (
-            <tr key={`${p.code}-${p.version}`}><td>{p.code} v{p.version}<div className="hint">{p.name}</div></td>
-              <td>฿{(p.price_satang / 100).toLocaleString('th-TH')}</td><td>{p.clips_per_month}</td><td>{p.is_purchasable ? 'ใช่' : '—'}</td></tr>
-          ))}</tbody>
-        </table>
-      </section>
+      <AdminPlans isAdmin={role === 'admin'} />
     </Shell>
   )
 }

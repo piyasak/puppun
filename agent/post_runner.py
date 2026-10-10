@@ -329,10 +329,10 @@ class _Post:
         want = clip["sha256"]
         from agent import clips_folder
 
-        for folder in clips_folder.search_order(self.r.data_dir):  # the chosen clips folder, then the old one
-            own = folder / clip["job_id"] / f"clip_{clip['index']:02d}.mp4"
-            if own.is_file() and sha256_file(own) == want:
-                return own
+        # The chosen clips folder, then the old one, then a job folder moved by hand (found by its hash)
+        own = clips_folder.find_clip(self.r.data_dir, clip["job_id"], clip["index"], want)
+        if own is not None:
+            return own
         cached = self.r.data_dir / "downloads" / f"{want}.mp4"
         if cached.is_file() and sha256_file(cached) == want:
             return cached

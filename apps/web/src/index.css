@@ -431,3 +431,14 @@ a.btn { display: inline-block; text-decoration: none; }
 .pairing-row .field { margin: 0; min-width: 200px; }
 .pairing-code { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 0; }
 .pairing-code code { font-size: 1.6rem; letter-spacing: 0.12em; padding: 6px 14px; border-radius: var(--radius-sm); background: var(--surface-strong); color: var(--text); }
+
+/* Admin: plans and prices (PO 2026-10-10) */
+.admin-plans { display: grid; gap: 14px; margin: 12px 0; }
+.admin-plan { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; background: var(--surface); }
+.admin-plan-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.admin-plan-head h3 { margin: 0; font-size: 1rem; }
+.admin-plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0; }
+.admin-plan-grid label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.admin-plan-grid label.check { display: flex; align-items: center; gap: 6px; color: var(--text); }
+.admin-plan-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.admin-plan-actions input { flex: 1 1 240px; min-width: 0; }

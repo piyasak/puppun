@@ -28,6 +28,10 @@ from clipflow_api.app import create_app
 from clipflow_api.config import Settings
 from clipflow_api.storage import LocalStorage
 
+# New Workspaces in tests start on the original demo trial (v1: 2 PCs / 2 sessions / 3 phones), which the
+# limit tests were written against; the launch trial (PO 2026-10-10) is tested on its own (test_launch_prices).
+os.environ.setdefault("DEFAULT_PLAN_VERSION", "1")
+
 API_DIR = Path(__file__).resolve().parents[1]
 ADMIN_URL = os.environ.get(
     "CLIPFLOW_TEST_DATABASE_URL", "postgresql+psycopg://clipflow:clipflow_dev@127.0.0.1:5432/clipflow"

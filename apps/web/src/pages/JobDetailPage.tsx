@@ -220,6 +220,8 @@ export function JobDetailPage() {
   const [job, setJob] = useState<JobDetail | null>(null)
   const [error, setError] = useState('')
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -251,6 +253,24 @@ export function JobDetailPage() {
     } catch (err) {
       setError((err as ApiError).message)
       setConfirmCancel(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Start again (PO 2026-10-10): missing clip files are found or made again; a failed job restarts. */
+  async function reset() {
+    setBusy(true)
+    try {
+      const out = await api<JobDetail & { reset: 'remake' | 'restart' }>(`/v1/jobs/${id}/reset`, { method: 'POST' })
+      setConfirmReset(false)
+      setNotice(out.reset === 'remake'
+        ? 'สั่งแล้ว: Agent จะหาไฟล์คลิปที่ถูกย้ายหรือทำไฟล์ใหม่ โพสต์ที่ค้างเพราะไฟล์หายจะกลับไปรอโพสต์เอง ไม่หักโควตาซ้ำ'
+        : 'สั่งแล้ว: งานจะเริ่มใหม่จากต้นฉบับเมื่อ Agent ว่าง')
+      await load()
+    } catch (err) {
+      setError((err as ApiError).message)
+      setConfirmReset(false)
     } finally {
       setBusy(false)
     }
@@ -291,9 +311,16 @@ export function JobDetailPage() {
               <dt>Seed</dt><dd><code>{job.seed}</code> (ใช้เลือกช่วงซ้ำได้)</dd>
               <dt>สร้าง</dt><dd>{formatDate(job.created_at)}{job.finished_at && ` • จบ ${formatDate(job.finished_at)}`}</dd>
             </dl>
+            {notice && <Alert kind="success">{notice}</Alert>}
+            {job.remaking && <Alert kind="info">กำลังเริ่มใหม่: Agent กำลังหาหรือทำไฟล์คลิปใหม่บนเครื่อง</Alert>}
             {!FINISHED.includes(job.state) && (
               <div className="form-actions">
                 <button type="button" className="btn btn-danger-outline" onClick={() => setConfirmCancel(true)}>ยกเลิกงาน</button>
+              </div>
+            )}
+            {FINISHED.includes(job.state) && job.state !== 'CANCELLED' && (
+              <div className="form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setConfirmReset(true)}>เริ่มงานใหม่</button>
               </div>
             )}
           </section>
@@ -316,6 +343,14 @@ export function JobDetailPage() {
           )}
         </>
       )}
+      <ConfirmDialog open={confirmReset} busy={busy} title="เริ่มงานนี้ใหม่?" confirmLabel="เริ่มงานใหม่"
+        onConfirm={reset} onCancel={() => setConfirmReset(false)}>
+        <p>ใช้เมื่อย้ายโฟลเดอร์คลิปหรือวิดีโอไปที่ใหม่แล้วงานหรือโพสต์ทำต่อไม่ได้</p>
+        <ul>
+          <li>มีคลิปแล้ว: Agent หาไฟล์ที่ถูกย้ายหรือทำไฟล์ใหม่จากต้นฉบับเดิม ไม่หักโควตาซ้ำ โพสต์ที่ค้างจะกลับไปรอโพสต์</li>
+          <li>ยังไม่มีคลิป: เริ่มใหม่จากต้นฉบับ (เช่น หลังย้ายวิดีโอไปโฟลเดอร์ที่ตั้งไว้)</li>
+        </ul>
+      </ConfirmDialog>
       <ConfirmDialog open={confirmCancel} busy={busy} danger title="ยกเลิกงานนี้?" confirmLabel="ยกเลิกงาน"
         onConfirm={cancel} onCancel={() => setConfirmCancel(false)}>
         <p>Agent จะหยุดผลิตคลิปที่เหลือ โควตาที่จองไว้แต่ยังไม่ได้ใช้จะคืนทั้งหมด คลิปที่ส่งถึงแล้วยังอยู่</p>

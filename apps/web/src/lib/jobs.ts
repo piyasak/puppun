@@ -14,6 +14,8 @@ export type Job = {
   environment_id: string
   requested_clips: number
   auto_clips: boolean  // Q-32: the count follows the source
+  reset_count: number
+  remaking: boolean  // started again: the Agent is finding or remaking clip files (PO 2026-10-10)
   delete_after_post: boolean  // delete each clip file on the Agent's PC once its post is verified
   planned_clips: number | null
   clip_min_s: number
