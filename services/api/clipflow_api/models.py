@@ -550,7 +550,7 @@ class Payment(Base):
     amount_satang: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
     provider: Mapped[str] = mapped_column(String(24))
-    provider_ref: Mapped[str] = mapped_column(String(64))
+    provider_ref: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(12))  # pending | succeeded | failed | refunded
     idempotency_key: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

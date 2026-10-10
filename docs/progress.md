@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 09:xx) — Stripe as the payment provider (D06)
+### Latest slice (2026-10-10) — fix: Stripe checkout 500 on staging
+- PO tried ฿200 on staging with Stripe test keys: "Internal Server Error". Cause: `payments.provider_ref` was VARCHAR(64); a real Checkout Session id is ~66 characters, so saving it failed after Stripe answered (nothing was saved; the unpaid Session expires at Stripe)
+- Migration `0017_payment_ref_length.py` widens it to 255 (expand-only, no-op downgrade); the test fakes now use 74-character Session ids so this shape is covered
+- Commands: stripe/billing/migration tests 22 passed, ruff clean
+- Next: commit + deploy (start.sh runs migrations), then the PO tries card 4242… again
+
+### Slice (2026-10-10 09:xx) — Stripe as the payment provider (D06)
 - PO: connect payments through Stripe. `stripe_provider.py` (stdlib only): Checkout Session per cycle in THB for the server's amount (payment id = idempotency key, client_reference_id + metadata), Stripe-Signature check over the raw body (HMAC-SHA256, 5-minute tolerance, several v1 values while a secret rotates), event mapping (completed paid → succeeded; completed unpaid → pending (PromptPay); async succeeded/failed; expired → failed; others ignored with 200)
 - `billing.apply_event` is now provider-neutral (sandbox and Stripe share unique events, forward-only statuses, amount/currency match); `BILLING_PROVIDER=stripe|sandbox`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (render.yaml, sync:false); a live key off production → 503 PAYMENTS_NOT_READY; Stripe down → 502, nothing saved
 - Web: "ซื้อแพ็กเกจนี้" goes to Stripe's page and back to /billing?payment= (waits for the webhook; "ยกเลิกการชำระเงินแล้ว" on cancel); the note says Stripe test mode

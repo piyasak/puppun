@@ -17,6 +17,8 @@ PO 2026-10-10: ใช้ Stripe เป็นผู้ให้บริการ
 
 ## 2. ใน Render (service `punpun-staging` → Environment)
 
+ค่าเหล่านี้จะไม่ขึ้นมาให้กรอกเอง: Render ถามค่า `sync: false` เฉพาะตอนสร้าง Blueprint ครั้งแรก ตัวที่เพิ่มใน `render.yaml` ทีหลังจะถูกข้าม ให้กด **Edit → Add Environment Variable** แล้วพิมพ์ชื่อ key เอง
+
 | Key | ค่า |
 |---|---|
 | `BILLING_PROVIDER` | `stripe` |
