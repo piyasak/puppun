@@ -67,6 +67,7 @@ def job_out(db: Session, job: Job, *, with_clips: bool = False) -> dict:
         "environment_id": str(job.environment_id),
         "requested_clips": job.requested_clips,
         "auto_clips": job.auto_clips,
+        "reset_count": job.reset_count, "remaking": job.remake_requested_at is not None,
         "delete_after_post": job.delete_after_post,
         "planned_clips": job.planned_clips,
         "clip_min_s": job.clip_min_s,
@@ -129,6 +130,17 @@ def cancel_job(job_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_
     return job_out(db, job)
 
 
+@web_router.post("/{job_id}/reset")
+def reset_job(job_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
+    """The owner starts a job again: missing clip files are made again, or a failed job restarts."""
+    job = get_owned(db, Job, job_id, auth.workspace_id, for_update=True)
+    mode = jobs.reset(db, job)
+    audit.record(db, request, "job.reset", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                 target_id=job.id, details={"mode": mode})
+    db.commit()
+    return job_out(db, job) | {"reset": mode}
+
+
 # --- Agent ----------------------------------------------------------------------------------
 
 class EventIn(BaseModel):
@@ -153,6 +165,8 @@ def _spec(db: Session, job: Job, env_name: str) -> dict:
         "requested_clips": job.requested_clips, "planned_clips": job.planned_clips, "auto_clips": job.auto_clips,
         "clip_min_s": job.clip_min_s, "clip_max_s": job.clip_max_s, "subtitles": job.subtitles,
         "seed": job.seed, "lease_expires_at": job.lease_expires_at.isoformat() if job.lease_expires_at else None,
+        # Start again (PO 2026-10-10): the clips whose files the Agent must find or make again
+        "remake": jobs.remake_indexes(db, job) if job.remake_requested_at else None,
     }
 
 

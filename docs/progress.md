@@ -4,7 +4,42 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10 04:xx) — Agent settings window + pairing code (Q-35)
+### Latest slice (2026-10-10 09:xx) — Stripe as the payment provider (D06)
+- PO: connect payments through Stripe. `stripe_provider.py` (stdlib only): Checkout Session per cycle in THB for the server's amount (payment id = idempotency key, client_reference_id + metadata), Stripe-Signature check over the raw body (HMAC-SHA256, 5-minute tolerance, several v1 values while a secret rotates), event mapping (completed paid → succeeded; completed unpaid → pending (PromptPay); async succeeded/failed; expired → failed; others ignored with 200)
+- `billing.apply_event` is now provider-neutral (sandbox and Stripe share unique events, forward-only statuses, amount/currency match); `BILLING_PROVIDER=stripe|sandbox`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (render.yaml, sync:false); a live key off production → 503 PAYMENTS_NOT_READY; Stripe down → 502, nothing saved
+- Web: "ซื้อแพ็กเกจนี้" goes to Stripe's page and back to /billing?payment= (waits for the webhook; "ยกเลิกการชำระเงินแล้ว" on cancel); the note says Stripe test mode
+- Runbook `docs/runbooks/stripe.md`: test mode, PromptPay, webhook endpoint + events, Render keys, test cards
+- Commands: test_stripe_provider 9 + test_stripe_billing 4 passed (signed webhooks, no network), billing 12 passed, ruff + tsc clean; earlier full run integration 261 / unit 140; E2E 20/20 after the Docker restart (19 + billing again after scoping its "แพ็กเกจ" click to the sidebar: the dashboard links to it too)
+- Not tested live: needs the PO's Stripe test keys in Render (never in chat)
+- Next: E2E after the Docker restart; PO sets Stripe test keys and tries card 4242…; commit into PR #14 when asked
+
+### Previous slice (2026-10-10 08:xx) — phone screens on the PC (Q-39) + post now (Q-40)
+- Q-39: scrcpy 4.1 (PO allowed the download; SHA-256 = winget's 5b12172b…; var/vendor) bundled without its own adb; the Agent passes its adb (ADB=...). `agent/screens.py` lays one window per phone in a grid filling the work area, ordered by the phone names on the web (natural sort; unnamed last), titled "name • @account"; a phone the Agent posts on is reopened view-only and given back afterwards; nothing on the phone is changed. Settings window: show/hide + controllable/view-only; `punpun-agent screens [--view-only]`; `GET /v1/agent/devices`
+- Q-40: `POST /v1/clips/{id}/post-now` — one-item schedule due now (server time) through every scheduled-post check; schedules can take `clip_ids`; job page: "โพสต์ทันที" on approved clips (phone picker, dry-run note)
+- Agent 0.3.4 (bundle 5511fa91…, setup 3e919626…): the packaged `screens --view-only` opened the QA phone's real screen at the grid position, titled "(ดูอย่างเดียว)" (var/evidence/agent-screens.png, captured from that window only)
+- Commands: unit test_screens 6, integration test_post_now 3; full run integration 261 passed / 9 skipped, unit 140, ruff clean
+- Next: commit into PR #14 when asked; PO: licences of bundled third-party binaries (adb, scrcpy DLLs)
+
+### Previous slice (2026-10-10 07:xx) — start a job again when the video location changed (Q-38)
+- PO: if the video location changes while posts wait, the job cannot continue → the owner or an admin should reset it
+- Agent: `clips_folder.find_clip` finds a kept clip by SHA-256 (own place → old folder → a `<job id>` folder moved up to 4 levels deep); the post runner uses it; on a reset the job runner moves found files back, re-reports kept ones and renders only what is really missing
+- Server (migration 0016 `jobs.remake_requested_at`, `reset_count`): `jobs.reset` — delivered clips → remake the not-yet-posted, not-deleted ones with the same seed (same file/hash keeps approvals; a new hash needs approval again and parks bound posts), no quota charged again, FILE_UNAVAILABLE posts go back to their schedule at the next allowed time; nothing delivered → restart from the source; cancelled jobs and > 10 resets refused
+- Web: "เริ่มงานใหม่" on the job page (confirm dialog explaining both cases, notice, "กำลังเริ่มใหม่" while remaking); FILE_UNAVAILABLE text points to it; Admin → job search → "เริ่มงานใหม่" with a reason (audited)
+- Commands: integration 258 passed / 9 skipped (new reset tests 4 with the real pipeline: moved folder found + post rescheduled, deleted file remade with the same hash, failed source restarted, rules + admin path), unit 134, ruff + tsc clean, E2E jobs + schedule + admin + quality 11 passed (new: reset from the job page, Agent gets remake [1, 2], approvals kept)
+- Agent 0.3.3 built (bundle c59b062e…, setup f17a06c9…, var/dist): moved-file search + remake
+- Next: merge the PR; Render deploys migrations 0015/0016
+
+### Previous slice (2026-10-10 06:xx) — launch prices (D05) + admin price/selling controls (Q-37)
+- PO prices: free trial 5 days / 30 clips / 1 phone; Starter 200 THB (5 phones, 1,000 clips), Pro 400 (10, 2,000), Business 888 (20, unlimited, no fair-use cap); every plan 1 PC ("เครื่อง" = phones)
+- Migration 0015: `plans.clips_per_month` nullable (NULL = unlimited); new versions trial v2 / starter v2 / pro v2 / business v2, older versions no longer sold; downgrade is non-destructive (rows stay, unlimited -> 1,000,000)
+- Quota: unlimited plans reserve without a cap and still record usage; summary `unlimited`, limit/available null; web shows "ไม่จำกัด" (billing, dashboard, create job, admin)
+- Admin (Q-37): per-plan card — price, days, PCs, phones, clips/unlimited → new version (paid customers keep theirs); "เปิดขาย (Go live)/ปิดขาย" and Demo label switch the latest version in place (`POST /v1/admin/plans/{code}/status`); reasons required, audited; the trial cannot be put on sale
+- Landing: pricing section from `/v1/billing/plans` (trial + 3 plans), nav "ราคา", trial text 5 days, FAQ updated (videos stay on the PC; no auto-charge after the trial)
+- Tests pin the original demo trial (DEFAULT_PLAN_VERSION=1 in conftest) for the limit tests; the launch trial has its own tests
+- Commands: integration 254 passed / 9 skipped (new test_launch_prices 3; billing/admin tests moved to launch prices), unit 134, ruff + tsc clean; E2E full run 18/19 (tokens journey expected 2 PCs) → fixed for the 1-PC trial, then tokens + auth + billing 4 passed and admin 2 passed (new: landing prices, admin closes/opens and reprices Starter)
+- Next: commit/PR when asked; real payments still need a provider (D06, G6-01/G6-02)
+
+### Previous slice (2026-10-10 04:xx) — Agent settings window + pairing code (Q-35)
 - PO: simpler setup for the clips folder, the videos folder, username and token; chose a short pairing code and account + 2 folders + start with Windows
 - Server: migration 0014 `agent_pairing_codes` (SHA-256 only, 10 min, single use, ≤ 5 open per Environment); `POST /v1/agent-pairing-codes` (web) and `POST /v1/agent/pair` (Agent; sign-in rate limit; wrong/used/expired answer alike) → the PC's own Agent token "PC <name>" (365 days)
 - Agent: `agent/settings.py` (pair, folders, Startup shortcut) + `agent/settings_gui.py` (tkinter, Leelawadee UI so Thai is readable); `punpun-agent settings` / `pair`; config keeps `media_dir`, `connect` uses it; the setup opens the window instead of console prompts and adds a "ตั้งค่า punpun Agent" shortcut; uninstall removes it and the Startup shortcut

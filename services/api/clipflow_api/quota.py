@@ -63,9 +63,13 @@ def job_balance(db: Session, job_id) -> dict[str, int]:
 def summary(db: Session, workspace_id, at: datetime) -> dict:
     ent = entitlement(db, workspace_id)
     period, bonus = ent.cycle.key, granted(db, workspace_id, ent.cycle.key)
-    limit = ent.plan.clips_per_month + bonus
     u = used(db, workspace_id, period)
-    return {"period": period, "limit": limit, "used": u, "available": max(0, limit - u), "granted": bonus,
+    if ent.plan.clips_per_month is None:  # unlimited plan: usage is still recorded, nothing is capped
+        return {"period": period, "limit": None, "used": u, "available": None, "unlimited": True, "granted": bonus,
+                "cycle_end": ent.cycle.end.isoformat(), "status": ent.cycle.status}
+    limit = ent.plan.clips_per_month + bonus
+    return {"period": period, "limit": limit, "used": u, "available": max(0, limit - u), "unlimited": False,
+            "granted": bonus,
             "cycle_end": ent.cycle.end.isoformat(), "status": ent.cycle.status}
 
 
@@ -78,9 +82,10 @@ def reserve(db: Session, workspace_id, job_id, units: int, at: datetime) -> str:
     """Hold `units` for a job. Raises QuotaExceeded. Returns the period charged."""
     ent = entitlement(db, workspace_id, lock=True)  # serializes reservations per Workspace (T21)
     period = ent.cycle.key
-    available = ent.plan.clips_per_month + granted(db, workspace_id, period) - used(db, workspace_id, period)
-    if units > available:
-        raise QuotaExceeded(max(0, available))
+    if ent.plan.clips_per_month is not None:  # unlimited plans still record the reservation below
+        available = ent.plan.clips_per_month + granted(db, workspace_id, period) - used(db, workspace_id, period)
+        if units > available:
+            raise QuotaExceeded(max(0, available))
     _add(db, workspace_id, job_id, period, "reserve", units, f"reserve:{job_id}", "job_reserve")
     return period
 

@@ -4,19 +4,15 @@ import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
 import { ApiError, api } from '../lib/api'
 import { formatDate } from '../lib/types'
+import { baht, clipsLabel, quotaText, type Plan, type Quota } from '../lib/plans'
 
 /* P6 (sandbox, E-45): plans, current cycle, checkout and history. Rights change only when the
    server has a verified payment event; returning from the payment page grants nothing by itself. */
 
-type Plan = {
-  code: string; version: number; name: string; price_satang: number; currency: string; interval_days: number
-  example_price: boolean
-  limits: { registered_agents: number; concurrent_sessions: number; devices: number; clips_per_cycle: number }
-}
 type Subscription = {
   status: 'trial' | 'active' | 'expired'; plan: Plan; cycle_start: string; cycle_end: string
   paid_cycles_ahead: number; next_plan: Plan | null
-  quota: { limit: number; used: number; available: number }
+  quota: Quota
 }
 type Payment = {
   id: string; plan: { code: string; name: string }; amount_satang: number; currency: string
@@ -35,9 +31,6 @@ const PAY: Record<Payment['status'], { text: string; badge: string }> = {
   refunded: { text: 'คืนเงินแล้ว', badge: 'expired' },
 }
 
-function baht(satang: number) {
-  return `฿${(satang / 100).toLocaleString('th-TH', { minimumFractionDigits: 0 })}`
-}
 
 export function BillingPage() {
   const navigate = useNavigate()
@@ -81,7 +74,11 @@ export function BillingPage() {
       const pay = await api<Payment & { checkout_url: string }>('/v1/billing/checkout', {
         method: 'POST', body: { plan_code: code, idempotency_key: crypto.randomUUID().replace(/-/g, '') },
       })
-      navigate(pay.checkout_url)
+      if (/^https:\/\//.test(pay.checkout_url)) {
+        window.location.assign(pay.checkout_url)  // Stripe's hosted payment page (D06); it returns to ?payment=
+      } else {
+        navigate(pay.checkout_url)  // the internal sandbox page
+      }
     } catch (err) {
       const ae = err as ApiError
       setError(ae.code === 'CHANGE_PENDING' ? 'มีการเปลี่ยนแพ็กเกจรอรอบถัดไปอยู่แล้ว' : ae.message)
@@ -92,8 +89,13 @@ export function BillingPage() {
   return (
     <Shell title="แพ็กเกจและการชำระเงิน">
       {error && <Alert kind="error">{error}</Alert>}
-      <Alert kind="info">{note || 'ราคาเป็นตัวอย่าง'} — ยังไม่มีการเก็บเงินจริง</Alert>
-      {watched && watched.status === 'pending' && <Alert kind="info">กำลังรอผลการชำระเงินจากผู้ให้บริการ…</Alert>}
+      <Alert kind="info">{note || 'ระบบชำระเงินยังเป็น sandbox — ยังไม่มีการเก็บเงินจริง'}</Alert>
+      {watched && watched.status === 'pending' && params.get('cancelled') && (
+        <Alert kind="info">ยกเลิกการชำระเงินแล้ว ไม่มีการเปลี่ยนแพ็กเกจ</Alert>
+      )}
+      {watched && watched.status === 'pending' && !params.get('cancelled') && (
+        <Alert kind="info">กำลังรอผลการชำระเงินจากผู้ให้บริการ… (PromptPay อาจใช้เวลาสักครู่)</Alert>
+      )}
       {watched && watched.status === 'succeeded' && <Alert kind="success">ชำระเงินสำเร็จ ({watched.plan.name})</Alert>}
       {watched && watched.status === 'failed' && <Alert kind="error">ชำระเงินไม่สำเร็จ ไม่มีการเปลี่ยนแพ็กเกจ</Alert>}
 
@@ -105,9 +107,9 @@ export function BillingPage() {
           </div>
           <dl className="facts">
             <dt>รอบนี้</dt><dd>{formatDate(sub.cycle_start)} – {formatDate(sub.cycle_end)}</dd>
-            <dt>โควตาคลิป</dt><dd data-testid="quota">ใช้ {sub.quota.used} จาก {sub.quota.limit} (เหลือ {sub.quota.available})</dd>
-            <dt>Agent / Session / โทรศัพท์</dt>
-            <dd>{sub.plan.limits.registered_agents} / {sub.plan.limits.concurrent_sessions} / {sub.plan.limits.devices}</dd>
+            <dt>โควตาคลิป</dt><dd data-testid="quota">{quotaText(sub.quota)}</dd>
+            <dt>PC / โทรศัพท์</dt>
+            <dd>{sub.plan.limits.registered_agents} เครื่อง / {sub.plan.limits.devices} เครื่อง</dd>
             {sub.paid_cycles_ahead > 0 && (
               <><dt>ต่ออายุแล้ว</dt><dd>อีก {sub.paid_cycles_ahead} รอบ{sub.next_plan ? ` • รอบถัดไปเปลี่ยนเป็น ${sub.next_plan.name}` : ''}</dd></>
             )}
@@ -125,8 +127,8 @@ export function BillingPage() {
               <h3>{p.name}</h3>
               <div className="plan-price">{baht(p.price_satang)}<span className="muted"> / {p.interval_days} วัน</span></div>
               <ul className="plan-limits">
-                <li>คลิป {p.limits.clips_per_cycle} คลิป/รอบ</li>
-                <li>Agent {p.limits.registered_agents} • Session {p.limits.concurrent_sessions} • โทรศัพท์ {p.limits.devices}</li>
+                <li>{clipsLabel(p.limits.clips_per_cycle)} ต่อรอบ</li>
+                <li>โทรศัพท์ {p.limits.devices} เครื่อง • PC {p.limits.registered_agents} เครื่อง</li>
               </ul>
               <button type="button" className="btn btn-primary" onClick={() => buy(p.code)} disabled={busy !== ''} aria-busy={busy === p.code}>
                 {busy === p.code ? 'กำลังสร้างรายการ…' : sub?.status === 'active' ? 'ต่ออายุ/ซื้อรอบถัดไป' : 'ซื้อแพ็กเกจนี้'}

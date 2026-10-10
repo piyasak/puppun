@@ -5,6 +5,7 @@ import { Alert, Field } from '../components/ui'
 import { ApiError, api } from '../lib/api'
 import type { Job } from '../lib/jobs'
 import type { Environment, Usage } from '../lib/types'
+import { clipsLeft } from '../lib/plans'
 
 /* /create (ui-map): 1 ต้นฉบับ → 2 รูปแบบ → 3 ตรวจและสร้าง. Device/time selection arrives with P4. */
 
@@ -55,7 +56,9 @@ export function CreateJobPage() {
   }, [])
 
   const env = envs?.find((e) => e.id === envId)
-  const available = usage?.clips.available ?? 0
+  const unlimited = usage?.clips.limit === null && usage !== null
+  const available = usage ? clipsLeft(usage.clips) : 0
+  const left = unlimited ? 'ไม่จำกัด' : `${available}`
 
   function stepError(n: number): string {
     if (n === 0) {
@@ -200,10 +203,10 @@ export function CreateJobPage() {
               <dt>การตรวจ</dt><dd>{mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'}</dd>
               <dt>โควตา</dt>
               <dd data-testid="quota-preview">{countMode === 'auto'
-                ? `ใช้ตามจำนวนที่ต้นฉบับตัดได้ จากที่เหลือ ${available} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`
-                : `ใช้สูงสุด ${clips} คลิป จากที่เหลือ ${available} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`}</dd>
+                ? `ใช้ตามจำนวนที่ต้นฉบับตัดได้ จากที่เหลือ ${left} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`
+                : `ใช้สูงสุด ${clips} คลิป จากที่เหลือ ${left} คลิปเดือนนี้ — หักเฉพาะคลิปที่ส่งถึงจริง`}</dd>
             </dl>
-            {countMode === 'auto' && available > 0 && (
+            {countMode === 'auto' && available > 0 && !unlimited && (
               <Alert kind="info">ถ้าต้นฉบับต้องใช้มากกว่า {available} คลิป งานจะหยุดรอให้คุณตัดสินใจก่อน ไม่ตัดแค่บางส่วนโดยไม่บอก</Alert>
             )}
             {countMode === 'manual' && available < clips && available > 0 && (

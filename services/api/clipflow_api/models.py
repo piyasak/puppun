@@ -122,7 +122,8 @@ class Plan(Base):
     max_registered_agents: Mapped[int] = mapped_column(Integer)
     max_concurrent_sessions: Mapped[int] = mapped_column(Integer)
     max_devices: Mapped[int] = mapped_column(Integer)
-    clips_per_month: Mapped[int] = mapped_column(Integer)  # quota unit = one rendered clip (FR-21), per cycle
+    # quota unit = one rendered clip (FR-21), per cycle; None = unlimited (Business, PO 2026-10-10)
+    clips_per_month: Mapped[int | None] = mapped_column(Integer)
     # P6 (E-45): prices are examples until D05; amounts are integer satang, always computed on the server.
     price_satang: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="THB")
@@ -339,6 +340,9 @@ class Job(Base):
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Start again (PO 2026-10-10): set while the Agent remakes missing clip files of a delivered job
+    remake_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reset_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class JobEvent(Base):

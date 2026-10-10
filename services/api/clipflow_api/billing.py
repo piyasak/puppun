@@ -125,7 +125,9 @@ def checkout(db: Session, workspace_id: uuid.UUID, user_id: uuid.UUID, plan_code
         raise ApiError(409, "CHANGE_PENDING", "มีการเปลี่ยนแพ็กเกจรอรอบถัดไปอยู่แล้ว")
     at = now()
     payment = Payment(workspace_id=workspace_id, plan_id=plan.id, amount_satang=plan.price_satang,
-                      currency=plan.currency, provider=provider, provider_ref=f"sbx_{secrets.token_hex(12)}",
+                      currency=plan.currency, provider=provider,
+                      # sandbox: its own ref; stripe: replaced by the Checkout Session id right after creation
+                      provider_ref=f"{'sbx' if provider == 'sandbox' else 'new'}_{secrets.token_hex(12)}",
                       status="pending", idempotency_key=idempotency_key, created_by=user_id, created_at=at, updated_at=at)
     db.add(payment)
     try:
@@ -148,9 +150,18 @@ def verify(secret: bytes, body: bytes, signature: str | None) -> bool:
 
 
 def handle_event(db: Session, provider: str, body: bytes) -> dict:
-    """Apply one verified provider event. Returns what happened (for the response and the log)."""
+    """Apply one verified sandbox event (its JSON is already in the provider-neutral shape)."""
     try:
         event = json.loads(body)
+    except ValueError:
+        raise ApiError(400, "BAD_EVENT", "รูปแบบ event ไม่ถูกต้อง") from None
+    return apply_event(db, provider, event, body)
+
+
+def apply_event(db: Session, provider: str, event: dict, body: bytes) -> dict:
+    """Apply one verified provider event, already mapped to {event_id, type, provider_ref, amount,
+    currency, occurred_at} (Stripe: stripe_provider.normalize). Returns what happened."""
+    try:
         event_id, kind, ref = str(event["event_id"]), str(event["type"]), str(event["provider_ref"])
         amount, currency = int(event["amount"]), str(event["currency"])
     except (KeyError, TypeError, ValueError):

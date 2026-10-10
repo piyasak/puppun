@@ -68,6 +68,35 @@ def has_room(folder: Path) -> bool:
     return free_bytes(folder) >= MIN_FREE_BYTES
 
 
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        while block := fh.read(4 * 1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def find_clip(data_dir: Path, job_id: str, index: int, sha256: str, max_depth: int = 4) -> Path | None:
+    """A kept clip by its hash (PO 2026-10-10): first where it belongs (<folder>/<job id>/clip_NN.mp4),
+    then anywhere a few levels deep in the clips folders, in case the job folder was moved by hand."""
+    name = f"clip_{index:02d}.mp4"
+    folders = search_order(Path(data_dir))
+    for folder in folders:
+        own = folder / job_id / name
+        if own.is_file() and _sha256(own) == sha256:
+            return own
+    for folder in folders:
+        if not folder.is_dir():
+            continue
+        for candidate in folder.rglob(name):
+            depth = len(candidate.relative_to(folder).parts)
+            if depth <= max_depth and candidate.parent.name == job_id and candidate.is_file()                     and _sha256(candidate) == sha256:
+                return candidate
+    return None
+
+
 def move_jobs(old: Path, new: Path) -> int:
     """Move every job folder (<job id>/clip_NN.mp4) from old to new. Returns how many moved."""
     if not old.is_dir() or old.resolve() == new.resolve():

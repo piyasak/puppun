@@ -83,6 +83,17 @@ def register(body: RegisterIn, request: Request, ctx: AgentContext = Depends(age
             "details_url": f"{origin}/devices?edit={device.id}"}
 
 
+@agent_router.get("")
+def agent_devices(ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
+    """This Environment's bound phones with the names set on the web, so the Agent can lay out and
+    title its phone screen windows in the same order as the web (PO 2026-10-10)."""
+    rows = db.scalars(select(Device).where(Device.environment_id == ctx.environment_id,
+                                           Device.workspace_id == ctx.workspace_id,
+                                           Device.unbound_at.is_(None)).order_by(Device.created_at)).all()
+    return {"items": [{"serial": d.serial, "display_name": d.display_name, "expected_account": d.expected_account,
+                       "model": d.model} for d in rows]}
+
+
 @agent_router.post("/report")
 def report(body: ReportIn, ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
     updated = devices.report(db, ctx, body.devices)

@@ -237,3 +237,108 @@ def test_whole_source_is_split_into_consecutive_clips(shop, tmp_path):  # Q-32
     assert all(c["check_status"] == "passed" for c in clips), [c["checks"] for c in clips]
     assert [c["metadata"]["caption"] for c in clips] == [f"source — ตอนที่ {i}/4" for i in range(1, 5)]
     assert job["quota"] == {"reserved": 4, "settled": 4, "released": 0, "outstanding": 0}
+
+
+# --- start a job again (PO 2026-10-10) --------------------------------------------------------------
+
+def _scheduled_and_parked(shop, app, job_id):
+    """Approve both clips, schedule them on a phone, then park the first post as the Agent would when
+    the file is not where it was (FILE_UNAVAILABLE)."""
+    from clipflow_api.models import ScheduleItem
+
+    for clip in shop.detail(job_id)["clips"]:
+        assert shop.owner.post(f"/v1/clips/{clip['id']}/approve", json={"metadata_version": 1}).status_code == 200
+    shop.client.register_device(shop.session, f"RST{uuid.uuid4().hex[:8].upper()}", "device", "25078PC3EG", "15")
+    device = shop.owner.get("/v1/devices").json()["items"][0]
+    shop.owner.patch(f"/v1/devices/{device['id']}", json={"display_name": "POCO", "expected_account": "shop"})
+    series = shop.owner.post("/v1/schedules", json={
+        "idempotency_key": uuid.uuid4().hex, "job_id": job_id, "device_id": device["id"],
+        "start_local": (datetime.now(UTC) + timedelta(days=1)).strftime("%Y-%m-%dT10:00"), "interval_hours": 2,
+        "window_start": "00:00", "window_end": "24:00"}).json()
+    first = series["items"][0]["id"]
+    with app.state.db.sessionmaker() as s:
+        s.execute(update(ScheduleItem).where(ScheduleItem.id == uuid.UUID(first))
+                  .values(state="NEEDS_ACTION", reason="FILE_UNAVAILABLE"))
+        s.commit()
+    return series["id"], first
+
+
+def _items(shop, series_id):
+    return {i["id"]: i for i in shop.owner.get(f"/v1/schedules/{series_id}").json()["items"]}
+
+
+def test_reset_finds_a_moved_job_folder_and_puts_the_parked_post_back(shop, app, tmp_path):
+    shop.owner.patch("/v1/environments/" + shop.env["id"], json={"device_limit": 1})
+    job_id = shop.job()
+    assert shop.run() == "READY_FOR_REVIEW"
+    series_id, parked = _scheduled_and_parked(shop, app, job_id)
+    before = shop.detail(job_id)
+    # The customer moved the job folder somewhere else inside the clips folder
+    clips = tmp_path / "agent-data" / "clips"
+    (clips / "moved" / "by hand").mkdir(parents=True)
+    (clips / job_id).rename(clips / "moved" / "by hand" / job_id)
+
+    reset = shop.owner.post(f"/v1/jobs/{job_id}/reset")
+    assert reset.status_code == 200 and reset.json()["reset"] == "remake" and reset.json()["remaking"]
+    assert shop.run() == "READY_FOR_REVIEW"
+    after = shop.detail(job_id)
+    assert [c["render_sha256"] for c in after["clips"]] == [c["render_sha256"] for c in before["clips"]]
+    assert all(c["approval"]["approved"] for c in after["clips"])  # same files: approvals stand
+    assert after["quota"] == before["quota"]  # nothing charged again
+    assert (clips / job_id / "clip_01.mp4").is_file()  # brought back where posting looks first
+    assert any("ย้ายกลับมา" in line for line in shop.logs)
+    item = _items(shop, series_id)[parked]
+    assert (item["state"], item["reason"]) == ("SCHEDULED", "RETRY_REQUESTED")
+
+
+def test_reset_remakes_a_deleted_file_with_the_same_hash(shop, app, tmp_path):
+    shop.owner.patch("/v1/environments/" + shop.env["id"], json={"device_limit": 1})
+    job_id = shop.job()
+    assert shop.run() == "READY_FOR_REVIEW"
+    series_id, parked = _scheduled_and_parked(shop, app, job_id)
+    before = shop.detail(job_id)
+    gone = tmp_path / "agent-data" / "clips" / job_id / "clip_01.mp4"
+    gone.unlink()
+    assert shop.owner.post(f"/v1/jobs/{job_id}/reset").json()["reset"] == "remake"
+    assert shop.run() == "READY_FOR_REVIEW"
+    after = shop.detail(job_id)
+    assert job_runner._sha256(gone) == before["clips"][0]["render_sha256"]  # same seed, same source: same file
+    assert all(c["approval"]["approved"] for c in after["clips"]) and after["quota"] == before["quota"]
+    assert _items(shop, series_id)[parked]["state"] == "SCHEDULED"
+
+
+def test_reset_restarts_a_job_that_failed_on_a_missing_source(shop, media_dir):
+    import shutil
+
+    job_id = shop.job(file_name="later.mp4")
+    assert shop.run() == "FAILED"  # the video was not in the videos folder yet
+    assert shop.detail(job_id)["quota"]["outstanding"] == 0
+    shutil.copy(media_dir / "source.mp4", media_dir / "later.mp4")  # now it is (new location / copied in)
+    try:
+        reset = shop.owner.post(f"/v1/jobs/{job_id}/reset").json()
+        assert (reset["reset"], reset["state"], reset["error"]) == ("restart", "RECEIVED", None)
+        assert shop.run() == "READY_FOR_REVIEW"
+        assert shop.detail(job_id)["quota"]["settled"] == 2
+    finally:
+        (media_dir / "later.mp4").unlink(missing_ok=True)
+
+
+def test_reset_rules_and_the_admin_path(shop, onboard, app):
+    from test_admin import make_staff
+
+    job_id = shop.job()
+    running = shop.owner.post(f"/v1/jobs/{job_id}/reset")
+    assert running.status_code == 409 and running.json()["code"] == "JOB_NOT_RESETTABLE"  # not finished yet
+    assert shop.run() == "READY_FOR_REVIEW"
+    stranger = onboard()
+    assert stranger.post(f"/v1/jobs/{job_id}/reset").status_code == 404  # same answer as a missing job
+    assert stranger.post(f"/v1/admin/jobs/{job_id}/reset", json={"reason": "ลองสิทธิ์ของลูกค้า"}).status_code == 404
+    admin = onboard()
+    make_staff(app, admin, "admin")
+    assert admin.post(f"/v1/admin/jobs/{job_id}/reset", json={"reason": "สั้น"}).status_code == 422  # reason needed
+    done = admin.post(f"/v1/admin/jobs/{job_id}/reset", json={"reason": "ลูกค้าย้ายโฟลเดอร์คลิป ขอทำไฟล์ใหม่"})
+    assert done.status_code == 200 and done.json()["reset"] == "remake"
+    assert shop.run() == "READY_FOR_REVIEW"
+    cancelled = shop.job()
+    shop.owner.post(f"/v1/jobs/{cancelled}/cancel")
+    assert shop.owner.post(f"/v1/jobs/{cancelled}/reset").status_code == 409

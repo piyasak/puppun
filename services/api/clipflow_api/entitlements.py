@@ -26,8 +26,11 @@ PLAN_CAP = {
 DEFAULT_PLAN_CODE = "trial"
 
 
-def default_plan(db: Session) -> Plan:
-    plan = db.scalars(select(Plan).where(Plan.code == DEFAULT_PLAN_CODE).order_by(Plan.version.desc())).first()
+def default_plan(db: Session, version: int | None = None) -> Plan:
+    stmt = select(Plan).where(Plan.code == DEFAULT_PLAN_CODE)
+    if version is not None:
+        stmt = stmt.where(Plan.version == version)
+    plan = db.scalars(stmt.order_by(Plan.version.desc())).first()
     if plan is None:
         raise RuntimeError("default plan missing; run migrations")
     return plan

@@ -89,16 +89,17 @@ def test_new_plan_version_never_edits_a_paid_one(onboard, app):
     make_staff(app, admin, "admin")
     pay = customer.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": uuid.uuid4().hex}).json()
     customer.post(f"/v1/billing/sandbox/{pay['id']}/simulate", json={"outcome": "succeeded"})
+    paid = customer.get("/v1/billing/subscription").json()["plan"]["version"]
     out = admin.post("/v1/admin/plans/pro/versions",
                      json={"price_satang": 129000, "clips_per_month": 200, "reason": "ตั้งราคาจริงตาม D05 (ทดสอบ)"}).json()
-    assert out == {"code": "pro", "version": 2}
-    assert customer.get("/v1/billing/subscription").json()["plan"]["version"] == 1  # keeps what was paid
+    assert out == {"code": "pro", "version": paid + 1}
+    assert customer.get("/v1/billing/subscription").json()["plan"]["version"] == paid  # keeps what was paid
     offered = {p["code"]: p for p in customer.get("/v1/billing/plans").json()["items"]}
-    assert offered["pro"]["version"] == 2 and offered["pro"]["price_satang"] == 129000
+    assert offered["pro"]["version"] == paid + 1 and offered["pro"]["price_satang"] == 129000
     assert admin.get("/v1/admin/payments").json()["items"][0]["status"] == "succeeded"  # history kept
-    # The plan catalog is shared by every test in the session: put the example price back (version 3).
+    # The plan catalog is shared by every test in the session: put the launch price back (another version).
     admin.post("/v1/admin/plans/pro/versions",
-               json={"price_satang": 99000, "clips_per_month": 150, "reason": "คืนราคาตัวอย่างหลังทดสอบ"})
+               json={"price_satang": 40000, "clips_per_month": 2000, "reason": "คืนราคาเปิดตัวหลังทดสอบ"})
 
 
 def test_retention_deletes_old_files_but_never_ones_still_needed(shop, onboard, app, storage):

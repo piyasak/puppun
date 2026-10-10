@@ -47,6 +47,7 @@ class Request:
     window_end: str  # 'HH:MM' or '24:00'
     interval_hours: int
     offline_policy: str  # defer | skip
+    clip_ids: tuple[uuid.UUID, ...] | None = None  # only these clips of the job (e.g. "post now", one clip)
 
 
 def _slot_error(exc: slots.SlotError) -> ApiError:
@@ -98,6 +99,8 @@ def build(db: Session, workspace_id: uuid.UUID, req: Request, *, lock: bool) -> 
         raise ApiError(409, "DEVICE_NEEDS_DETAILS", "ใส่บัญชี TikTok ของโทรศัพท์นี้ก่อน (หน้าโทรศัพท์)")
 
     stmt = select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)
+    if req.clip_ids is not None:
+        stmt = stmt.where(Clip.id.in_(req.clip_ids))
     job_clips = db.scalars(stmt.with_for_update() if lock else stmt).all()
     live = set(db.scalars(select(ScheduleItem.clip_id).where(
         ScheduleItem.clip_id.in_([c.id for c in job_clips]),

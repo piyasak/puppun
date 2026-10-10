@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.3.2"  # own adb (E-51), delete after post (Q-34), settings window + pairing code (Q-35)
+SOURCE_VERSION = "0.3.4"  # 0.3.3 + phone screens on the PC (scrcpy, ordered by web names, view-only lock)
 
 
 def _version() -> str:

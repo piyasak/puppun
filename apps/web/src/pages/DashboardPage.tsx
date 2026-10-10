@@ -17,7 +17,7 @@ type Post = {
 }
 type Subscription = {
   status: string; plan: { name: string; code: string }
-  quota: { limit: number; used: number; available: number; cycle_end: string }
+  quota: { limit: number | null; used: number; available: number | null; cycle_end: string }  // null = unlimited
 }
 type Device = { id: string; readiness: string; unbound_at: string | null; missing_details: string[] }
 type Loaded<T> = { data?: T; error?: string }
@@ -116,18 +116,20 @@ function NextPost() {
 function QuotaCard() {
   const sub = useLoad<Subscription>('/v1/billing/subscription')
   const q = sub.data?.quota
-  const pct = q && q.limit > 0 ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0
+  const pct = q && q.limit ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0
   return (
     <section className="card dash-card dash-small" aria-labelledby="dash-quota-title">
       <h2 id="dash-quota-title" className="dash-label">โควตาคลิปรอบนี้</h2>
       {sub.error && <Alert kind="error">{sub.error}</Alert>}
       {q && sub.data && (
         <>
-          <p className="dash-big" data-testid="dash-quota">{q.used}<span className="dash-big-sub"> / {q.limit} คลิป</span></p>
-          <div className="dash-meter" role="progressbar" aria-label="ใช้โควตาไปแล้ว" aria-valuemin={0} aria-valuemax={q.limit} aria-valuenow={q.used}>
-            <i style={{ width: `${pct}%` }} />
-          </div>
-          <p className="dash-sub">เหลือ {q.available} · รอบนี้ถึง {dateFmt.format(new Date(q.cycle_end))}</p>
+          <p className="dash-big" data-testid="dash-quota">{q.used}<span className="dash-big-sub"> / {q.limit === null ? 'ไม่จำกัด' : `${q.limit} คลิป`}</span></p>
+          {q.limit !== null && (
+            <div className="dash-meter" role="progressbar" aria-label="ใช้โควตาไปแล้ว" aria-valuemin={0} aria-valuemax={q.limit} aria-valuenow={q.used}>
+              <i style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          <p className="dash-sub">{q.limit === null ? 'คลิปไม่จำกัด' : `เหลือ ${q.available}`} · รอบนี้ถึง {dateFmt.format(new Date(q.cycle_end))}</p>
           <p className="dash-sub">
             {sub.data.status === 'trial' ? <span className="badge badge-active">ทดลองใช้</span> : sub.data.status === 'expired'
               ? <span className="badge badge-revoked">หมดอายุ</span> : <span className="badge badge-online">{sub.data.plan.name}</span>}

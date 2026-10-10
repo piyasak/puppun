@@ -31,6 +31,8 @@ class State:
     clips_free_gb: float
     media_dir: str | None
     autostart: bool
+    show_screens: bool = False
+    screens_control: bool = True
 
 
 def computer_name() -> str:
@@ -43,7 +45,7 @@ def load(data_dir: Path, startup_dir: Path | None = None) -> State:
     clips = Path(cfg.clips_dir) if cfg and cfg.clips_dir else clips_folder.suggested()
     return State(cfg.server if cfg else None, cfg.username if cfg else None, (data_dir / "token.bin").exists(),
                  str(clips), round(clips_folder.free_bytes(clips) / 1024**3, 1), cfg.media_dir if cfg else None,
-                 autostart_on(startup_dir))
+                 autostart_on(startup_dir), bool(cfg and cfg.show_screens), bool(not cfg or cfg.screens_control))
 
 
 def pair(data_dir: Path, server: str, code: str, client_factory=None) -> dict:
@@ -86,6 +88,15 @@ def save_folders(data_dir: Path, clips_dir: str, media_dir: str) -> tuple[Path, 
     if old != clips:
         clips_folder.move_jobs(old, clips)  # clips made before still post from the new folder
     return clips, media
+
+
+def save_screens(data_dir: Path, show: bool, control: bool) -> None:
+    """Phone screens on the PC while the Agent runs (PO 2026-10-10); takes effect at the next start."""
+    cfg = load_config(data_dir)
+    if cfg is None:
+        raise SettingsError("เชื่อมต่อบัญชีก่อน แล้วค่อยบันทึก")
+    cfg.show_screens, cfg.screens_control = show, control
+    save_config(data_dir, cfg)
 
 
 # --- start with Windows -------------------------------------------------------------------------

@@ -87,7 +87,7 @@ def onboarding(body: OnboardingIn, request: Request, who: Identity = Depends(ide
     db.add(Membership(workspace_id=ws.id, user_id=user.id, role="owner"))
     db.add(RightsAcceptance(workspace_id=ws.id, user_id=user.id, declaration_version=RIGHTS_DECLARATION_VERSION))
     # Every Workspace starts on the demo plan until billing exists (P6, D05).
-    trial = default_plan(db)
+    trial = default_plan(db, request.app.state.settings.default_plan_version)
     started = datetime.now(UTC)
     db.add(Subscription(workspace_id=ws.id, plan_id=trial.id, status="trial", current_period_start=started,
                         current_period_end=started + timedelta(days=trial.interval_days), paid_cycles_ahead=0))
