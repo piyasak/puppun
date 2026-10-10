@@ -10,7 +10,7 @@ export type Job = {
   id: string
   state: JobState
   state_version: number
-  source: { kind: 'url' | 'local_file'; url: string | null; file_name: string | null }
+  source: { kind: 'youtube' | 'bilibili' | 'local_file'; url: string | null; file_name: string | null }  // the API's source_kind
   environment_id: string
   requested_clips: number
   auto_clips: boolean  // Q-32: the count follows the source
@@ -124,5 +124,5 @@ export function mmss(ms: number): string {
 }
 
 export function sourceLabel(job: Job): string {
-  return job.source.kind === 'url' ? job.source.url ?? '' : `ไฟล์บนเครื่อง: ${job.source.file_name}`
+  return job.source.kind === 'local_file' ? `ไฟล์บนเครื่อง: ${job.source.file_name ?? ''}` : job.source.url ?? ''
 }

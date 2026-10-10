@@ -35,6 +35,7 @@ test('create a job, watch it progress, preview, edit and approve clips', async (
   await page.getByRole('button', { name: 'สร้างงาน' }).click()
   await expect(page).toHaveURL(/\/jobs\/[0-9a-f-]{36}$/)
   await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
+  await expect(page.locator('#job-title')).toHaveText('ไฟล์บนเครื่อง: ตอนพิเศษ.mp4')
   const jobId = page.url().split('/').pop()!
 
   // The Agent picks it up; the page follows without a reload.
@@ -113,6 +114,7 @@ test('cancel a job before the Agent starts', async ({ page, request }) => {
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await page.getByRole('button', { name: 'สร้างงาน' }).click()
   await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
+  await expect(page.locator('#job-title')).toHaveText('https://www.youtube.com/watch?v=PBES5k67dhI')  // a link job is titled by its link
 
   await page.getByRole('button', { name: 'ยกเลิกงาน' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'ยกเลิกงาน' }).click()

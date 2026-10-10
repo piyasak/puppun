@@ -1,10 +1,31 @@
 # Progress
 
-## Current phase: P7 — Pilot/UAT (staging live; pilot prerequisites open). G0 = Yes, G1 = No (5/6), G2 = Yes (signed 2026-10-09), G3 = Yes, G4 = Yes, G5 = Yes, G6 = No (3/5, PO signed under Q-31), G7 = No (0/5).
+## Current phase: P7 — Pilot/UAT (staging live; pilot prerequisites open). G0 = Yes, G1 = Yes (signed 2026-10-10), G2 = Yes (signed 2026-10-09), G3 = Yes, G4 = Yes, G5 = Yes, G6 = Yes (signed 2026-10-10; real payments still need production + live keys), G7 = No (0/5).
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-10) — fix: Stripe payments stuck at "รอผลการชำระ" (E-52)
+### Latest slice (2026-10-11) — pilot report for G7 (P7.2–P7.4)
+- `pilot.py` + `GET /v1/admin/pilot-report?days=N` (staff only, counts, no amounts): per new Workspace, minutes from sign-up to the first Agent install / phone / job and whether the first job came within 20 minutes (G7-01); jobs succeeded (READY_FOR_REVIEW) / failed (FAILED, NEEDS_ACTION) / cancelled / in progress; posts VERIFIED_SUCCESS / UNKNOWN / NEEDS_ACTION with UNKNOWN counted against the rate, dry runs on their own line and never counted as posts (G7-02, P7.4)
+- Web: Admin page → "รายงาน Pilot (G7)" with 7/30/90-day ranges and a per-Workspace table
+- G7 record refreshed: tools for G7-01/02 cited; G7-05 cost part done (G1-06), support load still unknown; stale G6 blocker removed. Still 0/5: no pilot users yet (D07)
+- Commands (after the PO restarted Docker): `test_pilot_report.py` 2 passed; test-integration 280 passed, 9 skipped (opt-in); test-unit 203 passed; lint exit 0 (only the existing set-state-in-effect warnings), tsc clean
+- C: drive: was full (0 GB); pip + npm caches purged at the PO's request → 13.6 GB free
+- Setup hosting (E-53): public repo https://github.com/piyasak/punpun-agent, release v0.3.4 (setup .exe + .sha256); anonymous download verified (HTTP 200, hash matches). PO sets `AGENT_SETUP_URL/VERSION/SHA256/SIZE_MB` in Render. PO reviewed the bundled adb/scrcpy licences 2026-10-11 (E-54)
+- PO set `AGENT_SETUP_*` in Render 2026-10-11 and confirmed the staging Agents page (signed in): download button for 0.3.4, 46.5 MB, SHA-256 3e919626…98186, link to the public release. Setup is ready to hand to pilot users
+- PO set `AGENT_SETUP_*` in Render 2026-10-11. Staging up (/healthz 200; /v1/agents/download needs a login, 401). The Agents page download button is not yet confirmed by a signed-in user
+
+### Slice (2026-10-10) — cost sheet; G1-06 and G6-01 Yes (Q-41)
+- PO inputs: 1 USD = 35 THB, Render $7, Supabase free at first, Stripe 3 %, domain 48 / 3 years (assumed USD), 50 customers in 3 months, Finance approver ปิยศักดิ์
+- `docs/cost-model.md`: measured preview stills on 15 real clips (mean 31.1 KB, max 44.3 KB); DB ~8 KB/clip (estimate); fixed ฿292/month (free) or ฿1,167 (Supabase Pro); net per plan ฿194 / ฿388 / ฿861.36; break-even 2 Starter (7 on Pro); 50 customers (mix 60/30/10 assumed) ≈ ฿16,440 revenue, ≈ 90 % margin; Supabase Pro at ~20 paying customers (~month 2)
+- G1: 6/6 checks Yes; G6: 5/5 checks Yes (`py tasks.py check-gate 1|6`). PO signed both in chat 2026-10-10 ("อนุมัติ G1 ปิยศักดิ์", "อนุมัติ G6 ปิยศักดิ์"; all roles under Q-20) → G1 = Yes, G6 = Yes. G6 Yes does not switch on real payments: production + live keys first (runbook §4)
+- Open: fair use for Business, VAT/receipts, external SMTP, real payments need production + live keys
+
+### Slice (2026-10-10) — Stripe test mode works on staging
+- PO in chat after PR piyasak/puppun#16 deployed: "ทดสอบสำเร็จแล้ว". Seen on Stripe test mode: Success (PromptPay ฿888, `payment_intent.succeeded`) and Pending (PromptPay waiting). Fail not yet seen live
+- PO then reported "G6-02 แล้วเสร็จ" (Fail tested on staging) → G6-02 = Yes on the PO's report (no Fail event id recorded); G6 now 4/5 (`docs/gates/G6.md`, provider = Stripe, blockers refreshed: G2 is Yes)
+- Next: Finance sign-off on prices + cost G1-06 (G6-01); real payments still need production + live keys + the G6 gate (runbook §4)
+
+### Slice (2026-10-10) — fix: Stripe payments stuck at "รอผลการชำระ" (E-52)
 - PO paid three test payments on staging; all stayed pending: no valid webhook reached the server (the endpoint answers 400 INVALID_SIGNATURE to an unsigned probe, so it is up and Stripe is configured; the delivery problem is on the Stripe side, to be checked in Event deliveries). The history link also opened the sandbox page for Stripe payments
 - `stripe_provider.retrieve_checkout` + `session_status` (shared with webhooks); `POST /v1/billing/payments/{id}/refresh` asks Stripe with our key and applies the result through `billing.apply_event` (event id `retrieve:<payment>:<status>`, once, forward-only, amount must match); open Sessions give their Stripe URL back
 - Web: the return page asks every 4 s until settled; history "ไปหน้าชำระ / ตรวจสถานะ" reopens Stripe's page or settles the row; sandbox rows still open the sandbox page

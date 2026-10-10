@@ -9,14 +9,15 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit, billing, quota, retention
+from .. import audit, billing, pilot, quota, retention
 from .. import jobs as job_rules
 from ..deps import StaffAuth, admin_only, get_db, staff
 from ..entitlements import DEFAULT_PLAN_CODE, entitlement
@@ -300,3 +301,11 @@ def run_retention(body: RetentionRun, request: Request, who: StaffAuth = Depends
                  details={"deleted": len(result.deleted), "kept_in_use": len(result.kept_in_use), "dry_run": body.dry_run})
     db.commit()
     return {"deleted": result.deleted, "kept_in_use": result.kept_in_use, "dry_run": body.dry_run}
+
+
+@router.get("/pilot-report")
+def pilot_report(days: int = Query(default=30, ge=1, le=366), who: StaffAuth = Depends(staff),
+                 db: Session = Depends(get_db)):
+    """G7-01/G7-02 evidence from the server's records for the last `days` days (counts only, no amounts)."""
+    until = billing.now()
+    return pilot.report(db, until - timedelta(days=days), until)
