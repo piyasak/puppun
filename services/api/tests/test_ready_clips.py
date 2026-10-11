@@ -130,3 +130,23 @@ def test_folder_names_only(ready):
                                               "source": {"kind": "local_clips", "folder": "..\\อื่น"}})
     assert resp.status_code == 422 and resp.json()["code"] == "UNSUPPORTED_FOLDER"
 
+
+
+def test_title_and_hashtags_set_up_front_make_auto_mode_ready_to_post(ready):  # PO 2026-10-11
+    body = {"idempotency_key": uuid.uuid4().hex, "environment_id": ready.env["id"],
+            "source": {"kind": "local_clips", "folder": "เรื่องA"}, "review_mode": "auto", "confirm_auto": True,
+            "title": "  เรื่องเอ   ภาคหนึ่ง ", "hashtags": ["ละคร", "#เรื่องเอ", "ละคร"]}
+    job = ready.owner.post("/v1/jobs", json=body).json()
+    assert job["title"] == "เรื่องเอ ภาคหนึ่ง" and job["hashtags"] == ["#ละคร", "#เรื่องเอ"]
+    assert ready.run() == "READY_FOR_REVIEW"
+    clips = ready.detail(job["id"])["clips"]
+    assert [c["metadata"]["caption"] for c in clips] == [f"เรื่องเอ ภาคหนึ่ง — ตอนที่ {i}/3" for i in (1, 2, 3)]
+    assert all(c["metadata"]["hashtags"] == ["#ละคร", "#เรื่องเอ"] for c in clips)
+    assert all(c["approval"]["approved"] for c in clips)  # nothing to edit, nothing to wait for
+
+
+def test_bad_hashtags_are_refused_when_the_job_is_made(ready):
+    body = {"idempotency_key": uuid.uuid4().hex, "environment_id": ready.env["id"],
+            "source": {"kind": "local_clips", "folder": "เรื่องA"}, "hashtags": ["มี ช่องว่าง"]}
+    resp = ready.owner.post("/v1/jobs", json=body)
+    assert resp.status_code == 422 and resp.json()["code"] == "VALIDATION_ERROR"
