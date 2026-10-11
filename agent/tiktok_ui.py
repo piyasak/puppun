@@ -8,8 +8,9 @@ What this module does on the phone:
 - stop with NEEDS_ACTION on a login wall, CAPTCHA or any screen it does not expect;
 - close TikTok (force-stop) so nothing is posted or kept.
 
-There is no function that presses Post, Story, Draft or anything in the shop, and `press` refuses
-those labels itself. Every press re-reads the screen first and checks what is really under the
+`press` refuses Post, Story, Draft and anything in the shop. Post is pressed only by `submit`, once,
+with a grant (Q-29 local ledger or a Q-42 server grant, after the server accepted SUBMITTING) and only
+on a post screen showing the exact caption and "only you". Every press re-reads the screen first and checks what is really under the
 point: with the keyboard up, TikTok moves "โพสต์" to the top-right corner (QA phone, 2026-10-08),
 so a position from an older reading can land on a different control.
 

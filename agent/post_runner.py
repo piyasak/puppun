@@ -16,8 +16,13 @@ server says may go (their job deletes clips once posted, a post of the clip is v
 post of it is pending or UNKNOWN), deletes each file for good when its SHA-256 still matches, and
 reports it. A file that changed is left alone and reported nowhere.
 
-There is no Submit step here: the server only runs in dry-run (E-40), and the TikTok UI steps
-(account check, Thai caption, Post, verification) are P5.4 and need a separate authorization.
+Live posts (Q-42): the server hands a post out live only under an admin's posting grant for the
+phone's account. The Agent then checks the account on screen, sets "only you", types the exact
+caption plus the attempt marker, reports SUBMITTING (the server counts the grant use there, under a
+lock, or refuses) and only then presses Post once; it verifies by the marker, and anything unsure
+after Post is UNKNOWN, never retried. A post without a grant, or with a visibility this Agent cannot
+set, is never pressed. The local one-time ledger (agent.authorization) remains only for the opt-in
+real-phone test.
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ from pathlib import Path
 
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import AttemptJournal, State, TransitionError
-from agent.authorization import GrantRefused
+from agent.authorization import GrantRefused, PostGrant
 from agent.compat import check_phone
 from agent.device_registry import discover
 from agent.server_client import ServerClient, ServerError
@@ -255,9 +260,13 @@ class _Post:
         return " ".join([*parts, *([marker] if marker else [])]).strip()
 
     def _live(self) -> bool:
-        """The authorized post (Q-29). Returns True when a crash after Post was simulated."""
-        if self.r.grant_source is None:
-            raise PostFailed("POSTING_NOT_AVAILABLE", "no posting grant on this Agent")
+        """An authorized post (Q-42 server grant, or the Q-29 local ledger in the opt-in test).
+        Returns True when a crash after Post was simulated."""
+        server_grant = self.post.get("grant")
+        if self.r.grant_source is None and not server_grant:
+            raise PostFailed("POSTING_NOT_AVAILABLE", "no posting grant for this post")
+        if server_grant and server_grant.get("visibility") != "only_me":
+            raise PostFailed("VISIBILITY_NOT_SUPPORTED", "this Agent can only post as \"only you\"")
         ui = self._ui()
         marker = "cf" + self.id.replace("-", "")[:6]  # ties the post to this attempt (PRD §H, Q-21)
         caption = self._caption(marker)
@@ -279,11 +288,15 @@ class _Post:
                 if exc.code in STOP_CODES:
                     raise PostStopped(exc.code) from None
                 raise
-            try:  # used and fsynced first: an exhausted grant stops here, before the server hears SUBMITTING
-                grant = self.r.grant_source(f"post {self.id}")
-            except GrantRefused as exc:
-                raise PostFailed("NO_GRANT", str(exc)) from None
-            self.event("SUBMITTING")  # the server checks approval again (PRD §G.6); a refusal stops here
+            if self.r.grant_source is not None:
+                try:  # used and fsynced first: an exhausted grant stops here, before the server hears SUBMITTING
+                    grant = self.r.grant_source(f"post {self.id}")
+                except GrantRefused as exc:
+                    raise PostFailed("NO_GRANT", str(exc)) from None
+            # The server checks approval again (PRD §G.6) and counts the grant use; a refusal stops here.
+            self.event("SUBMITTING")
+            if self.r.grant_source is None:
+                grant = PostGrant(f"server:{server_grant['id']}", 0)
             self.r.journal.advance(self.attempt_id, State.SUBMITTING, f"grant {grant.decision} #{grant.number}")
             ui.submit(grant, caption)
             if self.r.crash_after_submit:

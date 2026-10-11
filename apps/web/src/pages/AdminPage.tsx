@@ -23,6 +23,11 @@ type WorkspaceDetail = WorkspaceRow & {
 }
 type JobRow = { id: string; workspace_id: string; state: string; source: string; error_code: string | null; created_at: string }
 type PlanRow = { code: string }
+type GrantRow = {
+  id: string; account: string; visibility: string; max_posts: number; used_posts: number; remaining: number
+  expires_at: string; reason: string; status: 'active' | 'expired' | 'used_up' | 'revoked'
+}
+const GRANT_STATUS: Record<GrantRow['status'], string> = { active: 'ใช้ได้', expired: 'หมดอายุ', used_up: 'ใช้ครบแล้ว', revoked: 'ยกเลิกแล้ว' }
 
 function ReasonForm({ label, children, onSubmit }: {
   label: string
@@ -64,6 +69,10 @@ export function AdminPage() {
   const [units, setUnits] = useState(10)
   const [planCode, setPlanCode] = useState('pro')
   const [when, setWhen] = useState<'now' | 'next_cycle'>('next_cycle')
+  const [grants, setGrants] = useState<GrantRow[]>([])
+  const [grantAccount, setGrantAccount] = useState('')
+  const [grantPosts, setGrantPosts] = useState(10)
+  const [grantDays, setGrantDays] = useState(14)
 
   useEffect(() => {
     api<{ role: string }>('/v1/admin/me').then((r) => setRole(r.role)).catch(() => setRole(''))
@@ -81,6 +90,19 @@ export function AdminPage() {
 
   async function open(id: string) {
     setDetail(await api<WorkspaceDetail>(`/v1/admin/workspaces/${id}`))
+    setGrants((await api<{ items: GrantRow[] }>(`/v1/admin/workspaces/${id}/posting-grants`)).items)
+  }
+
+  /** Q-42: real posting for one TikTok account of this Workspace ("only you"), audited with a reason. */
+  async function grantAct(path: string, body: Record<string, unknown>) {
+    if (!detail) return
+    setError('')
+    try {
+      await api(path, { method: 'POST', body })
+      await open(detail.id)
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
   }
 
   async function act(path: string, body: Record<string, unknown>) {
@@ -172,6 +194,26 @@ export function AdminPage() {
               </ReasonForm>
               <ReasonForm label="สิ้นสุดแพ็กเกจทันที" onSubmit={(reason) => act('end', { reason })} />
             </div>
+          )}
+          <h3>สิทธิ์โพสต์จริง</h3>
+          <p className="muted">ไม่มีสิทธิ์ = ทุกโพสต์หยุดก่อนกดโพสต์ (dry run) • ตอนนี้เปิดได้เฉพาะแบบ "เฉพาะฉัน" • ต้องใช้ Agent 0.4.0 ขึ้นไป</p>
+          <ul className="rows" data-testid="admin-grants">{grants.map((g) => (
+            <li key={g.id} className="row"><div className="row-main">
+              <strong>@{g.account} • {GRANT_STATUS[g.status]}</strong>
+              <span className="muted">ใช้ {g.used_posts}/{g.max_posts} • ถึง {formatDate(g.expires_at)} • {g.reason}</span>
+            </div>
+            {isAdmin && g.status === 'active' && (
+              <ReasonForm label="ยกเลิกสิทธิ์" onSubmit={(reason) => grantAct(`/v1/admin/posting-grants/${g.id}/revoke`, { reason })} />
+            )}</li>
+          ))}</ul>
+          {grants.length === 0 && <p className="muted">ยังไม่มีสิทธิ์โพสต์จริง</p>}
+          {isAdmin && (
+            <ReasonForm label="ให้สิทธิ์โพสต์จริง" onSubmit={(reason) => grantAct(`/v1/admin/workspaces/${detail.id}/posting-grants`,
+              { account: grantAccount, max_posts: grantPosts, days: grantDays, visibility: 'only_me', reason })}>
+              <input aria-label="บัญชี TikTok" placeholder="@บัญชี" value={grantAccount} onChange={(e) => setGrantAccount(e.target.value)} />
+              <input type="number" aria-label="จำนวนโพสต์สูงสุด" min={1} max={1000} value={grantPosts} onChange={(e) => setGrantPosts(Number(e.target.value))} />
+              <input type="number" aria-label="ใช้ได้กี่วัน" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(Number(e.target.value))} />
+            </ReasonForm>
           )}
           <h3>การชำระเงิน</h3>
           <ul className="rows">{detail.payments.map((p) => (

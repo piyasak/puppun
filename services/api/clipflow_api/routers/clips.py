@@ -6,7 +6,7 @@ import hashlib
 import os
 import tempfile
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -17,11 +17,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from .. import audit, clips, jobs, retention, schedules
+from .. import audit, clips, jobs, posting_grants, retention, schedules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
 from ..errors import ApiError, not_found
-from ..models import Clip, ClipMetadata, Job, ScheduleItem
+from ..models import Clip, ClipMetadata, Device, Job, ScheduleItem
 from ..storage import LocalStorage
 from ..tenancy import get_owned
 from .agent import agent_context
@@ -239,7 +239,7 @@ def post_now(clip_id: uuid.UUID, body: PostNowIn, request: Request, auth: WebAut
              db: Session = Depends(get_db)):
     """PO 2026-10-10: post this one clip now. A one-item schedule due now (the time is the server's,
     PRD §G.5), so every check of a scheduled post applies: approved version, file, phone, account,
-    one post at a time per phone. Posting mode is the server's (dry-run stops before Post)."""
+    one post at a time per phone. posting_mode says what to expect: live only under a posting grant (Q-42)."""
     from ..routers.schedules import series_out
 
     clip, job = _owned(db, auth, clip_id)
@@ -252,8 +252,11 @@ def post_now(clip_id: uuid.UUID, body: PostNowIn, request: Request, auth: WebAut
     if created:
         audit.record(db, request, "clip.post_now", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                      target_id=clip.id, details={"series_id": str(series.id)})
+    phone = db.get(Device, body.device_id)
+    mode = posting_grants.expected_mode(db, auth.workspace_id, phone.expected_account if phone else None,
+                                        datetime.now(UTC), request.app.state.posting_mode)
     db.commit()
-    return series_out(db, series, with_items=True) | {"posting_mode": request.app.state.posting_mode}
+    return series_out(db, series, with_items=True) | {"posting_mode": mode}
 
 
 @web_router.post("/{clip_id}/unapprove")

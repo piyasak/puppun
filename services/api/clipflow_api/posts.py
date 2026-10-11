@@ -12,9 +12,12 @@ Claim (`POST /v1/agent/posts/claim`):
 
 Events (`POST /v1/agent/posts/{id}/events`) move the post along
 CLAIMED → TRANSFERRING → PREPARING → (DRY_RUN_DONE | SUBMITTING → VERIFYING → VERIFIED_SUCCESS / UNKNOWN).
-Only the lease holder may report; ids are deduplicated. SUBMITTING is refused unless the server
-runs in live mode, which no deployed server can (app.create_app), and it re-checks approval
-first (§G.6 "again before submission"). Success needs evidence (§H).
+Only the lease holder may report; ids are deduplicated. Each post carries the mode it was handed
+out with (Q-42): live only under an admin's posting grant for the phone's account (posting_grants)
+and only to an Agent that says it can post live; otherwise a dry run. SUBMITTING is refused for a
+dry run; for a live post it re-checks approval (§G.6 "again before submission") and then counts one
+grant use under the grant's row lock. Success needs evidence (§H). The test-only "live" server mode
+(app.create_app) makes every post live without a grant, to drive the state machine with simulated Agents.
 """
 
 from __future__ import annotations
@@ -26,10 +29,10 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from . import devices as device_rules
-from . import schedules, slots
+from . import posting_grants, schedules, slots
 from .agent_sessions import AgentContext
 from .errors import ApiError
-from .models import Clip, ClipMetadata, Device, ScheduleItem, ScheduleItemEvent, ScheduleSeries
+from .models import Clip, ClipMetadata, Device, PostingGrant, ScheduleItem, ScheduleItemEvent, ScheduleSeries
 
 LEASE_S = 300
 MAX_ATTEMPTS = 3
@@ -113,7 +116,8 @@ def _busy(db: Session, device_id: uuid.UUID) -> bool:
                                                 ScheduleItem.state.in_(BUSY)))))
 
 
-def claim(db: Session, ctx: AgentContext, ready_serials: list[str]) -> ScheduleItem | None:
+def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_live: bool = False,
+          server_mode: str = "dry_run") -> ScheduleItem | None:
     at = now()
     expire_leases(db, ctx.environment_id, at)
     apply_offline_policy(db, ctx.environment_id, at)
@@ -145,6 +149,13 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str]) -> ScheduleI
         if reason:
             _move(item, "NEEDS_ACTION", reason, at)
             continue
+        item.posting_mode, item.grant_id, item.grant_used = "dry_run", None, False
+        if server_mode == "live":
+            item.posting_mode = "live"  # test-only server mode
+        elif can_post_live:
+            grant = posting_grants.for_claim(db, item.workspace_id, phone.expected_account, at)
+            if grant is not None:
+                item.posting_mode, item.grant_id = "live", grant.id
         item.attempts += 1
         item.lease_session_id, item.lease_expires_at = ctx.session_id, at + timedelta(seconds=LEASE_S)
         item.claimed_at = item.claimed_at or at
@@ -159,9 +170,11 @@ def spec(db: Session, item: ScheduleItem, storage, ttl_s: int, posting_mode: str
     meta = db.scalars(select(ClipMetadata).where(ClipMetadata.clip_id == clip.id,
                                                  ClipMetadata.version == item.metadata_version)).one()
     phone = db.get(Device, item.device_id)
+    grant = db.get(PostingGrant, item.grant_id) if item.grant_id else None
     return {
         "id": str(item.id), "state": item.state, "state_version": item.state_version, "attempt": item.attempts,
-        "posting_mode": posting_mode, "scheduled_at": item.scheduled_at.isoformat(),
+        "posting_mode": item.posting_mode or posting_mode, "scheduled_at": item.scheduled_at.isoformat(),
+        "grant": {"id": str(grant.id), "visibility": grant.visibility} if grant else None,
         "lease_expires_at": item.lease_expires_at.isoformat() if item.lease_expires_at else None,
         "device": {"serial": phone.serial, "expected_account": phone.expected_account},
         "clip": {"id": str(clip.id), "job_id": str(clip.job_id), "index": clip.clip_index,
@@ -193,6 +206,7 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
         return item, True, None
     at = now()
     refusal = None
+    mode = item.posting_mode or posting_mode  # items handed out before 0018 follow the server mode
     if item.state not in IN_FLIGHT:
         raise ApiError(409, "ITEM_NOT_ACTIVE", "รายการนี้ไม่ได้อยู่ระหว่างโพสต์แล้ว หยุดงานนี้", {"state": item.state})
     if item.lease_session_id != ctx.session_id or item.lease_expires_at is None or item.lease_expires_at <= at:
@@ -205,17 +219,25 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
             item.started_at = at
         _move(item, kind, None, at)
     elif kind == "DRY_RUN_DONE":
-        if item.state != "PREPARING" or posting_mode != "dry_run":
+        if item.state != "PREPARING" or mode != "dry_run":
             raise _bad(item, kind)
         _release(item)
         _move(item, "DRY_RUN_DONE", "STOPPED_BEFORE_SUBMIT", at)
     elif kind == "SUBMITTING":
         if item.state != "PREPARING":
             raise _bad(item, kind)
-        if posting_mode != "live":
-            raise ApiError(409, "POSTING_DISABLED", "ระบบนี้ยังไม่เปิดการโพสต์จริง (dry-run) หยุดก่อนกดโพสต์")
+        if mode != "live" or (item.grant_id is None and posting_mode != "live"):
+            raise ApiError(409, "POSTING_DISABLED", "โพสต์นี้ไม่ได้รับอนุญาตให้โพสต์จริง (dry-run) หยุดก่อนกดโพสต์")
         reason = schedules.dispatchable(db, item, expected_state="PREPARING")
-        if reason:
+        if not reason and item.grant_id is not None:
+            reason = posting_grants.use(db, item, db.get(Device, item.device_id).expected_account, at)
+        if reason and reason.startswith("POSTING_GRANT"):
+            _release(item)
+            _move(item, "NEEDS_ACTION", reason, at)
+            event["detail"] = f"refused: {reason}"
+            refusal = ApiError(409, "POSTING_NOT_ALLOWED", "สิทธิ์โพสต์จริงของบัญชีนี้หมดหรือถูกยกเลิก ห้ามกดโพสต์",
+                               {"reason": reason})
+        elif reason:
             _release(item)
             # An expired subscription only makes the post wait, as it would before a claim (T22).
             _move(item, "SCHEDULED" if reason == "SUBSCRIPTION_INACTIVE" else "NEEDS_ACTION", reason, at)

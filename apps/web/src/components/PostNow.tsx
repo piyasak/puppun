@@ -1,6 +1,6 @@
 /** "โพสต์ทันที" on an approved clip (PO 2026-10-10): pick a phone, confirm, and the Agent takes it on
  * its next check (within about 15 s). The server sets the time and runs every check of a scheduled post;
- * while the system is in test mode (dry-run) the Agent stops before pressing Post. */
+ * without a posting grant for the phone's account (Q-42) the Agent stops before pressing Post. */
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError, api } from '../lib/api'
@@ -36,7 +36,7 @@ export function PostNow({ clipId, environmentId, onDone }: { clipId: string; env
       })
       setOpen(false)
       setDone(out.posting_mode === 'live'
-        ? 'ส่งให้ Agent แล้ว จะเริ่มโพสต์ภายในไม่กี่วินาที'
+        ? 'ส่งให้ Agent แล้ว บัญชีนี้มีสิทธิ์โพสต์จริง (แบบเฉพาะฉัน) จะเริ่มภายในไม่กี่วินาที'
         : 'ส่งให้ Agent แล้ว (โหมดทดสอบ: Agent ส่งคลิปเข้าโทรศัพท์แล้วหยุดก่อนกดโพสต์)')
       onDone?.()
     } catch (err) {

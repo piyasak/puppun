@@ -17,12 +17,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .. import audit, billing, pilot, quota, retention
+from .. import audit, billing, pilot, posting_grants, quota, retention
 from .. import jobs as job_rules
 from ..deps import StaffAuth, admin_only, get_db, staff
 from ..entitlements import DEFAULT_PLAN_CODE, entitlement
 from ..errors import ApiError, not_found
-from ..models import AuditEvent, Device, Job, Membership, Payment, Plan, Subscription, User, Workspace
+from ..models import AuditEvent, Device, Job, Membership, Payment, Plan, PostingGrant, Subscription, User, Workspace
 
 router = APIRouter(prefix="/v1/admin")
 
@@ -309,3 +309,50 @@ def pilot_report(days: int = Query(default=30, ge=1, le=366), who: StaffAuth = D
     """G7-01/G7-02 evidence from the server's records for the last `days` days (counts only, no amounts)."""
     until = billing.now()
     return pilot.report(db, until - timedelta(days=days), until)
+
+
+# --- authorized real posting (Q-42) -----------------------------------------------------------------
+
+class GrantIn(Reason):
+    account: str = Field(min_length=2, max_length=25)
+    max_posts: int = Field(ge=1, le=1000)
+    days: int = Field(ge=1, le=90)  # the grant ends this many days from now
+    visibility: Literal["only_me"] = "only_me"
+
+
+@router.get("/workspaces/{workspace_id}/posting-grants")
+def list_grants(workspace_id: uuid.UUID, who: StaffAuth = Depends(staff), db: Session = Depends(get_db)):
+    _workspace(db, workspace_id)
+    at = billing.now()
+    rows = db.scalars(select(PostingGrant).where(PostingGrant.workspace_id == workspace_id)
+                      .order_by(PostingGrant.created_at.desc())).all()
+    return {"items": [posting_grants.out(g, at) for g in rows]}
+
+
+@router.post("/workspaces/{workspace_id}/posting-grants", status_code=201)
+def create_grant(workspace_id: uuid.UUID, body: GrantIn, request: Request, who: StaffAuth = Depends(admin_only),
+                 db: Session = Depends(get_db)):
+    _workspace(db, workspace_id)
+    at = billing.now()
+    grant = posting_grants.create(db, workspace_id, account=body.account, max_posts=body.max_posts,
+                                  expires_at=at + timedelta(days=body.days), visibility=body.visibility,
+                                  reason=body.reason, actor=who.user_id, at=at)
+    audit.record(db, request, "admin.posting_grant.create", workspace_id=workspace_id, actor_user_id=who.user_id,
+                 target_id=grant.id, reason=body.reason, details=posting_grants.out(grant, at))
+    db.commit()
+    return posting_grants.out(grant, at)
+
+
+@router.post("/posting-grants/{grant_id}/revoke")
+def revoke_grant(grant_id: uuid.UUID, body: Reason, request: Request, who: StaffAuth = Depends(admin_only),
+                 db: Session = Depends(get_db)):
+    grant = db.scalars(select(PostingGrant).where(PostingGrant.id == grant_id).with_for_update()).first()
+    if grant is None:
+        raise not_found()
+    at = billing.now()
+    before = posting_grants.out(grant, at)
+    posting_grants.revoke(grant, who.user_id, at)
+    audit.record(db, request, "admin.posting_grant.revoke", workspace_id=grant.workspace_id, actor_user_id=who.user_id,
+                 target_id=grant.id, reason=body.reason, details={"before": before})
+    db.commit()
+    return posting_grants.out(grant, at)
