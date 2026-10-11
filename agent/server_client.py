@@ -118,7 +118,9 @@ class ServerClient:
                           session.token, {}, timeout_s=60.0)
 
     def claim_post(self, session: Session, ready_serials: list[str]) -> dict | None:
-        return self._post("/v1/agent/posts/claim", {"ready_serials": ready_serials}, bearer=session.token)["post"]
+        # can_post_live (Q-42): this Agent can carry out a post the server hands out live under a grant.
+        return self._post("/v1/agent/posts/claim", {"ready_serials": ready_serials, "can_post_live": True},
+                          bearer=session.token)["post"]
 
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)

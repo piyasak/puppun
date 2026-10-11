@@ -1,0 +1,122 @@
+"""Authorized real posting (Q-42).
+
+A platform admin grants one Workspace one TikTok account up to N real posts until a date, with a
+reason (audited, revocable). Everything else stays a dry run:
+
+- claim: a post is handed out live only when the Agent says it can post live, the phone has an
+  expected account, and a grant for that account is valid with room left after the live posts
+  already handed out (`for_claim`). Otherwise it goes out as a dry run, as before.
+- SUBMITTING: the grant row is locked and checked again (`use`); one use is counted there, before
+  the Agent presses Post, so a crash after Post can never lead to an extra post.
+
+No env value, setting or CLI command creates a grant.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+from datetime import datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .errors import ApiError
+from .models import PostingGrant, ScheduleItem
+
+HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._]{2,24}$")
+VISIBILITIES = ("only_me",)
+# Handed out live but not yet at SUBMITTING: these may still use the grant.
+PENDING_LIVE = ("CLAIMED", "TRANSFERRING", "PREPARING")
+
+
+def normalize_account(raw: str) -> str:
+    value = (raw or "").strip()
+    if not HANDLE_RE.match(value):
+        raise ApiError(422, "VALIDATION_ERROR", "ชื่อบัญชี TikTok ไม่ถูกต้อง", {"field": "account"})
+    return value.lstrip("@").lower()
+
+
+def status(grant: PostingGrant, at: datetime) -> str:
+    if grant.revoked_at is not None:
+        return "revoked"
+    if grant.expires_at <= at:
+        return "expired"
+    if grant.used_posts >= grant.max_posts:
+        return "used_up"
+    return "active"
+
+
+def out(grant: PostingGrant, at: datetime) -> dict:
+    return {
+        "id": str(grant.id), "account": grant.account, "visibility": grant.visibility,
+        "max_posts": grant.max_posts, "used_posts": grant.used_posts,
+        "remaining": max(grant.max_posts - grant.used_posts, 0), "expires_at": grant.expires_at.isoformat(),
+        "reason": grant.reason, "created_at": grant.created_at.isoformat() if grant.created_at else None,
+        "revoked_at": grant.revoked_at.isoformat() if grant.revoked_at else None, "status": status(grant, at),
+    }
+
+
+def create(db: Session, workspace_id: uuid.UUID, *, account: str, max_posts: int, expires_at: datetime,
+           visibility: str, reason: str, actor: uuid.UUID, at: datetime) -> PostingGrant:
+    if visibility not in VISIBILITIES:
+        raise ApiError(422, "VISIBILITY_NOT_AVAILABLE", "ตอนนี้เปิดได้เฉพาะโพสต์แบบ \"เฉพาะฉัน\"")
+    if expires_at <= at:
+        raise ApiError(422, "VALIDATION_ERROR", "วันหมดอายุต้องอยู่ในอนาคต", {"field": "expires_at"})
+    grant = PostingGrant(workspace_id=workspace_id, account=normalize_account(account), visibility=visibility,
+                         max_posts=max_posts, used_posts=0, expires_at=expires_at, reason=reason, created_by=actor)
+    db.add(grant)
+    db.flush()
+    return grant
+
+
+def revoke(grant: PostingGrant, actor: uuid.UUID, at: datetime) -> None:
+    if grant.revoked_at is None:
+        grant.revoked_at, grant.revoked_by = at, actor
+
+
+def _pending(db: Session, grant_id: uuid.UUID) -> int:
+    return db.scalar(select(func.count()).select_from(ScheduleItem).where(
+        ScheduleItem.grant_id == grant_id, ScheduleItem.grant_used.is_(False),
+        ScheduleItem.state.in_(PENDING_LIVE))) or 0
+
+
+def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime) -> PostingGrant | None:
+    """The grant a post on this account may go out live under, or None (a dry run).
+    The oldest valid grant with room is used first; the row is locked so two claims count the same room."""
+    if not account:
+        return None
+    grants = db.scalars(select(PostingGrant).where(
+        PostingGrant.workspace_id == workspace_id, PostingGrant.account == account.lower(),
+        PostingGrant.revoked_at.is_(None), PostingGrant.expires_at > at,
+        PostingGrant.used_posts < PostingGrant.max_posts).order_by(PostingGrant.created_at)
+        .with_for_update()).all()
+    for grant in grants:
+        if grant.used_posts + _pending(db, grant.id) < grant.max_posts:
+            return grant
+    return None
+
+
+def use(db: Session, item: ScheduleItem, account: str | None, at: datetime) -> str | None:
+    """Count one use for this post at SUBMITTING. Returns a refusal reason, or None when Post may be pressed."""
+    if item.grant_used:
+        return None  # a repeated SUBMITTING with a new event id: already counted
+    grant = db.scalars(select(PostingGrant).where(PostingGrant.id == item.grant_id).with_for_update()).first()
+    if grant is None or grant.workspace_id != item.workspace_id:
+        return "POSTING_GRANT_MISSING"
+    if (account or "").lower() != grant.account:
+        return "POSTING_GRANT_ACCOUNT"  # the phone's account was changed after the claim
+    state = status(grant, at)
+    if state != "active":
+        return {"revoked": "POSTING_GRANT_REVOKED", "expired": "POSTING_GRANT_EXPIRED"}.get(state, "POSTING_GRANT_USED_UP")
+    grant.used_posts += 1
+    item.grant_used = True
+    return None
+
+
+def expected_mode(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime, server_mode: str) -> str:
+    """What the customer should expect for a post on this account now (the claim decides for real:
+    the Agent must also be 0.4.0+ and the grant may be used up by then)."""
+    if server_mode == "live":
+        return "live"
+    return "live" if account and for_claim(db, workspace_id, account, at) is not None else "dry_run"

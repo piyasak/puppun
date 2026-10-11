@@ -514,8 +514,39 @@ class ScheduleItem(Base):
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     evidence: Mapped[dict | None] = mapped_column(JSONB)
+    # Q-42: the mode this post was handed out with (dry_run | live; NULL before 0018) and the grant
+    # that allows it. grant_used is set once, under the grant's row lock, at SUBMITTING.
+    posting_mode: Mapped[str | None] = mapped_column(String(8))
+    grant_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("posting_grants.id", ondelete="SET NULL"))
+    grant_used: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = _created()
+
+
+class PostingGrant(Base):
+    """Permission for real posts (Q-42): one Workspace, one TikTok account, up to `max_posts` posts
+    until `expires_at`, given by a platform admin with a reason. Without a valid grant every post is
+    a dry run. `used_posts` only grows, under this row's lock, when a post reaches SUBMITTING."""
+
+    __tablename__ = "posting_grants"
+    __table_args__ = (
+        CheckConstraint("max_posts BETWEEN 1 AND 1000", name="ck_posting_grants_max"),
+        CheckConstraint("used_posts >= 0 AND used_posts <= max_posts", name="ck_posting_grants_used"),
+        CheckConstraint("visibility IN ('only_me')", name="ck_posting_grants_visibility"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    account: Mapped[str] = mapped_column(String(64))  # TikTok handle, lower case, no "@"
+    visibility: Mapped[str] = mapped_column(String(16))  # only_me (public needs a PO decision + a tested step)
+    max_posts: Mapped[int] = mapped_column(Integer)
+    used_posts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str] = mapped_column(String(500))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
 class ScheduleItemEvent(Base):

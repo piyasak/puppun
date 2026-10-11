@@ -68,3 +68,32 @@ The 2026-10-09 run was healthy in 4.3 s, 2.8 s and 2.8 s, with 23 tables in `cli
 - **Backups and restore (NF-07, T24):** P8.
 - **Cron for retention (G6-05):** use a Render cron job running `python -m clipflow_api.manage retention` once staging exists.
 - **Real domain (D01).**
+
+## Make someone platform staff (admin / support)
+
+Roles are never given through the web or the API (E-46). The Render shell is not available on the free plan, so use one of these. The person must have signed up and finished onboarding first.
+
+**A. Supabase SQL Editor (no password needed).** Supabase → project `punpun` → **SQL Editor**. Put the email in both places, then run:
+
+```sql
+begin;
+insert into clipflow.audit_events (id, action, target_id, reason, details, created_at)
+select gen_random_uuid(), 'platform_role.set', id, 'granted in the Supabase SQL editor by the PO',
+       jsonb_build_object('before', platform_role, 'after', 'admin'), now()
+from clipflow.users where lower(email) = lower('EMAIL@EXAMPLE.COM');
+update clipflow.users set platform_role = 'admin' where lower(email) = lower('EMAIL@EXAMPLE.COM');
+commit;
+select username, email, platform_role from clipflow.users where platform_role is not null;
+```
+
+The last query must list exactly that person. Use `'support'` instead of `'admin'` for read-only staff. To remove a role, set `platform_role = null` (with an audit row, as above).
+
+**B. From this PC with the manage command (audited by the command).** In PowerShell, in the repo folder. The `DATABASE_URL` is the Session pooler URI from Render's Environment, with the password:
+
+```powershell
+$env:DATABASE_URL = Read-Host "DATABASE_URL"; $env:DB_SCHEMA = "clipflow"
+.venv\Scripts\python -m clipflow_api.manage grant-role --email EMAIL@EXAMPLE.COM --role admin
+Remove-Item Env:DATABASE_URL
+```
+
+After either way, reload the web app: the menu shows **ผู้ดูแลระบบ**.

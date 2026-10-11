@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Shell } from '../components/Shell'
+import { PostingGrants } from '../components/PostingGrants'
 import { Alert, Field } from '../components/ui'
 import { ApiError, api } from '../lib/api'
 import { formatDate } from '../lib/types'
@@ -113,6 +114,7 @@ export function DevicesPage() {
   return (
     <Shell title="โทรศัพท์">
       {error && <Alert kind="error">{error}</Alert>}
+      <PostingGrants />
       <section className="card" aria-labelledby="devices-title">
         <h2 id="devices-title">โทรศัพท์ที่ผูกไว้</h2>
         <p className="muted">

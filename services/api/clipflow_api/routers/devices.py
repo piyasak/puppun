@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -11,9 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import agent_sessions, audit, devices, schedules
+from .. import posting_grants as posting_grants_rules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
-from ..models import AgentSession, Device, Environment
+from ..models import AgentSession, Device, Environment, PostingGrant
 from ..tenancy import get_owned, scoped
 from .agent import agent_context
 
@@ -151,3 +153,11 @@ def unbind(device_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_a
                      target_id=d.id)
     db.commit()
     return _out(d, db.get(Environment, d.environment_id).name, False)
+
+
+@web_router.get("/posting-grants")
+def my_posting_grants(auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db)):
+    """Which TikTok accounts may post for real (Q-42), read-only: grants are given by the punpun team."""
+    at = datetime.now(UTC)
+    rows = db.scalars(scoped(PostingGrant, auth.workspace_id).order_by(PostingGrant.created_at.desc())).all()
+    return {"items": [{k: v for k, v in posting_grants_rules.out(g, at).items() if k != "reason"} for g in rows]}

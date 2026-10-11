@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.3.4"  # 0.3.3 + phone screens on the PC (scrcpy, ordered by web names, view-only lock)
+SOURCE_VERSION = "0.4.0"  # 0.3.4 + authorized real posts under a server grant (Q-42; claims say can_post_live)
 
 
 def _version() -> str:

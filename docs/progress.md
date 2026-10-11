@@ -4,7 +4,22 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — pilot report for G7 (P7.2–P7.4)
+### Latest slice (2026-10-11) — authorized real posting (Q-42, G7-02)
+- PO approved the feature in chat. Server: `posting_grants` table (migration 0018) + `posting_grants.py`. An admin grants one Workspace one TikTok account up to N posts until a date ("only you" only), with a reason; audited and revocable
+- Claim: a post is live only when the Agent says `can_post_live` (Agent 0.4.0+) and a grant for the phone's account has room after the live posts already handed out; otherwise dry run, as before. Items now store `posting_mode`, `grant_id` and `grant_used`
+- SUBMITTING: approval re-checked, then one grant use counted under the grant's row lock before Post is pressed; revoked/expired/used-up grants → NEEDS_ACTION `POSTING_GRANT_*`, never pressed. The test-only live server mode is unchanged
+- Agent 0.4.0: `claim_post` sends `can_post_live`; the post runner uses the server grant (or the old local ledger in the opt-in real-phone test), only "only you", same account/caption/marker checks; unsure after Post = UNKNOWN
+- Web: Admin → Workspace → "สิทธิ์โพสต์จริง" (give/revoke with a reason); Phones page shows which accounts post for real or that everything is a dry run; "post now" says what to expect for that phone's account
+- Runbook `docs/runbooks/live-posting.md`. No grant issued; no real post made
+- Commands: `test_posting_grants.py` 10 passed; test-integration 290 passed, 9 skipped; test-unit 203 passed; lint exit 0; tsc clean; e2e full suite 21 passed (incl. the new admin grant journey); Agent 0.4.0 setup built locally (var/dist, SHA-256 23bf1969…05eb6, 48.8 MB), bundle test passed; not published yet
+
+### Slice (2026-10-11) — pilot kit (P7.2)
+- `docs/pilot/guide.md`: Thai step-by-step for pilot users on staging (sign up → Environment → Agent download + pairing code → phone USB debugging → first job → approve → schedule; dry run only) with common problems; menu names checked against the web nav
+- `docs/pilot/support-log.md`: onboarding rows (G7-01) and support requests with minutes spent (G7-05), monthly summary vs `docs/cost-model.md`; no credentials, nothing dropped
+- Found: onboarding does not create an Environment, so every new user needs an extra step before a pairing code (counts against the 20-minute target). Not changed; proposed to the PO
+- PR #17 merged 2026-10-10 (all CI checks green, incl. the job-runner test heartbeat fix and the "ไฟล์บนเครื่อง: null" title fix)
+
+### Slice (2026-10-11) — pilot report for G7 (P7.2–P7.4)
 - `pilot.py` + `GET /v1/admin/pilot-report?days=N` (staff only, counts, no amounts): per new Workspace, minutes from sign-up to the first Agent install / phone / job and whether the first job came within 20 minutes (G7-01); jobs succeeded (READY_FOR_REVIEW) / failed (FAILED, NEEDS_ACTION) / cancelled / in progress; posts VERIFIED_SUCCESS / UNKNOWN / NEEDS_ACTION with UNKNOWN counted against the rate, dry runs on their own line and never counted as posts (G7-02, P7.4)
 - Web: Admin page → "รายงาน Pilot (G7)" with 7/30/90-day ranges and a per-Workspace table
 - G7 record refreshed: tools for G7-01/02 cited; G7-05 cost part done (G1-06), support load still unknown; stale G6 blocker removed. Still 0/5: no pilot users yet (D07)
