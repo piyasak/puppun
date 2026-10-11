@@ -237,6 +237,21 @@ class AgentInstallation(Base):
     deregistered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AgentLibrary(Base):
+    """The videos folder of an Environment's Agent (PO 2026-10-11), as last reported: full videos at
+    the top (cut by the Agent) and sub-folders of clips already cut, in EP order. Names and sizes only."""
+
+    __tablename__ = "agent_libraries"
+
+    environment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("environments.id", ondelete="CASCADE"),
+                                                      primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    installation_ref: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_installations.id", ondelete="SET NULL"))
+    videos: Mapped[list] = mapped_column(JSONB)  # [{name, size_bytes, modified_at}]
+    sets: Mapped[list] = mapped_column(JSONB)  # [{folder, clips: [name], count, size_bytes}]
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AgentSession(Base):
     """Short-lived Agent session (architecture §2.3). At most one live session per installation:
     a new one ends the previous (`superseded`), and requests carrying an old generation fail."""

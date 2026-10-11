@@ -43,6 +43,14 @@ def classify_url(url: str) -> str:
     raise unsupported("host_not_allowed")
 
 
+def check_folder_label(label: str) -> str:
+    """A folder of clips already cut (PO 2026-10-11) inside the Agent's videos folder: a bare name, never a path."""
+    label = label.strip()
+    if not FILE_NAME_RE.match(label) or label in (".", "..") or label.endswith((" ", ".")):
+        raise ApiError(422, "UNSUPPORTED_FOLDER", "ระบุเฉพาะชื่อโฟลเดอร์ในโฟลเดอร์วิดีโอของ Agent ไม่ต้องใส่ path")
+    return label
+
+
 def check_file_label(label: str) -> str:
     """A customer file on the Agent machine is referenced by name only, never a full path (Q-17)."""
     label = label.strip()

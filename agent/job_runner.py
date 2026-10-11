@@ -13,6 +13,11 @@ next step and nothing more is sent for it. Re-claiming a job after a restart res
 seed makes the same selection, uploaded clips are skipped and a local render whose hash matches
 the server's report is reused.
 
+Clips already cut (local_clips, PO 2026-10-11): a sub-folder of the videos folder, one file per clip in
+EP order. Nothing is cut or rendered: each file is hashed, checked (delivery.check_ready_clip) and
+linked into the job folder as clip_NN.mp4 (a hard link: no extra space; a copy when the clips folder is
+on another drive), so posting finds it like any made clip. The original file is never changed or deleted.
+
 Rendered clips stay in the clips folder chosen in the Agent (<folder>/<job id>/, Q-33) and are
 never uploaded: the Agent later posts that same file (Q-15). Intermediate downloads are deleted. Error details sent to the server never contain
 local paths (they can include the Windows user name).
@@ -227,6 +232,9 @@ class _Job:
         return guarded(self.r.cooldown, url, action)
 
     def _produce(self) -> None:
+        if self.spec["source"]["kind"] == "local_clips":
+            self._produce_ready()
+            return
         from clipflow_worker import pipeline
         from clipflow_worker.render import RenderError, Template
 
@@ -300,6 +308,57 @@ class _Job:
             self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} แล้ว")
         if failures and len(failures) == len(todo) and not any(c.get("uploaded") for c in self.reported.values()):
             raise JobFailure("RENDER_FAILED", f"render ไม่ผ่านทุกคลิป ({failures})")
+
+    def _ready_folder(self) -> Path:
+        from clipflow_worker.source import SourceError, SourceErrorCode
+
+        name = self.spec["source"].get("folder") or self.spec["source"].get("file_name") or ""
+        folder = (self.r.media_dir / name) if self.r.media_dir else None
+        # The server only accepts bare folder names; refuse anything that would leave the videos folder.
+        if folder is None or Path(name).name != name or not folder.is_dir():
+            raise SourceError(SourceErrorCode.NOT_FOUND, f"ไม่พบโฟลเดอร์ {name} ในโฟลเดอร์วิดีโอของ Agent")
+        return folder
+
+    def _produce_ready(self) -> None:
+        """A folder of clips already cut: report, check, link and deliver each one in EP order."""
+        from agent.library import clips_in
+        from clipflow_worker import delivery
+
+        files = clips_in(self._ready_folder())
+        if self.state == "RECEIVED":
+            total = sum(delivery.probe_duration_s(f) for f in files)
+            job = self.event("source_validated", duration_s=max(1, round(total)), possible_clips=len(files))
+            if self.state in FINISHED:  # empty folder or quota: nothing to send
+                return
+            planned = job["planned_clips"]
+        else:
+            planned = self.spec["planned_clips"] or 0
+            if len(files) < planned:
+                raise JobFailure("SOURCE_CHANGED", f"โฟลเดอร์มี {len(files)} คลิป แต่วางแผนไว้ {planned}")
+        self.stage("RENDERING")
+        self.home.mkdir(parents=True, exist_ok=True)
+        for index, src in enumerate(files[:planned], start=1):
+            self.check()
+            earlier = self.reported.get(index)
+            if earlier and earlier.get("uploaded"):
+                continue
+            out = self.home / f"clip_{index:02d}.mp4"
+            sha = _sha256(src)
+            if not (out.is_file() and _sha256(out) == sha):
+                out.unlink(missing_ok=True)
+                try:
+                    out.hardlink_to(src)  # same drive: no extra space, the original stays where it is
+                except OSError:
+                    shutil.copy2(src, out)  # the clips folder is on another drive
+            duration_ms = round(delivery.probe_duration_s(out) * 1000)
+            checks = delivery.check_ready_clip(out)
+            self.event("clip_rendered", index=index, start_ms=0, end_ms=duration_ms, duration_ms=duration_ms,
+                       sha256=sha, size_bytes=out.stat().st_size, template_version="ready-cut",
+                       title=src.stem, caption=src.stem, hashtags=[], checks=checks, local_path=str(out))
+            still = self.home / f"clip_{index:02d}.jpg"
+            delivery.contact_sheet(out, still, max(duration_ms / 1000, 0.1))
+            self._upload(index, still)
+            self.r.log(f"งาน {self.id[:8]}: ส่งคลิป {index}/{planned} ({src.name}) แล้ว")
 
     def _kept(self, index: int) -> bool:
         """This clip's reported file is in the job folder with the reported hash."""

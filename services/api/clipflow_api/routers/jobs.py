@@ -24,9 +24,10 @@ agent_router = APIRouter(prefix="/v1/agent/jobs")
 
 
 class SourceIn(BaseModel):
-    kind: Literal["url", "local_file"]
+    kind: Literal["url", "local_file", "local_clips"]
     url: str | None = Field(default=None, max_length=500)
     file_name: str | None = Field(default=None, max_length=200)
+    folder: str | None = Field(default=None, max_length=200)  # local_clips: a folder of clips already cut
 
 
 class JobIn(BaseModel):
@@ -170,9 +171,15 @@ def _spec(db: Session, job: Job, env_name: str) -> dict:
     }
 
 
+class ClaimJobIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    kinds: list[str] | None = Field(default=None, max_length=10)  # source kinds this Agent handles (0.5.0+)
+
+
 @agent_router.post("/claim")
-def claim_job(ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
-    job = jobs.claim(db, ctx)
+def claim_job(body: ClaimJobIn | None = None, ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
+    job = jobs.claim(db, ctx, body.kinds if body else None)
     db.commit()
     if job is None:
         return {"job": None}

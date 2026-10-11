@@ -34,6 +34,11 @@ export class FakeAgent {
     })
     expect(resp.status(), await resp.text()).toBe(200)
   }
+  /** PO 2026-10-11: what is in the videos folder (names and sizes only). */
+  async reportLibrary(library: { videos: { name: string; size_bytes: number }[]; sets: { folder: string; clips: string[] }[] }) {
+    const resp = await this.request.put(`${API}/v1/agent/library`, { headers: this.headers(), data: library })
+    expect(resp.status(), await resp.text()).toBe(200)
+  }
   async claim() {
     const resp = await this.request.post(`${API}/v1/agent/jobs/claim`, { headers: this.headers(), data: {} })
     return (await resp.json()).job as { id: string; seed: number }

@@ -48,6 +48,9 @@ class Session:
     features: tuple[str, ...] = ()  # what the server supports; empty from servers before Q-33
 
 
+JOB_KINDS = ("youtube", "bilibili", "local_file", "local_clips")
+
+
 class ServerClient:
     def __init__(self, server_url: str, timeout_s: float = 15.0):
         self.base = check_server_url(server_url)
@@ -100,7 +103,12 @@ class ServerClient:
         return self._post("/v1/agent/devices/report", {"devices": states}, bearer=session.token)
 
     def claim_job(self, session: Session) -> dict | None:
-        return self._post("/v1/agent/jobs/claim", {}, bearer=session.token)["job"]
+        # kinds (0.5.0): this Agent can also send a folder of clips already cut (local_clips).
+        return self._post("/v1/agent/jobs/claim", {"kinds": list(JOB_KINDS)}, bearer=session.token)["job"]
+
+    def report_library(self, session: Session, library: dict) -> dict:
+        """Names and sizes in the videos folder (PO 2026-10-11), never paths or files."""
+        return self._send("PUT", "/v1/agent/library", json.dumps(library).encode(), "application/json", session.token)
 
     def job_event(self, session: Session, job_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/jobs/{job_id}/events", event, bearer=session.token)
