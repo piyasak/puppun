@@ -334,3 +334,45 @@ def test_a_forbidden_container_behind_the_target_does_not_block_it_but_a_forbidd
             ui_for(phone).press("โปรไฟล์")
         assert err.value.code == "REFUSED_ELEMENT" and phone.state == "feed"
 
+
+
+class Shell:
+    def __init__(self):
+        self.commands = []
+
+    def shell(self, serial, command):
+        self.commands.append(command)
+        return ""
+
+
+def test_verification_trusts_the_marker_not_a_full_grid_and_looks_again_while_uploading(monkeypatch):
+    # QA phone, 2026-10-11: Profile shows 5 private tiles; the 6th post read 5 -> 5 and became UNKNOWN.
+    phone = Shell()
+    ui = TikTokUi(phone, "S", sleep=lambda s: None)
+    monkeypatch.setattr(ui, "account", lambda: "qa")
+    monkeypatch.setattr(ui, "private_count", lambda: 5)
+    monkeypatch.setattr(ui, "read", lambda **kw: [])
+    with pytest.raises(UiStop) as stop:  # nothing on the private tab: looked 4 times, then unknown
+        ui.verify_private_post("cfabc123", 5)
+    assert stop.value.code == "VERIFY_MARKER" and phone.commands.count("input keyevent KEYCODE_BACK") == 3
+
+    seen = iter([UiStop("VERIFY_MARKER", "still uploading"), UiStop("VERIFY_UNREADABLE", "x"), {"value": "cfabc123"}])
+
+    def newest(marker, before):
+        result = next(seen)
+        if isinstance(result, UiStop):
+            raise result
+        return result
+
+    monkeypatch.setattr(ui, "_newest_private_has", newest)
+    assert ui.verify_private_post("cfabc123", 5) == {"value": "cfabc123"}
+
+
+def test_fewer_private_videos_than_before_stops_at_once(monkeypatch):
+    phone = Shell()
+    ui = TikTokUi(phone, "S", sleep=lambda s: None)
+    monkeypatch.setattr(ui, "account", lambda: "qa")
+    monkeypatch.setattr(ui, "private_count", lambda: 3)
+    with pytest.raises(UiStop) as stop:
+        ui.verify_private_post("cfabc123", 5)
+    assert stop.value.code == "VERIFY_COUNT" and "input keyevent KEYCODE_BACK" not in phone.commands

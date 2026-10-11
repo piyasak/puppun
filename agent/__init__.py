@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.5.1"  # 0.5.0 + checking a post no longer refused by the feed's LIVE view behind the tab bar
+SOURCE_VERSION = "0.5.2"  # 0.5.1 + a post is verified by its marker, not by a tile count that stops at a full screen
 
 
 # A packaged build (tools/build_agent.py): Nuitka-compiled from 0.4.0 (`__compiled__` exists in

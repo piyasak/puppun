@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — first live post under a grant: posted, but UNKNOWN (verify step refused a tab)
+### Latest slice (2026-10-11) — live post eff002e4 posted, but UNKNOWN (tile count stops at a full screen)
+- Post eff002e4 (Agent 0.5.1, grant 8692b1b0): SUBMITTING (grant used) → Post pressed once → VERIFYING → **UNKNOWN** `VERIFY_COUNT: private videos 5 -> 5`
+- Checked on the QA phone (read-only): Profile shows only 5 private tiles above the tab bar (the first grid cell is "คลังเก็บ Story", the third row is under the tab bar), so a 6th post can never count as one more. The newest private video on @patsy4404 carries marker `cfeff002` → **published once**. The PO resolves it on the web ("ยืนยันผล…" → found published)
+- Fix (`tiktok_ui.verify_private_post`): the marker (unique per post) is the proof; a count that went down still stops; while TikTok is still uploading the newest tile is the previous post, so it looks again up to 4 times, 20 s apart (Back to Profile, never a force-stop). On the QA phone the new check found `cfeff002` with 5 -> 5. tests/unit 207 passed (2 new); posting tests 5 passed
+- Agent source version 0.5.2; not built/published yet
+
+### Slice (2026-10-11) — first live post under a grant: posted, but UNKNOWN (verify step refused a tab)
 - Post 287943f0 (Agent 0.5.0, grant 8692b1b0): journal CLAIMED → TRANSFERRING → PREPARING → SUBMITTING (grant used) → Post pressed once → VERIFYING → **UNKNOWN** `REFUSED_ELEMENT` at 648,1457. Last screen reading: back on the feed, whose "LIVE" view (0,436)-(720,1506) lies behind the tab bar; `press` refused the Profile tab because a forbidden label was anywhere under the point
 - Checked on the QA phone afterwards (read-only): newest private video on @patsy4404 carries marker `cf287943`, private videos 4 → 5 → **published once**. The PO resolves it on the web ("ยืนยันผล…" → found published, with this evidence)
 - Fix: `press` still refuses a forbidden control at the point, unless it is a larger container that wholly encloses the target (`encloses`); unit test with the real bounds + two blockers that must still refuse (16 passed)
