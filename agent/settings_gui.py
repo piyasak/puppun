@@ -213,6 +213,16 @@ class SettingsWindow:
             self.muted(sc, "ไม่พบ scrcpy ในเครื่องนี้ — ติดตั้ง Agent ด้วยไฟล์ setup เวอร์ชันล่าสุด", 9).grid(
                 row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
+        # --- the Thai keyboard a live post types with (Q-44): downloaded and installed on request only ---
+        keyboard = Card(page, "คีย์บอร์ดพิมพ์ไทยในโทรศัพท์", family)
+        keyboard.pack(fill="x", pady=6)
+        kb = keyboard.body
+        self.keyboard_button = Button(kb, "ติดตั้งคีย์บอร์ดพิมพ์ไทย", self.install_keyboard, family=family)
+        self.keyboard_button.grid(row=1, column=0, sticky="w")
+        self.muted(kb, "จำเป็นสำหรับโพสต์จริง: ดาวน์โหลด ADBKeyboard (GPL-2.0) จากผู้พัฒนา ตรวจไฟล์ แล้วติดตั้ง\n"
+                       "ในโทรศัพท์ทุกเครื่องที่เสียบอยู่ ไม่ตั้งเป็นคีย์บอร์ดหลัก (Agent สลับใช้เฉพาะตอนพิมพ์คำบรรยาย)", 9).grid(
+            row=2, column=0, sticky="w", pady=(6, 0))
+
         # --- start with Windows + actions ---
         self.autostart = tk.BooleanVar(value=state.autostart)
         box = tk.Checkbutton(page, text="เริ่ม punpun Agent เองเมื่อเปิดเครื่อง (login Windows)", variable=self.autostart,
@@ -301,6 +311,31 @@ class SettingsWindow:
         self.linked.set(f"✓ เชื่อมต่อแล้ว: {result['username']} • Environment {result['environment']}")
         self.linked_label.configure(fg=SUCCESS)
         self.say("เชื่อมต่อแล้ว เลือกโฟลเดอร์แล้วกดบันทึก", ok=True)
+
+    def install_keyboard(self) -> None:
+        self.keyboard_button.set_enabled(False)
+        self.say("กำลังดาวน์โหลดและติดตั้งคีย์บอร์ดพิมพ์ไทย…")
+        outcome: list = []
+
+        def work():  # downloads and adb installs off the window's thread
+            from agent import thai_keyboard
+            from agent.adb import Adb, AdbError, default_runner
+
+            try:
+                outcome.append(thai_keyboard.install_all(Adb(default_runner()), self.data_dir / "downloads"))
+            except (AdbError, OSError) as exc:
+                outcome.append([f"✗ อ่านโทรศัพท์ผ่าน ADB ไม่ได้: {exc}"])
+
+        def wait():
+            if not outcome:
+                self.root.after(200, wait)
+                return
+            self.keyboard_button.set_enabled(True)
+            lines = outcome[0]
+            self.say("\n".join(lines), ok=all(line.startswith("✓") for line in lines))
+
+        threading.Thread(target=work, daemon=True).start()
+        wait()
 
     def save(self) -> bool:
         try:

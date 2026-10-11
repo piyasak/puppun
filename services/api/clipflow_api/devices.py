@@ -51,7 +51,8 @@ def active_count(db: Session, environment_id: uuid.UUID) -> int:
 
 
 def register(db: Session, ctx: AgentContext, raw_serial: str, adb_state: str,
-             model: str | None, android_version: str | None) -> tuple[Device, bool]:
+             model: str | None, android_version: str | None,
+             thai_keyboard: bool | None = None) -> tuple[Device, bool]:
     """Bind a ready phone to the session's Environment. Returns (device, created)."""
     serial, key = normalize_serial(raw_serial)
     if adb_state != "device":
@@ -68,6 +69,8 @@ def register(db: Session, ctx: AgentContext, raw_serial: str, adb_state: str,
         existing.model = (model or existing.model or "")[:64] or None
         existing.android_version = (android_version or existing.android_version or "")[:16] or None
         existing.last_state, existing.last_reported_at = "device", at
+        if thai_keyboard is not None:
+            existing.thai_keyboard = thai_keyboard
         return existing, False
 
     if active_count(db, env.id) >= env.device_limit:
@@ -77,7 +80,7 @@ def register(db: Session, ctx: AgentContext, raw_serial: str, adb_state: str,
     device = Device(
         workspace_id=env.workspace_id, environment_id=env.id, serial=serial, serial_key=key,
         model=(model or "")[:64] or None, android_version=(android_version or "")[:16] or None,
-        registered_by=ctx.installation_ref, last_state="device", last_reported_at=at,
+        registered_by=ctx.installation_ref, last_state="device", last_reported_at=at, thai_keyboard=thai_keyboard,
     )
     db.add(device)
     try:

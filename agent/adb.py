@@ -236,6 +236,9 @@ class Adb:
     def shell(self, serial: str, command: str) -> str:
         return self._run(["-s", serial, "shell", command])
 
+    def install(self, serial: str, apk: Path) -> str:
+        return self._run(["-s", serial, "install", "-r", str(apk)])
+
     def doctor(self, serial: str) -> DoctorReport:
         match = [d for d in self.devices() if normalize_serial(d.serial) == normalize_serial(serial)]
         if not match:

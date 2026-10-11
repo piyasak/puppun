@@ -3,14 +3,15 @@
 The server identifies a phone by its hardware serial (`ro.serialno`), not by the ADB
 transport id: an ADB-over-Wi-Fi id (`ip:port`) changes between connections. Phones that are
 not ready (unauthorized/offline) are reported with a hint instead of being registered.
-Read-only on the phone: only `getprop`.
+Read-only on the phone: only `getprop` and `pm list packages` (is the Thai keyboard there, Q-44).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agent.adb import Adb, is_wireless_serial
+from agent import thai_keyboard
+from agent.adb import Adb, AdbError, is_wireless_serial
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class SeenPhone:
     state: str  # device | unauthorized | offline | ...
     model: str | None = None
     android_version: str | None = None
+    thai_keyboard: bool | None = None  # ADBKeyboard installed (needed for live posts); None = not read
 
 
 def discover(adb: Adb) -> list[SeenPhone]:
@@ -29,7 +31,11 @@ def discover(adb: Adb) -> list[SeenPhone]:
             hw = adb.shell(entry.serial, "getprop ro.serialno").strip() or None
             model = adb.shell(entry.serial, "getprop ro.product.model").strip() or entry.model
             release = adb.shell(entry.serial, "getprop ro.build.version.release").strip() or None
-            phones.append(SeenPhone(entry.serial, hw, entry.state, model, release))
+            try:
+                keyboard = thai_keyboard.installed(adb, entry.serial)
+            except AdbError:
+                keyboard = None
+            phones.append(SeenPhone(entry.serial, hw, entry.state, model, release, keyboard))
         else:
             # Over USB the transport id is the hardware serial; over Wi-Fi it is not usable.
             hw = None if is_wireless_serial(entry.serial) else entry.serial
@@ -53,13 +59,14 @@ def register_ready(client, session, phones: list[SeenPhone], only: str | None = 
             results.append({"adb_serial": p.adb_serial, "state": p.state, "outcome": "SERIAL_UNAVAILABLE"})
             continue
         try:
-            body = client.register_device(session, p.hw_serial, p.state, p.model, p.android_version)
+            body = client.register_device(session, p.hw_serial, p.state, p.model, p.android_version,
+                                          p.thai_keyboard)
             outcome = "REGISTERED" if body.get("created") else "ALREADY_REGISTERED"
             results.append({"serial": p.hw_serial, "state": p.state, "outcome": outcome, "device_id": body["id"],
                             "model": p.model, "display_name": body.get("display_name"),
                             "expected_account": body.get("expected_account"),
                             "missing_details": body.get("missing_details", []),
-                            "details_url": body.get("details_url")})
+                            "details_url": body.get("details_url"), "thai_keyboard": p.thai_keyboard})
         except ServerError as exc:
             results.append({"serial": p.hw_serial, "state": p.state, "outcome": exc.code, "message": exc.message,
                             "model": p.model})
@@ -69,6 +76,14 @@ def register_ready(client, session, phones: list[SeenPhone], only: str | None = 
 
 def describe(result: dict) -> str:
     """One Thai line per phone for the Agent's console / local status UI (Q-25)."""
+    line = _describe(result)
+    if result["outcome"] in ("REGISTERED", "ALREADY_REGISTERED") and result.get("thai_keyboard") is False:
+        line += (" — ยังไม่มีคีย์บอร์ดพิมพ์ไทย (ADBKeyboard) จึงโพสต์จริงไม่ได้: "
+                 "เปิดหน้าต่างตั้งค่า Agent แล้วกด \"ติดตั้งคีย์บอร์ดพิมพ์ไทย\"")
+    return line
+
+
+def _describe(result: dict) -> str:
     name = result.get("display_name") or result.get("model") or "โทรศัพท์"
     serial = result.get("serial") or result.get("adb_serial") or "?"
     phone = f"{name} ({serial})"
@@ -125,7 +140,7 @@ class DeviceSync:
             # Newly registered and already registered are the same state for announcements: the
             # reminder about missing details is shown once per run, not again a minute later.
             outcome = "BOUND" if r["outcome"] in ("REGISTERED", "ALREADY_REGISTERED") else r["outcome"]
-            signature = f"{outcome}|{r['state']}|{','.join(r.get('missing_details') or [])}"
+            signature = f"{outcome}|{r['state']}|{','.join(r.get('missing_details') or [])}|{r.get('thai_keyboard')}"
             if self._last.get(key) != signature:
                 self._last[key] = signature
                 self._log(describe(r))

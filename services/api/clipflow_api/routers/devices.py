@@ -28,6 +28,7 @@ class RegisterIn(BaseModel):
     adb_state: str = Field(max_length=16)
     model: str | None = Field(default=None, max_length=64)
     android_version: str | None = Field(default=None, max_length=16)
+    thai_keyboard: bool | None = None  # Agent 0.5.3+: ADBKeyboard installed (Q-44)
 
 
 class ReportIn(BaseModel):
@@ -58,6 +59,7 @@ def _out(d: Device, env_name: str, agent_online: bool) -> dict:
         "serial": d.serial,
         "model": d.model,
         "android_version": d.android_version,
+        "thai_keyboard": d.thai_keyboard,
         "display_name": d.display_name,
         "expected_account": d.expected_account,
         "environment": {"id": str(d.environment_id), "name": env_name},
@@ -72,7 +74,8 @@ def _out(d: Device, env_name: str, agent_online: bool) -> dict:
 @agent_router.post("/register")
 def register(body: RegisterIn, request: Request, ctx: AgentContext = Depends(agent_context),
              db: Session = Depends(get_db)):
-    device, created = devices.register(db, ctx, body.serial, body.adb_state, body.model, body.android_version)
+    device, created = devices.register(db, ctx, body.serial, body.adb_state, body.model, body.android_version,
+                                       body.thai_keyboard)
     if created:
         audit.record(db, request, "device.register", workspace_id=ctx.workspace_id, target_id=device.id)
     db.commit()

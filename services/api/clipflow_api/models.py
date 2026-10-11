@@ -299,6 +299,7 @@ class Device(Base):
     expected_account: Mapped[str | None] = mapped_column(String(64))  # TikTok handle the phone must post as
     registered_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_installations.id", ondelete="SET NULL"))
     last_state: Mapped[str | None] = mapped_column(String(16))  # device | unauthorized | offline | missing
+    thai_keyboard: Mapped[bool | None] = mapped_column(Boolean)  # ADBKeyboard installed (Q-44); None = not reported
     last_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
     unbound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

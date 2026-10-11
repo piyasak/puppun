@@ -12,6 +12,7 @@ type Device = {
   serial: string
   model: string | null
   android_version: string | null
+  thai_keyboard: boolean | null
   display_name: string | null
   expected_account: string | null
   environment: { id: string; name: string }
@@ -140,6 +141,11 @@ export function DevicesPage() {
                           ต้องใส่รายละเอียด: {d.missing_details.map((m) => (m === 'expected_account' ? 'บัญชี TikTok' : 'ชื่อเรียกเครื่อง')).join(', ')}
                         </span>
                       )}
+                      {d.thai_keyboard === false && d.readiness !== 'unbound' && (
+                        <span className="badge badge-warn" data-testid="no-thai-keyboard">
+                          ยังไม่มีคีย์บอร์ดพิมพ์ไทย: โพสต์จริงไม่ได้
+                        </span>
+                      )}
                       <span className="muted">
                         {d.model ?? '—'} • Android {d.android_version ?? '—'} • <code>{d.serial}</code> • {d.environment.name}
                       </span>
@@ -147,6 +153,11 @@ export function DevicesPage() {
                         บัญชี TikTok: {d.expected_account ? `@${d.expected_account}` : 'ยังไม่กำหนด'} • รายงานล่าสุด {formatDate(d.last_reported_at)}
                       </span>
                       {r.help && d.readiness !== 'unbound' && <span className="hint">{r.help}</span>}
+                      {d.thai_keyboard === false && d.readiness !== 'unbound' && (
+                        <span className="hint">
+                          เปิดหน้าต่างตั้งค่า punpun Agent บนเครื่อง Windows แล้วกด "ติดตั้งคีย์บอร์ดพิมพ์ไทย" (ADBKeyboard)
+                        </span>
+                      )}
                     </div>
                     {d.readiness !== 'unbound' && (
                       <div className="row-actions">
