@@ -134,6 +134,12 @@ def under(nodes: list[Node], x: int, y: int) -> list[Node]:
     return sorted((n for n in nodes if n.contains(x, y) and n.label), key=lambda n: n.area)
 
 
+def encloses(outer: Node, inner: Node) -> bool:
+    ox1, oy1, ox2, oy2 = outer.bounds
+    ix1, iy1, ix2, iy2 = inner.bounds
+    return ox1 <= ix1 and oy1 <= iy1 and ix2 <= ox2 and iy2 <= oy2
+
+
 def visibility_row(nodes: list[Node]) -> Node | None:
     return next((n for n in nodes if any(m in n.label.lower() for m in VISIBILITY_ROW)), None)
 
@@ -186,10 +192,17 @@ class TikTokUi:
         node = self.wait_for(*labels)
         x, y = node.center
         current = self.read()
-        if any(forbidden(n) for n in under(current, x, y)) or forbidden(node):
-            raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: a forbidden control is there")
-        if not any(n.label.lower() in {lbl.lower() for lbl in labels} for n in under(current, x, y)):
+        wanted = {lbl.lower() for lbl in labels}
+        here = under(current, x, y)  # smallest first
+        target = next((n for n in here if n.label.lower() in wanted), None)
+        if target is None:
             raise UiStop("SCREEN_CHANGED", f"{labels[0]!r} is no longer at {x},{y}")
+        # A forbidden control at the point blocks the press, unless it is a larger container that wholly
+        # encloses the target (QA phone, 2026-10-11: after a post the feed's "LIVE" view spans the screen
+        # behind the tab bar, and the Profile tab sits on top of it).
+        blocking = [n for n in here if forbidden(n) and not (n.area > target.area and encloses(n, target))]
+        if blocking or forbidden(node) or forbidden(target):
+            raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: a forbidden control is there")
         self.sh(f"input swipe {x} {y} {x} {y} 120")  # short press: plain taps fell through sheets (P1)
         self.sleep(self.settle_s)
 
@@ -330,14 +343,34 @@ class TikTokUi:
             raise UiStop("SCREEN_CHANGED", "something else is under the Post button")
         self.sh(f"input swipe {x} {y} {x} {y} 120")
 
-    def verify_private_post(self, marker: str, before: int) -> dict:
-        """PRD §H: the post is on this account's private tab and its caption carries the attempt marker."""
+    def verify_private_post(self, marker: str, before: int, tries: int = 4, wait_s: float = 20.0) -> dict:
+        """PRD §H: the post is on this account's private tab and its caption carries the attempt marker.
+
+        The marker (unique per post) is the proof. The tile count is not: Profile shows only the tiles
+        that fit above the tab bar (QA phone, 2026-10-11: 5, so a 6th post read 5 -> 5 and a published
+        post became UNKNOWN). A count that went down still stops. While TikTok is still uploading, the
+        newest tile is the previous post, so it looks again a few times (Back to Profile, never a
+        force-stop, which would end the upload)."""
+        for attempt in range(tries):
+            if attempt:
+                self.sh("input keyevent KEYCODE_BACK")  # from the opened video back to Profile
+                self.sleep(wait_s)
+            try:
+                return self._newest_private_has(marker, before)
+            except UiStop as exc:
+                if exc.code not in ("VERIFY_MARKER", "VERIFY_UNREADABLE") or attempt == tries - 1:
+                    raise
+        raise AssertionError("unreachable")
+
+    def _newest_private_has(self, marker: str, before: int) -> dict:
         handle = self.account()
         after = self.private_count()
-        if after != before + 1:
-            raise UiStop("VERIFY_COUNT", f"private videos {before} -> {after}, expected exactly one more")
+        if after < before:
+            raise UiStop("VERIFY_COUNT", f"private videos {before} -> {after}, fewer than before")
         locks = sorted((n for n in self.read() if n.desc == "ล็อก" and n.bounds[1] > 850),
                        key=lambda n: (n.bounds[1], n.bounds[0]))
+        if not locks:
+            raise UiStop("VERIFY_MARKER", "no private video on Profile yet")
         x, y = locks[0].center
         self.sh(f"input swipe {x} {y - 60} {x} {y - 60} 120")  # newest tile (the lock icon sits on it)
         self.sleep(self.settle_s * 2)
