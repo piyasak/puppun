@@ -4,7 +4,14 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — Thai keyboard on customer phones (Q-44): punpun Thai input
+### Latest slice (2026-10-11) — series title and hashtags when a job is made (Q-45)
+- PO: enter the title and hashtags when creating a job, so automation need not wait for approval
+- Server: `JobIn.title` / `hashtags` → `jobs.caption_title` / `caption_hashtags` (migration 0021, hashtags normalized like clip edits); each clip's first caption = "<title> — ตอนที่ i/N" + those hashtags (`jobs.episode_caption`), for every source kind; the claim spec carries `title`
+- Agent 0.5.3 (source): `pipeline.render(..., title=)` draws the job's title on the video instead of the source title
+- Web /create step 2: ชื่อเรื่อง + แฮชแท็ก fields (checked like the server), auto-mode hint, caption preview on the summary step
+- Commands: test_ready_clips 9 passed (title + hashtags + auto mode → all 3 clips approved with "เรื่องเอ ภาคหนึ่ง — ตอนที่ i/3"; bad hashtag 422); real render with a title (test_agent_job_runner_http, burned-in title + caption); e2e jobs.spec 3 passed (fields, bad hashtag message, preview, request body); tsc + oxlint clean
+
+### Slice (2026-10-11) — Thai keyboard on customer phones (Q-44): punpun Thai input
 - PO asked whether ADBKeyboard is needed on every phone: yes for live posts, and it was in no setup step. PO chose: report + stop, install from a button (downloaded, not bundled), guide step
 - Agent (source 0.5.3): `agent/thai_keyboard.py` finds the keyboard per phone (ours first, ADBKeyBoard still used where present); phone check reports it (`thai_keyboard` on register; server column + migration 0020; web "ยังไม่มีคีย์บอร์ดพิมพ์ไทย" badge + how to fix); a live post without it stops before typing or using the grant (`THAI_KEYBOARD_MISSING`, retryable on the web, which now also lists `ACCOUNT_UNREADABLE`); "ติดตั้งคีย์บอร์ดพิมพ์ไทย" in the settings window and `agent.cli thai-keyboard`: download → SHA-256 check → `adb install` → `ime enable`, never `ime set` as default; Play Protect / Xiaomi refusals are said, not a hang
 - Finding on the QA phone: Google Play Protect **blocks ADBKeyBoard** ("built for an older Android", target SDK 33) — it had installed on 2026-10-07. I had uninstalled it from the QA phone to test the button, so the QA phone lost it. PO chose our own keyboard: `keyboard/` (GPL-2.0 fork of ADBKeyBoard 8dd0b69: own package `app.punpun.keyboard`, only the two broadcasts used, accepted only from senders holding `android.permission.DUMP`, exported receiver for Android 14+, target SDK 36), built without Gradle by `tools/build_keyboard.py` (aapt2/javac/d8/zipalign/apksigner, signing key outside the repo with a DPAPI-protected password)

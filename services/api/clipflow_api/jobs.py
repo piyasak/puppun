@@ -54,7 +54,8 @@ def longest_clip_s(job: Job, index: int) -> float:
 
 def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_key: str, source: dict,
            requested_clips: int, clip_min_s: int, clip_max_s: int, subtitles: bool, review_mode: str,
-           auto_clips: bool = False, delete_after_post: bool = False) -> tuple[Job, bool]:
+           auto_clips: bool = False, delete_after_post: bool = False, caption_title: str | None = None,
+           caption_hashtags: list[str] | None = None) -> tuple[Job, bool]:
     """Create a job, or return the existing one for a repeated idempotency key. Returns (job, created)."""
     existing = db.scalars(select(Job).where(Job.workspace_id == workspace_id,
                                             Job.idempotency_key == idempotency_key)).first()
@@ -82,6 +83,10 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
         clip_min_s, clip_max_s = 15, PRECUT_MAX_S
     else:
         raise ApiError(422, "VALIDATION_ERROR", "ต้องระบุแหล่งที่มาเป็นลิงก์หรือไฟล์บนเครื่อง Agent")
+    from .clips import normalize_hashtags  # clips imports this module
+
+    caption_title = " ".join((caption_title or "").split())[:100] or None
+    caption_hashtags = normalize_hashtags(caption_hashtags) if caption_hashtags else None
 
     billing.require_active(entitlement(db, workspace_id).cycle)  # an expired subscription makes no new jobs
     # Early, friendly check; the binding reservation happens when the clip count is known (E-04).
@@ -96,6 +101,7 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
         clip_min_s=clip_min_s, clip_max_s=clip_max_s,
         subtitles=subtitles,
         review_mode=review_mode, seed=secrets.randbelow(2**31), state="RECEIVED", state_version=1, attempts=0,
+        caption_title=caption_title, caption_hashtags=caption_hashtags,
     )
     db.add(job)
     try:
@@ -295,6 +301,10 @@ def _stage(db: Session, job: Job, e: dict, at: datetime) -> None:
         job.state_version += 1
 
 
+def episode_caption(title: str, index: int, total: int | None) -> str:
+    return f"{title} — ตอนที่ {index}/{total}" if total else f"{title} — ตอนที่ {index}"
+
+
 def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
     if job.state != "RENDERING":
         raise _bad_order(job, e["type"])
@@ -341,7 +351,12 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
     )
     db.add(clip)
     db.flush()
-    db.add(clips.first_metadata(clip, e.get("caption"), e.get("hashtags")))
+    caption, hashtags = e.get("caption"), e.get("hashtags")
+    if job.caption_title:  # the text set when the job was made wins over the Agent's default
+        caption = episode_caption(job.caption_title, index, job.planned_clips)
+    if job.caption_hashtags is not None:
+        hashtags = job.caption_hashtags
+    db.add(clips.first_metadata(clip, caption, hashtags))
     # Quota is settled when the file arrives and matches this hash (clips.accept_upload).
 
 

@@ -357,3 +357,11 @@ def test_reset_rules_and_the_admin_path(shop, onboard, app):
     cancelled = shop.job()
     shop.owner.post(f"/v1/jobs/{cancelled}/cancel")
     assert shop.owner.post(f"/v1/jobs/{cancelled}/reset").status_code == 409
+
+
+def test_the_series_title_is_burned_in_and_starts_every_caption(shop):  # PO 2026-10-11
+    job_id = shop.job(clips=1, title="เรื่องของเรา", hashtags=["ซีรีส์"])
+    assert shop.run() == "READY_FOR_REVIEW"
+    clip = shop.detail(job_id)["clips"][0]
+    assert clip["title"] == "เรื่องของเรา"  # the text drawn on the video (not the file name "source")
+    assert clip["metadata"]["caption"] == "เรื่องของเรา — ตอนที่ 1/1" and clip["metadata"]["hashtags"] == ["#ซีรีส์"]

@@ -81,8 +81,9 @@ def fetch_part(p: Plan, segment: seg.Segment, max_height: int = 1080) -> tuple[P
 
 
 def render(p: Plan, index: int, segment: seg.Segment, part: Path, offset: float, out: Path,
-           tpl: Template) -> tuple[RenderResult, dict, int]:
-    """Returns (render result, text metadata, subtitle cue count)."""
-    text, metadata = clip_text(p.info.title, index, len(p.selection.segments))
+           tpl: Template, title: str | None = None) -> tuple[RenderResult, dict, int]:
+    """Returns (render result, text metadata, subtitle cue count). `title`: the job's series title
+    (PO 2026-10-11), burned in instead of the source's."""
+    text, metadata = clip_text(title or p.info.title, index, len(p.selection.segments))
     text.subtitles = seg.cues_within(p.cues, segment)
     return render_clip(part, offset, segment.duration, text, out, tpl), metadata, len(text.subtitles)

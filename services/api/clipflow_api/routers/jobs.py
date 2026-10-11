@@ -44,6 +44,9 @@ class JobIn(BaseModel):
     subtitles: bool = True  # Q-12
     review_mode: Literal["review", "auto"] = "review"
     confirm_auto: bool = False  # FR-08: auto mode must be switched on explicitly
+    # PO 2026-10-11: the series title and hashtags for every clip's caption, set up front
+    title: str | None = Field(default=None, max_length=100)
+    hashtags: list[str] | None = Field(default=None, max_length=30)
     # PO 2026-10-10: delete each clip file on the Agent's PC for good once its post is verified
     delete_after_post: bool = False
 
@@ -75,6 +78,7 @@ def job_out(db: Session, job: Job, *, with_clips: bool = False) -> dict:
         "clip_max_s": job.clip_max_s,
         "subtitles": job.subtitles,
         "review_mode": job.review_mode,
+        "title": job.caption_title, "hashtags": job.caption_hashtags,
         "seed": job.seed,
         "notice": job.notice,
         "error": {"code": job.error_code, "detail": job.error_detail} if job.error_code else None,
@@ -99,6 +103,7 @@ def create_job(body: JobIn, request: Request, auth: WebAuth = Depends(web_auth),
         idempotency_key=body.idempotency_key, source=body.source.model_dump(),
         requested_clips=jobs.AUTO_MAX_CLIPS if body.auto_clips else body.requested_clips, auto_clips=body.auto_clips,
         delete_after_post=body.delete_after_post, clip_min_s=body.clip_min_s, clip_max_s=body.clip_max_s, subtitles=body.subtitles, review_mode=body.review_mode,
+        caption_title=body.title, caption_hashtags=body.hashtags,
     )
     if created:
         audit.record(db, request, "job.create", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
@@ -165,6 +170,7 @@ def _spec(db: Session, job: Job, env_name: str) -> dict:
         "source": {"kind": job.source_kind, "url": job.source_url, "file_name": job.source_label},
         "requested_clips": job.requested_clips, "planned_clips": job.planned_clips, "auto_clips": job.auto_clips,
         "clip_min_s": job.clip_min_s, "clip_max_s": job.clip_max_s, "subtitles": job.subtitles,
+        "title": job.caption_title,  # Agent 0.5.3+: burned into the video instead of the source title
         "seed": job.seed, "lease_expires_at": job.lease_expires_at.isoformat() if job.lease_expires_at else None,
         # Start again (PO 2026-10-10): the clips whose files the Agent must find or make again
         "remake": jobs.remake_indexes(db, job) if job.remake_requested_at else None,
