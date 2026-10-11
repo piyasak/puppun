@@ -22,14 +22,18 @@ def good_hash(monkeypatch):
 
 class Phone:
     def __init__(self, has_keyboard=False, install_out="Performing Streamed Install\nSuccess\n"):
-        self.has_keyboard, self.install_out, self.calls = has_keyboard, install_out, []
+        self.has_keyboard, self.install_out, self.calls, self.enabled = has_keyboard, install_out, [], False
 
     def __call__(self, args):
         self.calls.append(args)
         if args[:1] == ["devices"]:
             return "List of devices attached\nS1\tdevice product:x model:POCO_F7 device:x\n"
         if args[2:] == ["shell", "pm list packages"]:
-            return "package:com.ss.android.ugc.trill\n" + ("package:com.android.adbkeyboard\n" if self.has_keyboard else "")
+            return "package:com.ss.android.ugc.trill\n" + ("package:app.punpun.keyboard\n" if self.has_keyboard else "")
+        if args[2:] == ["shell", "ime enable app.punpun.keyboard/.PunpunIME"]:
+            assert self.has_keyboard
+            self.enabled = True
+            return "Input method app.punpun.keyboard/.PunpunIME: now enabled\n"
         if args[2] == "install":
             assert args[3] == "-r" and Path(args[4]).read_bytes() == GOOD
             if "Success" in self.install_out:
@@ -51,9 +55,18 @@ def opener(data=GOOD, fail=False):
     return open_
 
 
-def test_the_pinned_apk_is_the_one_checked_on_the_qa_phone():
-    assert "/8dd0b6924e45ac5565f77f13cf8e8eaf47dbb1b0/" in thai_keyboard.APK_URL
-    assert APK_SHA256 == "e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59"
+def test_the_apk_comes_from_our_release_page_with_a_fixed_hash():
+    assert thai_keyboard.APK_URL.startswith("https://github.com/piyasak/punpun-agent/releases/download/keyboard-v")
+    assert len(APK_SHA256) == 64
+
+
+def test_a_phone_with_only_adbkeyboard_still_types_with_it():
+    def runner(args):
+        return "package:com.android.adbkeyboard\n"
+
+    assert thai_keyboard.ime(Adb(runner), "S1") == "com.android.adbkeyboard/.AdbIME"
+    both = "package:com.android.adbkeyboard\npackage:app.punpun.keyboard\n"
+    assert thai_keyboard.ime(Adb(lambda a: both), "S1") == thai_keyboard.IME  # ours first
 
 
 def test_installs_once_only_where_missing_and_downloads_once(tmp_path):
@@ -63,8 +76,8 @@ def test_installs_once_only_where_missing_and_downloads_once(tmp_path):
     assert thai_keyboard.install(adb, "S1", tmp_path, get) == "present"
     assert len(get.urls) == 1 and get.urls[0] == thai_keyboard.APK_URL
     assert sum(1 for c in phone.calls if "install" in c) == 1
-    # Never made the phone's keyboard: no ime command at all.
-    assert not any("ime" in " ".join(c) for c in phone.calls)
+    # Made available, never the phone's keyboard: `ime enable` only, no `ime set`.
+    assert phone.enabled and not any("ime set" in " ".join(c) for c in phone.calls)
 
 
 def test_a_different_file_is_never_installed(tmp_path):

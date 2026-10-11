@@ -219,7 +219,7 @@ class SettingsWindow:
         kb = keyboard.body
         self.keyboard_button = Button(kb, "ติดตั้งคีย์บอร์ดพิมพ์ไทย", self.install_keyboard, family=family)
         self.keyboard_button.grid(row=1, column=0, sticky="w")
-        self.muted(kb, "จำเป็นสำหรับโพสต์จริง: ดาวน์โหลด ADBKeyboard (GPL-2.0) จากผู้พัฒนา ตรวจไฟล์ แล้วติดตั้ง\n"
+        self.muted(kb, "จำเป็นสำหรับโพสต์จริง: ดาวน์โหลด punpun Thai input (GPL-2.0) ตรวจไฟล์ แล้วติดตั้ง\n"
                        "ในโทรศัพท์ทุกเครื่องที่เสียบอยู่ ไม่ตั้งเป็นคีย์บอร์ดหลัก (Agent สลับใช้เฉพาะตอนพิมพ์คำบรรยาย)", 9).grid(
             row=2, column=0, sticky="w", pady=(6, 0))
 

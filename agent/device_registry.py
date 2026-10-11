@@ -21,7 +21,7 @@ class SeenPhone:
     state: str  # device | unauthorized | offline | ...
     model: str | None = None
     android_version: str | None = None
-    thai_keyboard: bool | None = None  # ADBKeyboard installed (needed for live posts); None = not read
+    thai_keyboard: bool | None = None  # a Thai keyboard installed (needed for live posts); None = not read
 
 
 def discover(adb: Adb) -> list[SeenPhone]:
@@ -78,7 +78,7 @@ def describe(result: dict) -> str:
     """One Thai line per phone for the Agent's console / local status UI (Q-25)."""
     line = _describe(result)
     if result["outcome"] in ("REGISTERED", "ALREADY_REGISTERED") and result.get("thai_keyboard") is False:
-        line += (" — ยังไม่มีคีย์บอร์ดพิมพ์ไทย (ADBKeyboard) จึงโพสต์จริงไม่ได้: "
+        line += (" — ยังไม่มีคีย์บอร์ดพิมพ์ไทย (punpun Thai input) จึงโพสต์จริงไม่ได้: "
                  "เปิดหน้าต่างตั้งค่า Agent แล้วกด \"ติดตั้งคีย์บอร์ดพิมพ์ไทย\"")
     return line
 

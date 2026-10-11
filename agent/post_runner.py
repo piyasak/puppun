@@ -269,7 +269,7 @@ class _Post:
         if server_grant and server_grant.get("visibility") != "only_me":
             raise PostFailed("VISIBILITY_NOT_SUPPORTED", "this Agent can only post as \"only you\"")
         if not thai_keyboard.installed(self.adb, self.phone.adb_serial):  # before anything is typed or used
-            raise UiStop("THAI_KEYBOARD_MISSING", "ADBKeyboard is not installed on this phone")
+            raise UiStop("THAI_KEYBOARD_MISSING", "no Thai keyboard (punpun Thai input) on this phone")
         ui = self._ui()
         marker = "cf" + self.id.replace("-", "")[:6]  # ties the post to this attempt (PRD §H, Q-21)
         caption = self._caption(marker)

@@ -4,7 +4,7 @@ What this module does on the phone:
 - read the logged-in account on Profile and refuse a different one (FR-16, G5-03);
 - open the exact verified file through the share intent (never the gallery grid);
 - "Video" -> "ถัดไป"/"Next" -> visibility "Only you" -> type the approved Thai caption via
-  ADBKeyboard and check it character for character;
+  our Thai keyboard (punpun Thai input, agent.thai_keyboard) and check it character for character;
 - stop with NEEDS_ACTION on a login wall, CAPTCHA or any screen it does not expect;
 - close TikTok (force-stop) so nothing is posted or kept.
 
@@ -31,11 +31,11 @@ import time
 from dataclasses import dataclass
 from xml.etree import ElementTree
 
+from agent import thai_keyboard
 from agent.adb import Adb, AdbError
 
 PACKAGE = "com.ss.android.ugc.trill"
 SHARE_ACTIVITY = f"{PACKAGE}/com.ss.android.ugc.aweme.share.SystemShareActivity"
-ADB_IME = "com.android.adbkeyboard/.AdbIME"
 DUMP = "/sdcard/cf_ui.xml"
 
 # Never pressed, whatever matched: exact labels and fragments (Thai + English builds).
@@ -287,15 +287,19 @@ class TikTokUi:
         x, y = field.center
         self.sh(f"input swipe {x} {y} {x} {y} 120")
         self.sleep(self.settle_s)
+        keyboard = thai_keyboard.ime(self.adb, self.serial)
+        if keyboard is None:
+            raise UiStop("THAI_KEYBOARD_MISSING", "no Thai keyboard (punpun Thai input) on this phone")
         original = self.sh("settings get secure default_input_method").strip()
         try:
-            self.sh(f"ime set {ADB_IME}")
+            self.sh(f"ime enable {keyboard}")  # available, not the default (a no-op when it already is)
+            self.sh(f"ime set {keyboard}")
             self.sh("am broadcast -a ADB_CLEAR_TEXT")
             msg = base64.b64encode(caption.encode("utf-8")).decode()
             self.sh(f"am broadcast -a ADB_INPUT_B64 --es msg {msg}")
             self.sleep(self.settle_s)
         finally:
-            if original and original != ADB_IME:
+            if original and original != keyboard:
                 self.sh(f"ime set {original}")  # the owner's keyboard comes back every time
         typed = next((n for n in self.read() if n.cls.endswith("EditText")), None)
         if typed is None or typed.text.strip() != caption.strip():

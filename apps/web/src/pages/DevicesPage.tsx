@@ -155,7 +155,7 @@ export function DevicesPage() {
                       {r.help && d.readiness !== 'unbound' && <span className="hint">{r.help}</span>}
                       {d.thai_keyboard === false && d.readiness !== 'unbound' && (
                         <span className="hint">
-                          เปิดหน้าต่างตั้งค่า punpun Agent บนเครื่อง Windows แล้วกด "ติดตั้งคีย์บอร์ดพิมพ์ไทย" (ADBKeyboard)
+                          เปิดหน้าต่างตั้งค่า punpun Agent บนเครื่อง Windows แล้วกด "ติดตั้งคีย์บอร์ดพิมพ์ไทย" (punpun Thai input)
                         </span>
                       )}
                     </div>

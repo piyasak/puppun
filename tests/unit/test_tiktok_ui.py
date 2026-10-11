@@ -13,7 +13,8 @@ import re
 import pytest
 
 from agent.adb import Adb
-from agent.tiktok_ui import ADB_IME, TikTokUi, UiStop, account_handle, classify, forbidden, parse_dump
+from agent.thai_keyboard import IME
+from agent.tiktok_ui import TikTokUi, UiStop, account_handle, classify, forbidden, parse_dump
 
 GBOARD = "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME"
 
@@ -106,12 +107,16 @@ class FakeTikTok:
             self.state = "feed"
         elif cmd.startswith("am start -a android.intent.action.SEND"):
             self.state = "share"
+        elif cmd == "pm list packages":
+            return "package:com.ss.android.ugc.trill\npackage:app.punpun.keyboard\n"
+        elif cmd.startswith("ime enable "):
+            assert cmd.split()[2] == IME
         elif cmd.startswith("ime set "):
             self.ime = cmd.split()[2]
         elif cmd == "settings get secure default_input_method":
             return self.ime + "\n"
         elif cmd.startswith("am broadcast -a ADB_INPUT_B64"):
-            assert self.ime == ADB_IME
+            assert self.ime == IME
             text = base64.b64decode(cmd.split()[-1]).decode()
             self.caption = self.typed_override if self.typed_override is not None else text
         elif cmd.startswith("dumpsys input_method"):

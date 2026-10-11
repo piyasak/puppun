@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     p_scr = sub.add_parser("screens", help="show the phone screens now, in the order of their names on the web")
     p_scr.add_argument("--view-only", action="store_true")
     p_scr.add_argument("--data-dir", type=Path, default=None)
-    p_kb = sub.add_parser("thai-keyboard", help="download ADBKeyboard (checked) and install it on every ready phone (Q-44)")
+    p_kb = sub.add_parser("thai-keyboard", help="download punpun Thai input (checked) and install it on every ready phone (Q-44)")
     p_kb.add_argument("--data-dir", type=Path, default=None)
     p_pair = sub.add_parser("pair", help="link this PC with a pairing code from the web (no token to copy)")
     p_pair.add_argument("--server", required=True)

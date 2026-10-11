@@ -1,37 +1,50 @@
-"""The Thai keyboard on the phone (ADBKeyboard, Q-13/Q-44).
+"""The Thai keyboard on the phone: punpun Thai input (Q-44), earlier ADBKeyboard (Q-13).
 
-A live post types the caption through ADBKeyboard: Android's `input text` cannot type Thai or emoji.
-The Agent does not carry the app (PO 2026-10-11): `install` downloads it from its author's repository
-at one fixed commit, accepts it only if its SHA-256 is the one checked on the QA phone, and installs it
-with adb. It is installed only, never made the phone's keyboard: the post runner switches to it while
-typing and gives the owner's keyboard back every time (tiktok_ui.type_caption).
+A live post types the caption through this keyboard: Android's `input text` cannot type Thai or emoji.
+The Agent does not carry the app (PO 2026-10-11): `install` downloads it from the punpun-agent release
+page, accepts it only if its SHA-256 is the one built and checked here, installs it with adb and makes
+it available (`ime enable`), never the phone's keyboard: the post runner switches to it while typing and
+gives the owner's keyboard back every time (tiktok_ui.type_caption).
+
+punpun Thai input is a GPL-2.0 fork of ADBKeyBoard (keyboard/, tools/build_keyboard.py): ADBKeyBoard
+itself is now blocked by Google Play Protect as built for an older Android (QA phone, 2026-10-11). A phone
+that still has ADBKeyBoard keeps working with it.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 import urllib.request
 from pathlib import Path
 
 from agent.adb import Adb, AdbError
 
-PACKAGE = "com.android.adbkeyboard"
-# senzhk/ADBKeyBoard (GPL-2.0), the APK at commit 8dd0b69 (2023-11-23) = master on 2026-10-11 = the copy
-# on the QA phone since 2026-10-07 (17,374 bytes).
-APK_URL = "https://raw.githubusercontent.com/senzhk/ADBKeyBoard/8dd0b6924e45ac5565f77f13cf8e8eaf47dbb1b0/ADBKeyboard.apk"
-APK_SHA256 = "e698adea5633135a067b038f9a0cf41baa4de09888713a81593fb2b9682cdc59"
+PACKAGE = "app.punpun.keyboard"
+IME = f"{PACKAGE}/.PunpunIME"
+LEGACY = {"com.android.adbkeyboard": "com.android.adbkeyboard/.AdbIME"}  # ADBKeyBoard (Q-13)
+VERSION = "1.0"
+APK_URL = f"https://github.com/piyasak/punpun-agent/releases/download/keyboard-v{VERSION}/punpun-keyboard-{VERSION}.apk"
+APK_SHA256 = "c25a70775ce11018e0be8c6fcc476da4c706e1a97ec6be492f8f7cea845dbe33"
 APK_MAX_BYTES = 1_000_000
-SOURCE_URL = "https://github.com/senzhk/ADBKeyBoard"
+SOURCE_URL = f"https://github.com/piyasak/punpun-agent/releases/tag/keyboard-v{VERSION}"  # source zip there
 
 
 class KeyboardError(Exception):
     pass
 
 
+def ime(adb: Adb, serial: str) -> str | None:
+    """The keyboard to type with on this phone: ours, else ADBKeyBoard, else None."""
+    packages = {line.strip().removeprefix("package:") for line in adb.shell(serial, "pm list packages").splitlines()}
+    if PACKAGE in packages:
+        return IME
+    return next((ime_id for package, ime_id in LEGACY.items() if package in packages), None)
+
+
 def installed(adb: Adb, serial: str) -> bool:
-    out = adb.shell(serial, "pm list packages")
-    return any(line.strip() == f"package:{PACKAGE}" for line in out.splitlines())
+    return ime(adb, serial) is not None
 
 
 def _sha256(data: bytes) -> str:
@@ -40,7 +53,7 @@ def _sha256(data: bytes) -> str:
 
 def download(folder: Path, opener=urllib.request.urlopen) -> Path:
     """The checked APK in `folder` (downloaded once; a copy that does not match is replaced)."""
-    path = folder / f"ADBKeyboard-{APK_SHA256[:12]}.apk"
+    path = folder / f"punpun-keyboard-{APK_SHA256[:12]}.apk"
     if path.is_file() and _sha256(path.read_bytes()) == APK_SHA256:
         return path
     try:
@@ -59,7 +72,8 @@ def download(folder: Path, opener=urllib.request.urlopen) -> Path:
 
 def install(adb: Adb, serial: str, folder: Path, opener=urllib.request.urlopen) -> str:
     """Install on one phone if missing. Returns 'present' or 'installed'; raises KeyboardError."""
-    if installed(adb, serial):
+    if ime(adb, serial) == IME:
+        adb.shell(serial, f"ime enable {IME}")
         return "present"
     apk = download(folder, opener)
     try:
@@ -70,8 +84,9 @@ def install(adb: Adb, serial: str, folder: Path, opener=urllib.request.urlopen) 
         # QA phone, 2026-10-11: Google Play Protect stopped the install with a dialog on the phone
         # ("built for an older version of Android") and adb waited until its timeout.
         out = "PLAY_PROTECT" if PLAY_PROTECT in adb.shell(serial, "dumpsys window | grep mCurrentFocus") else "TIMEOUT"
-    if "Success" not in out or not installed(adb, serial):
+    if "Success" not in out or ime(adb, serial) != IME:
         raise KeyboardError(install_hint(out))
+    adb.shell(serial, f"ime enable {IME}")  # available to switch to; the owner's keyboard stays the default
     return "installed"
 
 
@@ -80,13 +95,16 @@ PLAY_PROTECT = "com.android.vending/com.google.android.finsky.protectdialogs"
 
 def install_hint(message: str) -> str:
     if message == "PLAY_PROTECT":
-        return ("Google Play Protect บนโทรศัพท์บล็อกการติดตั้ง ADBKeyboard (แอปสร้างไว้สำหรับ Android รุ่นเก่า) — "
+        return ("Google Play Protect บนโทรศัพท์หยุดการติดตั้งคีย์บอร์ดพิมพ์ไทยไว้ — "
                 "ดูหน้าจอโทรศัพท์: การติดตั้งต่อหรือไม่เป็นการตัดสินใจของเจ้าของเครื่อง")
     if message == "TIMEOUT":
         return "โทรศัพท์ไม่ตอบระหว่างติดตั้ง — ดูหน้าจอโทรศัพท์ว่ามีหน้าต่างให้ยืนยันหรือไม่ แล้วกดติดตั้งอีกครั้ง"
     if "INSTALL_FAILED_VERIFICATION_FAILURE" in message or "INSTALL_FAILED_USER_RESTRICTED" in message:
-        return ("โทรศัพท์ไม่ยอมให้ติดตั้งผ่าน USB: Xiaomi/POCO/Redmi ให้เปิด ตั้งค่า → ตัวเลือกสำหรับนักพัฒนา → "
-                "\"ติดตั้งผ่าน USB\" (Install via USB) แล้วกดติดตั้งอีกครั้ง; บางรุ่นต้องกด \"ติดตั้ง\" บนหน้าจอโทรศัพท์")
+        code = re.search(r"INSTALL_FAILED_\w+", message).group(0)
+        # QA phone, 2026-10-11: refused once, installed on the next press (HyperOS asks on the phone).
+        return ("โทรศัพท์ไม่ยอมให้ติดตั้งผ่าน USB: กดติดตั้งอีกครั้งแล้วดูหน้าจอโทรศัพท์ ถ้ามีหน้าต่างถามให้กด \"ติดตั้ง\"; "
+                "Xiaomi/POCO/Redmi ต้องเปิด ตั้งค่า → ตัวเลือกสำหรับนักพัฒนา → \"ติดตั้งผ่าน USB\" (Install via USB) ไว้ก่อน"
+                f" ({code})")
     return f"ติดตั้งคีย์บอร์ดพิมพ์ไทยไม่สำเร็จ: {message.strip()[:200]}"
 
 
