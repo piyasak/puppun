@@ -74,7 +74,7 @@ function ItemTimeEditor({ item, onDone }: { item: Item; onDone: (msg?: string) =
 const INTERVALS = [1, 2, 3, 6, 12, 24]
 const HOURS = Array.from({ length: 25 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
 const EXCLUDED: Record<string, string> = {
-  NOT_APPROVED: 'ยังไม่อนุมัติ', ALREADY_SCHEDULED: 'ตั้งเวลาไว้แล้ว', CHECKS_FAILED: 'ไม่ผ่านการตรวจไฟล์', NOT_UPLOADED: 'ยังไม่ได้รับไฟล์', FILE_DELETED: 'ลบไฟล์แล้วหลังโพสต์',
+  NOT_APPROVED: 'ยังไม่อนุมัติ', ALREADY_SCHEDULED: 'ตั้งเวลาไว้แล้ว', POST_NEEDS_ACTION: 'มีโพสต์ที่ต้องดำเนินการค้างอยู่', CHECKS_FAILED: 'ไม่ผ่านการตรวจไฟล์', NOT_UPLOADED: 'ยังไม่ได้รับไฟล์', FILE_DELETED: 'ลบไฟล์แล้วหลังโพสต์',
 }
 const ITEM_STATE: Record<string, { text: string; badge: string }> = {
   SCHEDULED: { text: 'รอเวลาโพสต์', badge: 'active' },

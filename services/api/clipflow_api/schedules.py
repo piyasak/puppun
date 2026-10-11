@@ -54,11 +54,21 @@ def _slot_error(exc: slots.SlotError) -> ApiError:
     return ApiError(422, exc.code, str(exc))
 
 
-def _exclusion(clip: Clip, live: set[uuid.UUID]) -> str | None:
+# Why clips were left out, when all of them were left out for the same reason (shown as the error).
+EXCLUSION_MESSAGES = {
+    "POST_NEEDS_ACTION": "คลิปนี้มีโพสต์ที่ต้องดำเนินการค้างอยู่ — กดลองใหม่หรือยกเลิกรายการนั้นในหน้าตารางโพสต์ก่อน",
+    "ALREADY_SCHEDULED": "คลิปนี้ตั้งเวลาโพสต์ไว้แล้ว ดูหรือยกเลิกได้ในหน้าตารางโพสต์",
+    "FILE_DELETED": "ไฟล์คลิปนี้ถูกลบจากเครื่อง Agent แล้วหลังโพสต์",
+    "CHECKS_FAILED": "คลิปนี้ไม่ผ่านการตรวจไฟล์",
+}
+
+
+def _exclusion(clip: Clip, live: dict[uuid.UUID, str]) -> str | None:
     if clip.agent_file_deleted_at is not None:
         return "FILE_DELETED"  # deleted on the Agent's PC after it was posted (job's delete_after_post)
     if clip.id in live:
-        return "ALREADY_SCHEDULED"
+        # A post of it that stopped for a person (NEEDS_ACTION / UNKNOWN) still holds the clip: one live post per clip.
+        return "POST_NEEDS_ACTION" if live[clip.id] in ("NEEDS_ACTION", "UNKNOWN") else "ALREADY_SCHEDULED"
     if clip.uploaded_at is None:
         return "NOT_UPLOADED"
     if clip.check_status == "failed":
@@ -102,9 +112,9 @@ def build(db: Session, workspace_id: uuid.UUID, req: Request, *, lock: bool) -> 
     if req.clip_ids is not None:
         stmt = stmt.where(Clip.id.in_(req.clip_ids))
     job_clips = db.scalars(stmt.with_for_update() if lock else stmt).all()
-    live = set(db.scalars(select(ScheduleItem.clip_id).where(
+    live = dict(db.execute(select(ScheduleItem.clip_id, ScheduleItem.state).where(
         ScheduleItem.clip_id.in_([c.id for c in job_clips]),
-        ScheduleItem.state.not_in(("CANCELLED", "SKIPPED")))).all()) if job_clips else set()
+        ScheduleItem.state.not_in(("CANCELLED", "SKIPPED")))).all()) if job_clips else {}
     eligible, excluded = [], []
     for clip in job_clips:
         reason = _exclusion(clip, live)
@@ -113,7 +123,9 @@ def build(db: Session, workspace_id: uuid.UUID, req: Request, *, lock: bool) -> 
         else:
             eligible.append(clip)
     if not eligible:
-        raise ApiError(409, "NO_APPROVED_CLIPS", "ยังไม่มีคลิปที่อนุมัติแล้วให้ตั้งเวลา", {"excluded": excluded})
+        reasons = {x["reason"] for x in excluded}
+        message = EXCLUSION_MESSAGES.get(reasons.pop()) if len(reasons) == 1 else None
+        raise ApiError(409, "NO_APPROVED_CLIPS", message or "ยังไม่มีคลิปที่อนุมัติแล้วให้ตั้งเวลา", {"excluded": excluded})
 
     times = slots.plan(start, len(eligible), req.interval_hours, window, tz)
 

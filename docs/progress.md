@@ -8,6 +8,7 @@ Last updated: 2026-10-07
 - PO saw post 68d31b56 stop with ACCOUNT_UNREADABLE → NEEDS_ACTION (before Post: nothing posted, no grant use). Evidence from the QA phone: the last screen reading (`/sdcard/cf_ui.xml`, 15:01) was the **home screen**, not TikTok; TikTok 40.0.0 runs the For You feed inside `SplashActivity`, so the Agent's "wait for the splash" loop always waited its full ~20 s
 - `tiktok_ui.account`: opens TikTok again whenever the screen is not TikTok's, 6 tries instead of 4, no SplashActivity wait. On the QA phone: 3/3 read @patsy4404 (also starting from the home screen), 30 s instead of 53 s
 - `ACCOUNT_UNREADABLE` is now retryable from the web (like ACCOUNT_MISMATCH)
+- "Post now" on that clip said only "ยังไม่มีคลิปที่อนุมัติแล้วให้ตั้งเวลา": the clip was held by its stopped post (one live post per clip). Scheduling now names the reason (`POST_NEEDS_ACTION` for a post in NEEDS_ACTION/UNKNOWN, `ALREADY_SCHEDULED`, …) and the message says to retry or cancel that post first; test: stopped post → clear 409 → cancel → post now 201 (test_post_now + test_schedules 19 passed)
 - Commands: unit test for "TikTok not in front" + tests/unit 204 passed; posting tests 24 passed. Needs an Agent build (0.5.0) to reach the PC
 
 ### Slice (2026-10-11) — full videos and clips already cut from the Agent's folder (Q-43)

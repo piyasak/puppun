@@ -46,3 +46,26 @@ def test_schedule_can_take_only_some_clips(shop):
     job_id, clips = shop.job(clips=3, approve=3)
     series = shop.create(job_id, clip_ids=[clips[0], clips[2]], window_start="00:00", window_end="24:00").json()
     assert [i["clip_id"] for i in series["items"]] == [clips[0], clips[2]]
+
+
+def test_a_post_that_stopped_for_a_person_says_so_and_can_be_cancelled_first(shop):
+    """QA 2026-10-11: a post stopped with ACCOUNT_UNREADABLE; "post now" on the same clip said only
+    "no approved clips". It now says why, and works once the stopped post is cancelled."""
+    from api_test_shop import ev
+
+    _, clips = shop.job(clips=1, approve=1)
+    item = post_now(shop, clips[0]).json()["items"][0]
+    post = claim(shop.w, [shop.serial])
+    assert ev(shop.w, post["id"], "TRANSFERRING").status_code == 200
+    stopped = ev(shop.w, post["id"], "NEEDS_ACTION", code="ACCOUNT_UNREADABLE")
+    assert stopped.status_code == 200
+    again = post_now(shop, clips[0])
+    assert again.status_code == 409
+    assert again.json()["details"]["excluded"][0]["reason"] == "POST_NEEDS_ACTION"
+    assert "ต้องดำเนินการค้างอยู่" in again.json()["message"]
+    listed = shop.acc.get(f"/v1/schedules/{item['series_id']}").json()["items"][0]
+    assert listed["state"] == "NEEDS_ACTION" and listed["reason"] == "ACCOUNT_UNREADABLE"
+    cancel = shop.acc.post(f"/v1/schedule-items/{item['id']}/cancel",
+                           json={"expected_state_version": listed["state_version"]})
+    assert cancel.status_code == 200, cancel.text
+    assert post_now(shop, clips[0]).status_code == 201
