@@ -271,3 +271,27 @@ def test_submit_needs_a_grant_and_the_expected_screen(tmp_path):
     phone.tap = lambda x, y: phone.presses.append(("POST", x, y))
     ui.submit(grant, caption)
     assert phone.presses[-1] == ("POST", 532, 1438)  # the bottom Post button, nothing else
+
+
+def test_tiktok_is_opened_again_when_it_is_not_in_front():
+    """QA phone, 2026-10-11: the last reading was the home screen (TikTok was no longer in front)."""
+    class Behind(FakeTikTok):
+        launches = 0
+
+        def run(self, args):
+            cmd = args[3] if len(args) > 3 else ""
+            if cmd.startswith("monkey "):
+                self.launches += 1
+                self.state = "home" if self.launches == 1 else "feed"  # the first launch did not stick
+                return ""
+            if cmd.startswith("dumpsys window"):
+                app = "com.miui.home/.launcher.Launcher" if self.state == "home" else "com.ss.android.ugc.trill/Fake"
+                return f"  mCurrentFocus=Window{{1 u0 {app}}}\n"
+            return super().run(args)
+
+        def xml(self):
+            return screen(node("ตัวจัดการไฟล์", bounds=(22, 99, 191, 268))) if self.state == "home" else super().xml()
+
+    phone = Behind()
+    assert ui_for(phone).account() == "qa_account"
+    assert phone.launches == 2 and all(state != "home" for state, *_ in phone.presses)  # never tapped the home screen
