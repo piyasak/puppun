@@ -221,9 +221,19 @@ test('pick a full video or a folder of clips already cut from the Agent (PO 2026
   await expect(page.getByTestId('set-order')).toHaveText('ลำดับ: EP1.mp4, EP2.mp4, EP10.mp4')  // EP order
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await expect(page.getByLabel('ความยาวต่อคลิป (วินาที)')).toHaveCount(0)  // nothing is cut
+  // Title and hashtags up front (PO 2026-10-11): auto mode then needs no caption edit.
+  await page.getByLabel('ชื่อเรื่อง (ไม่บังคับ)').fill('เรื่องเอ')
+  await page.getByLabel('แฮชแท็ก (ไม่บังคับ)').fill('ละคร มี-ขีด')
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toContainText('แฮชแท็ก "มี-ขีด"')
+  await page.getByLabel('แฮชแท็ก (ไม่บังคับ)').fill('ละคร #ซีรีส์')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await expect(page.getByTestId('clips-preview')).toHaveText('3 คลิปตามไฟล์ในโฟลเดอร์ เรียงตาม EP')
+  await expect(page.getByTestId('caption-preview')).toHaveText('เรื่องเอ — ตอนที่ 1/N #ละคร #ซีรีส์')
+  const created = page.waitForResponse((r) => r.url().endsWith('/v1/jobs') && r.request().method() === 'POST')
   await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  const job = await (await created).json()
+  expect([job.title, job.hashtags]).toEqual(['เรื่องเอ', ['#ละคร', '#ซีรีส์']])
   await expect(page.locator('#job-title')).toHaveText('คลิปที่ตัดแล้ว: เรื่องA')
   await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
 })

@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.5.3"  # 0.5.2 + Thai keyboard: reported per phone, live post stops without it, installed on request (Q-44)
+SOURCE_VERSION = "0.5.3"  # 0.5.2 + Thai keyboard (Q-44) + the job's series title burned into clips
 
 
 # A packaged build (tools/build_agent.py): Nuitka-compiled from 0.4.0 (`__compiled__` exists in

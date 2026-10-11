@@ -32,6 +32,12 @@ function createError(e: ApiError): string {
   return e.message
 }
 
+const HASHTAG_RE = /^#?[0-9A-Za-z_\u0E00-\u0E7F]{1,50}$/  // = clips.HASHTAG_RE on the server
+
+function hashtags(text: string): string[] {
+  return text.split(/[\s,]+/).map((t) => t.trim()).filter((t) => t && t !== '#')
+}
+
 export function CreateJobPage() {
   const navigate = useNavigate()
   const [envs, setEnvs] = useState<Environment[] | null>(null)
@@ -55,6 +61,8 @@ export function CreateJobPage() {
   const [deleteAfterPost, setDeleteAfterPost] = useState(false)
   const [mode, setMode] = useState<'review' | 'auto'>('review')
   const [confirmAuto, setConfirmAuto] = useState(false)
+  const [title, setTitle] = useState('')
+  const [tagText, setTagText] = useState('')
 
   useEffect(() => {
     Promise.all([api<{ items: Environment[] }>('/v1/environments'), api<Usage>('/v1/workspace/usage')])
@@ -92,6 +100,10 @@ export function CreateJobPage() {
     }
     if (n === 1 && ready) {
       if (mode === 'auto' && !confirmAuto) return 'ยืนยันการอนุมัติอัตโนมัติก่อน'
+      if (title.trim().length > 100) return 'ชื่อเรื่องยาวได้ไม่เกิน 100 ตัวอักษร'
+      const bad = hashtags(tagText).find((t) => !HASHTAG_RE.test(t))
+      if (bad) return `แฮชแท็ก "${bad}" ใช้ได้เฉพาะตัวอักษร ตัวเลข และ _ (คั่นแต่ละอันด้วยช่องว่าง)`
+      if (hashtags(tagText).length > 30) return 'แฮชแท็กได้ไม่เกิน 30 อัน'
     } else if (n === 1) {
       if (!Number.isInteger(lengthS) || lengthS < 15 || lengthS > 600) return 'ความยาวต่อคลิปต้องอยู่ระหว่าง 15–600 วินาที'
       if (countMode === 'manual' && (!Number.isInteger(clips) || clips < 1 || clips > 20)) return 'จำนวนคลิปต้องอยู่ระหว่าง 1–20'
@@ -119,6 +131,7 @@ export function CreateJobPage() {
             : ready ? { kind, folder } : { kind, file_name: fileName.trim() },
           auto_clips: countMode === 'auto', requested_clips: countMode === 'auto' ? 1 : clips, clip_length_s: lengthS, subtitles,
           review_mode: mode, confirm_auto: mode === 'auto' && confirmAuto, delete_after_post: deleteAfterPost,
+          title: title.trim() || null, hashtags: hashtags(tagText).length ? hashtags(tagText) : null,
         },
       })
       navigate(`/jobs/${job.id}`)
@@ -208,7 +221,14 @@ export function CreateJobPage() {
 
         {step === 1 && (
           <form onSubmit={next} noValidate>
-            {ready && <p className="muted">คลิปที่ตัดแล้วถูกส่งตามไฟล์เดิม ไม่ตัด ไม่ใส่ซับ แคปชันเริ่มต้นเป็นชื่อไฟล์ แก้ได้ในหน้างาน</p>}
+            {ready && <p className="muted">คลิปที่ตัดแล้วถูกส่งตามไฟล์เดิม ไม่ตัด ไม่ใส่ซับ</p>}
+            <Field label="ชื่อเรื่อง (ไม่บังคับ)" value={title} maxLength={100} onChange={(e) => setTitle(e.target.value)}
+              placeholder="เช่น รักนี้ต้องข้ามภพ"
+              hint={title.trim()
+                ? `แคปชันของทุกคลิป: "${title.trim()} — ตอนที่ 1/N"${ready ? '' : ' และใช้เป็นชื่อเรื่องที่แสดงบนคลิป'}`
+                : ready ? 'ไม่ใส่: แคปชันเป็นชื่อไฟล์ (แก้ได้ในหน้างาน)' : 'ไม่ใส่: ใช้ชื่อจากต้นฉบับ (แก้แคปชันได้ในหน้างาน)'} />
+            <Field label="แฮชแท็ก (ไม่บังคับ)" value={tagText} onChange={(e) => setTagText(e.target.value)}
+              placeholder="#ละคร #ซีรีส์จีน #ตอนต่อไป" hint="คั่นด้วยช่องว่าง ใส่ # หรือไม่ใส่ก็ได้ ใช้กับทุกคลิปในงานนี้" />
             {!ready && <>
             <div className="grid-3">
               <Field label="ความยาวต่อคลิป (วินาที)" type="number" min={15} max={600} step={1} inputMode="numeric"
@@ -240,7 +260,8 @@ export function CreateJobPage() {
               <label className="check"><input type="radio" name="mode" checked={mode === 'review'} onChange={() => setMode('review')} />
                 <span>ตรวจเองทุกคลิป (แนะนำ)<br /><span className="hint">คลิปจะไม่ถูกโพสต์จนกว่าคุณจะกดอนุมัติ</span></span></label>
               <label className="check"><input type="radio" name="mode" checked={mode === 'auto'} onChange={() => setMode('auto')} />
-                <span>อนุมัติอัตโนมัติ<br /><span className="hint">อนุมัติเฉพาะคลิปที่ผ่านการตรวจไฟล์ทุกข้อ (ขนาด เสียง ความยาว) — ไม่ได้ตรวจเนื้อหาให้</span></span></label>
+                <span>อนุมัติอัตโนมัติ<br /><span className="hint">อนุมัติเฉพาะคลิปที่ผ่านการตรวจไฟล์ทุกข้อ (ขนาด เสียง ความยาว) — ไม่ได้ตรวจเนื้อหาให้
+                  ใส่ชื่อเรื่องและแฮชแท็กด้านบนไว้ คลิปจะพร้อมตั้งเวลาโพสต์ได้ทันทีโดยไม่ต้องแก้แคปชัน</span></span></label>
               {mode === 'auto' && (
                 <label className="check"><input type="checkbox" checked={confirmAuto} onChange={(e) => setConfirmAuto(e.target.checked)} />
                   <span>ฉันเข้าใจว่าคลิปจะถูกอนุมัติโดยไม่มีคนดูก่อน</span></label>
@@ -265,6 +286,8 @@ export function CreateJobPage() {
                 : `${clips} คลิป ยาว ${shortest(lengthS)}–${lengthS} วินาที`}</dd>
               <dt>ซับ</dt><dd>{ready ? 'ไม่ใส่ (ใช้ไฟล์เดิม)' : subtitles ? 'ใส่ซับจากต้นฉบับ' : 'ไม่ใส่ซับ'}</dd>
               <dt>หลังโพสต์</dt><dd data-testid="after-post-preview">{!ready && deleteAfterPost ? 'ลบไฟล์คลิปบนเครื่อง Agent ถาวร' : 'เก็บไฟล์คลิปไว้'}</dd>
+              <dt>แคปชัน</dt><dd data-testid="caption-preview">{title.trim() ? `${title.trim()} — ตอนที่ 1/N` : ready ? 'ชื่อไฟล์' : 'ชื่อจากต้นฉบับ — ตอนที่ 1/N'}
+                {hashtags(tagText).length > 0 && ` ${hashtags(tagText).map((t) => '#' + t.replace(/^#/, '')).join(' ')}`}</dd>
               <dt>การตรวจ</dt><dd>{mode === 'review' ? 'ตรวจเองทุกคลิป' : 'อนุมัติอัตโนมัติเมื่อผ่านการตรวจไฟล์'}</dd>
               <dt>โควตา</dt>
               <dd data-testid="quota-preview">{ready

@@ -342,6 +342,9 @@ class Job(Base):
     clip_max_s: Mapped[int] = mapped_column(Integer)
     subtitles: Mapped[bool] = mapped_column(Boolean)
     review_mode: Mapped[str] = mapped_column(String(8))  # review | auto
+    # PO 2026-10-11: set when the job is made, so clips start with the final text (and auto mode needs no edit)
+    caption_title: Mapped[str | None] = mapped_column(String(100))  # caption = "<title> — ตอนที่ i/N"
+    caption_hashtags: Mapped[list | None] = mapped_column(JSONB)  # replaces the generated hashtags
     seed: Mapped[int] = mapped_column(Integer)
     state: Mapped[str] = mapped_column(String(24))
     state_version: Mapped[int] = mapped_column(Integer)
