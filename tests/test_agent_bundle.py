@@ -5,7 +5,7 @@
 
 FROM/TO default to 0.2.0/0.2.1 (G5-01); 0.3.0 adds the clips folder (Q-33), checked when TO has it.
 
-The packaged exe (PyInstaller, no Python needed on the PC) installs the next version itself and
+The packaged exe (Nuitka-compiled from 0.4.0, no Python needed on the PC) installs the next version itself and
 rolls back through the launcher. A summary goes to var/evidence/p56_agent_bundle.json.
 """
 

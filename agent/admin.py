@@ -126,6 +126,13 @@ def status(args) -> int:
         adb = adb_report()
     except Exception as exc:  # noqa: BLE001
         adb = {"error": str(exc)[:120]}
+    try:  # the downloader: its version and that its site list loads (packaged builds compile it)
+        import yt_dlp
+        from yt_dlp.extractor import gen_extractor_classes
+
+        downloader = {"yt_dlp": yt_dlp.version.__version__, "sites": sum(1 for _ in gen_extractor_classes())}
+    except Exception as exc:  # noqa: BLE001
+        downloader = {"error": str(exc)[:120]}
     print(json.dumps({
         "version": __version__, "installed": {"current": inst.current, "previous": inst.previous},
         "server": cfg.server if cfg else None, "username": cfg.username if cfg else None,
@@ -134,7 +141,7 @@ def status(args) -> int:
         if (data_dir / "installation_id").exists() else None,
         "clips_folder": str(clips_folder.current(data_dir)),
         "clips_folder_free_gb": round(clips_folder.free_bytes(clips_folder.current(data_dir)) / 1024**3, 1),
-        "phones": phones, "adb": adb, "posts_in_flight": posts_in_flight(data_dir),
+        "phones": phones, "adb": adb, "downloader": downloader, "posts_in_flight": posts_in_flight(data_dir),
         "log": str(data_dir / "logs" / "agent.log"),
     }, ensure_ascii=False, indent=2))
     return 0
