@@ -9,7 +9,8 @@ Last updated: 2026-10-07
 - `tiktok_ui.account`: opens TikTok again whenever the screen is not TikTok's, 6 tries instead of 4, no SplashActivity wait. On the QA phone: 3/3 read @patsy4404 (also starting from the home screen), 30 s instead of 53 s
 - `ACCOUNT_UNREADABLE` is now retryable from the web (like ACCOUNT_MISMATCH)
 - "Post now" on that clip said only "ยังไม่มีคลิปที่อนุมัติแล้วให้ตั้งเวลา": the clip was held by its stopped post (one live post per clip). Scheduling now names the reason (`POST_NEEDS_ACTION` for a post in NEEDS_ACTION/UNKNOWN, `ALREADY_SCHEDULED`, …) and the message says to retry or cancel that post first; test: stopped post → clear 409 → cancel → post now 201 (test_post_now + test_schedules 19 passed)
-- Commands: unit test for "TikTok not in front" + tests/unit 204 passed; posting tests 24 passed. Needs an Agent build (0.5.0) to reach the PC
+- Commands: unit test for "TikTok not in front" + tests/unit 204 passed; posting tests 24 passed. 
+- Agent 0.5.0 (Nuitka, from this branch = master incl. Q-43 + this fix) published 2026-10-11: https://github.com/piyasak/punpun-agent/releases/tag/v0.5.0, setup SHA-256 0268984b…20e0, 59.1 MB; no .py/.pyc in the bundle; packaged exe reports 0.5.0 and yt-dlp 1751 sites; bundle test 0.4.0 → 0.5.0 passed; anonymous download HTTP 200, hash matches
 
 ### Slice (2026-10-11) — full videos and clips already cut from the Agent's folder (Q-43)
 - Agent 0.5.0 (source): `agent/library.py` scans the videos folder every 60 s (top-level videos = full videos; sub-folders = clips already cut, .mp4 in natural EP order) and reports names/sizes when changed (`PUT /v1/agent/library`, server feature `video_library`); job claims send `kinds`, and servers keep `local_clips` jobs from older Agents
