@@ -45,7 +45,9 @@ def find_scrcpy() -> str | None:
     env = os.environ.get("CLIPFLOW_SCRCPY")
     if env and Path(env).is_file():
         return env
-    if getattr(sys, "frozen", False):
+    from agent import packaged
+
+    if packaged():
         own = Path(sys.executable).with_name("scrcpy") / "scrcpy.exe"
         if own.is_file():
             return str(own)

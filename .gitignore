@@ -38,3 +38,6 @@ Thumbs.db
 
 # Claude Code per-user permissions (local only)
 .claude/settings.local.json
+
+# Nuitka build crash reports (tools/build_agent.py)
+nuitka-crash-report.xml

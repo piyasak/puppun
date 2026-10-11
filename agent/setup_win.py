@@ -127,6 +127,7 @@ def make_shortcut(lnk: Path, launcher: Path, workdir: Path, *, command: str = "c
 
 def payload() -> tuple[Path, str, str]:
     """(bundle zip, its SHA-256, default server) carried inside the setup exe."""
+    # Nuitka onefile unpacks next to this module; PyInstaller (before 0.4.0) used sys._MEIPASS.
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "payload"
     info = json.loads((base / "payload.json").read_text(encoding="utf-8"))
     return base / info["bundle"], info["sha256"], info["server"]
@@ -151,8 +152,10 @@ def setup(args) -> int:
         return 1
     launcher = root / "punpun-agent.cmd"
     icon = root / "punpun.ico"  # a stable path for the shortcuts' icon (the exe moves with each version)
-    bundled_icon = root / "versions" / version / "_internal" / "agent" / "assets" / "punpun.ico"
-    if bundled_icon.is_file():
+    app = root / "versions" / version
+    bundled_icon = next((p for p in (app / "agent" / "assets" / "punpun.ico",  # Nuitka build (0.4.0+)
+                                     app / "_internal" / "agent" / "assets" / "punpun.ico") if p.is_file()), None)
+    if bundled_icon is not None:
         shutil.copy2(bundled_icon, icon)
     print(f"ติดตั้งเวอร์ชัน {version} ที่ {root}")
     report = {"installed": version, "launcher": str(launcher), "path_added": False, "shortcuts": []}

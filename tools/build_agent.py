@@ -2,13 +2,15 @@
 
     .venv/Scripts/python tools/build_agent.py
 
-PyInstaller (onedir) packs the Agent and the media worker with Python itself, so the customer's PC
-needs no Python. The result is zipped with a manifest of every file's SHA-256 and the version:
+Nuitka (standalone) compiles the Agent and the media worker to machine code and packs them with
+Python itself, so the customer's PC needs no Python and the bundle holds no Python bytecode or source
+of ours (PO 2026-10-11: the Agent is not open source; E-55). Third-party packages (yt-dlp …) are
+compiled along. Needs a C compiler: MSVC (Visual Studio Build Tools) for Python 3.14. The result is zipped with a manifest of every file's SHA-256 and the version:
 var/dist/punpun-agent-<version>.zip and .zip.sha256 (var/ is never committed). `agent.cli install`
 accepts only a bundle whose files all match this manifest.
 
 It also builds the double-click setup (E-50): var/dist/punpun-agent-setup-<version>.exe (+ .sha256),
-one PyInstaller onefile exe that carries the bundle, its SHA-256 and the default server
+one Nuitka onefile exe that carries the bundle, its SHA-256 and the default server
 (CLIPFLOW_SETUP_SERVER, default the staging URL) and runs agent/setup_win.py.
 
 adb comes with the Agent (E-51: adb.exe + its two DLLs, NOTICE.txt and source.properties from
@@ -32,6 +34,15 @@ OUT = ROOT / "var" / "dist"
 WORK = ROOT / "var" / "build-agent"
 ICON = ROOT / "agent" / "assets" / "punpun.ico"  # from logo/sub.png
 SERVER = os.environ.get("CLIPFLOW_SETUP_SERVER", "https://punpun-staging.onrender.com")
+NUITKA = [sys.executable, "-m", "nuitka", "--assume-yes-for-downloads", "--msvc=latest", "--jobs=8",
+          "--remove-output", "--no-pyi-file", "--python-flag=no_docstrings"]  # docstrings describe our design
+
+
+def version_info(version: str, description: str) -> list[str]:
+    """Windows file properties (Nuitka wants a numeric a.b.c.d version with them)."""
+    numeric = ".".join((version.split("-")[0].split(".") + ["0", "0", "0"])[:4])
+    return ["--company-name=punpun", "--product-name=punpun Agent", f"--file-version={numeric}",
+            f"--product-version={numeric}", f"--file-description={description}"]
 
 
 def sha256(path: Path) -> str:
@@ -42,21 +53,40 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def main(version_override: str | None = None) -> int:
+def main(version_override: str | None = None, reuse: bool = False) -> int:
+    """`reuse` packages the last Nuitka output again without compiling (--reuse)."""
     sys.path.insert(0, str(ROOT))
     from agent import SOURCE_VERSION
 
     version = version_override or SOURCE_VERSION
+    if not reuse:
+        compile_agent(version)
+    app = next((d for d in (WORK / "nuitka" / "punpun-agent.dist", WORK / "nuitka" / "punpun-agent") if d.is_dir()), None)
+    if app is None:
+        raise SystemExit("no Nuitka output to package; build without --reuse")
+    return package(app, version)
+
+
+def compile_agent(version: str) -> None:
     shutil.rmtree(WORK, ignore_errors=True)
-    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--console",
-           "--name", "punpun-agent", "--distpath", str(WORK / "dist"), "--workpath", str(WORK / "build"),
-           "--specpath", str(WORK), "--paths", str(ROOT), "--paths", str(ROOT / "services" / "worker"),
-           "--collect-submodules", "agent", "--collect-submodules", "clipflow_worker",
-           "--collect-submodules", "yt_dlp", "--icon", str(ICON),
-           "--add-data", f"{ROOT / 'agent' / 'assets'}{os.pathsep}agent/assets",  # logo for the settings window
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(ROOT / "services" / "worker")])}
+    cmd = [*NUITKA, *version_info(version, "punpun Agent"), "--standalone", f"--output-dir={WORK / 'nuitka'}", "--output-folder-name=punpun-agent",
+           "--output-filename=punpun-agent.exe", "--windows-console-mode=force",
+           f"--windows-icon-from-ico={ICON}", "--include-package=agent", "--include-package=clipflow_worker",
+           "--include-package=yt_dlp", "--enable-plugin=tk-inter",
+           # yt-dlp's generated lazy_extractors (a startup speed-up, ~240k lines of C) runs MSVC out of heap;
+           # without it yt-dlp imports its normal extractor list.
+           "--nofollow-import-to=yt_dlp.extractor.lazy_extractors",
+           f"--include-data-dir={ROOT / 'agent' / 'assets'}=agent/assets",  # logo for the settings window
            str(ROOT / "agent" / "__main__.py")]
-    subprocess.run(cmd, check=True, cwd=ROOT)
-    app = WORK / "dist" / "punpun-agent"
+    subprocess.run(cmd, check=True, cwd=ROOT, env=env)
+
+
+def package(app: Path, version: str) -> int:
+    leaked = [p.relative_to(app).as_posix() for p in app.rglob("*")
+              if p.suffix in (".py", ".pyc") and p.relative_to(app).parts[0] in ("agent", "clipflow_worker")]
+    if leaked:
+        raise SystemExit(f"our Python files ended up in the bundle: {leaked[:5]}")
     (app / "version.txt").write_text(version, encoding="ascii")  # what the packaged exe reports
     copy_adb(app / "adb")
     copy_scrcpy(app / "scrcpy")
@@ -150,16 +180,17 @@ def build_setup(version: str, bundle: Path, digest: str) -> Path:
     (payload / "payload.json").write_text(json.dumps({"bundle": bundle.name, "sha256": digest, "server": SERVER}),
                                           encoding="utf-8")
     name = f"punpun-agent-setup-{version}"
-    cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--console",
-           "--name", name, "--distpath", str(OUT), "--workpath", str(WORK / "build-setup"),
-           "--specpath", str(WORK), "--paths", str(ROOT), "--add-data", f"{payload}{os.pathsep}payload",
-           "--icon", str(ICON),
-           str(ROOT / "agent" / "setup_win.py")]
-    subprocess.run(cmd, check=True, cwd=ROOT)
+    cmd = [*NUITKA, *version_info(version, "punpun Agent setup"), "--onefile", f"--output-dir={WORK / 'nuitka-setup'}", f"--output-filename={name}.exe",
+           "--windows-console-mode=force", f"--windows-icon-from-ico={ICON}",
+           f"--include-data-dir={payload}=payload", str(ROOT / "agent" / "setup_win.py")]
+    subprocess.run(cmd, check=True, cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT)})
+    OUT.mkdir(parents=True, exist_ok=True)
     setup = OUT / f"{name}.exe"
+    shutil.copy2(WORK / "nuitka-setup" / f"{name}.exe", setup)
     (OUT / f"{setup.name}.sha256").write_text(f"{sha256(setup)}  {setup.name}\n", encoding="ascii")
     return setup
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else None))
+    args = [a for a in sys.argv[1:] if a != "--reuse"]
+    sys.exit(main(args[0] if args else None, reuse="--reuse" in sys.argv[1:]))

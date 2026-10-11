@@ -4,7 +4,15 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — authorized real posting (Q-42, G7-02)
+### Latest slice (2026-10-11) — Agent closed source: Nuitka build (E-55)
+- PO: the Agent is not open source; delete what was published. Found: the public repo had only README + licences, but the v0.3.4 setup (PyInstaller) carried our modules as Python 3.14 bytecode (35 modules: agent.*, clipflow_worker.*). **Deleted release v0.3.4** (download now 404); copies already downloaded cannot be recalled. Render `AGENT_SETUP_URL` now points at a missing file until a new release
+- `tools/build_agent.py` now uses Nuitka 4.2.2 (MSVC 14.3): standalone Agent + onefile setup, docstrings stripped, version info; fails if any agent/ or clipflow_worker/ .py/.pyc lands in the bundle; `--reuse` repackages without compiling. yt-dlp's generated `lazy_extractors` is left out (MSVC ran out of heap; yt-dlp falls back to its normal extractor list)
+- `agent.packaged()` recognises Nuitka (`__compiled__`) and PyInstaller builds (adb, scrcpy, version.txt next to the exe); setup finds the icon in either layout
+- Result (0.4.0, setup SHA-256 3c43f5f9…4dcb, 59.0 MB): bundle has no .py/.pyc at all; docstring text not found in the exe. Packaged exe: version, licences, bundled adb (phone seen), `status` now also reports the downloader (yt-dlp 2026.08.19, 1751 sites load in the compiled exe)
+- `CLIPFLOW_AGENT_BUNDLE=1 tests/test_agent_bundle.py` passed for 0.3.4 → 0.4.0 (PyInstaller install updating to Nuitka) and 0.4.0 → 0.4.1 (Nuitka → Nuitka, repackaged with `--reuse`); setup exe installed into a scratch folder (icon found in the new layout). test-unit 203 passed; lint exit 0
+- Published 2026-10-11 at the PO's request: https://github.com/piyasak/punpun-agent/releases/tag/v0.4.0 (anonymous download HTTP 200, SHA-256 matches). PO sets the new `AGENT_SETUP_*` in Render. Staging was still on build 76fe5e0 (before PR #18) at that time: the old server ignores `can_post_live`, so 0.4.0 stays dry run there until the deploy
+
+### Slice (2026-10-11) — authorized real posting (Q-42, G7-02)
 - PO approved the feature in chat. Server: `posting_grants` table (migration 0018) + `posting_grants.py`. An admin grants one Workspace one TikTok account up to N posts until a date ("only you" only), with a reason; audited and revocable
 - Claim: a post is live only when the Agent says `can_post_live` (Agent 0.4.0+) and a grant for the phone's account has room after the live posts already handed out; otherwise dry run, as before. Items now store `posting_mode`, `grant_id` and `grant_used`
 - SUBMITTING: approval re-checked, then one grant use counted under the grant's row lock before Post is pressed; revoked/expired/used-up grants → NEEDS_ACTION `POSTING_GRANT_*`, never pressed. The test-only live server mode is unchanged

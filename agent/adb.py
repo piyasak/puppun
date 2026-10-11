@@ -106,7 +106,9 @@ def daemon_down(message: str) -> bool:
 
 def bundled_adb() -> Path | None:
     """The adb shipped inside the packaged Agent (tools/build_agent.py), next to punpun-agent.exe."""
-    if not getattr(sys, "frozen", False):
+    from agent import packaged
+
+    if not packaged():
         return None
     exe = Path(sys.executable).with_name("adb") / "adb.exe"
     return exe if exe.is_file() else None
