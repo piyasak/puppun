@@ -196,18 +196,24 @@ class TikTokUi:
     def keyboard_shown(self) -> bool:
         return "mInputShown=true" in self.sh("dumpsys input_method | grep mInputShown")
 
-    def account(self, tries: int = 4) -> str:
-        """Open TikTok on Profile and read the @handle. TikTok can take a while to start or show a
-        popup first, so it looks again a few times; it never guesses an account."""
+    def open_app(self) -> None:
         self.sh(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         self.sleep(self.settle_s * 3)
-        for _ in range(10):  # TikTok may show its splash/ad screen first (QA phone, 2026-10-09)
-            if "SplashActivity" not in self.focus():
-                break
-            self.sleep(self.settle_s)
+
+    def account(self, tries: int = 6) -> str:
+        """Open TikTok on Profile and read the @handle. TikTok can take a while to start or show a
+        popup first, so it looks again a few times; it never guesses an account.
+
+        QA phone, 2026-10-11 (TikTok 40.0.0): the For You feed runs inside SplashActivity, so that name
+        says nothing about a splash screen (waiting on it cost ~20 s each time); and once TikTok was no
+        longer in front (the last reading was the home screen), so TikTok is opened again whenever the
+        screen is not TikTok's."""
+        self.open_app()
         size = re.search(r"(\d+)x(\d+)", self.sh("wm size"))
         w, h = (int(size.group(1)), int(size.group(2))) if size else (720, 1600)
         for _ in range(tries):
+            if not self.focus().startswith(PACKAGE):  # TikTok closed or went behind another app
+                self.open_app()
             nodes = self.read()
             handle = account_handle(nodes)
             if handle is not None:

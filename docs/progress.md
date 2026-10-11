@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — full videos and clips already cut from the Agent's folder (Q-43)
+### Latest slice (2026-10-11) — ACCOUNT_UNREADABLE on a live post: TikTok reopened, faster read
+- PO saw post 68d31b56 stop with ACCOUNT_UNREADABLE → NEEDS_ACTION (before Post: nothing posted, no grant use). Evidence from the QA phone: the last screen reading (`/sdcard/cf_ui.xml`, 15:01) was the **home screen**, not TikTok; TikTok 40.0.0 runs the For You feed inside `SplashActivity`, so the Agent's "wait for the splash" loop always waited its full ~20 s
+- `tiktok_ui.account`: opens TikTok again whenever the screen is not TikTok's, 6 tries instead of 4, no SplashActivity wait. On the QA phone: 3/3 read @patsy4404 (also starting from the home screen), 30 s instead of 53 s
+- `ACCOUNT_UNREADABLE` is now retryable from the web (like ACCOUNT_MISMATCH)
+- Commands: unit test for "TikTok not in front" + tests/unit 204 passed; posting tests 24 passed. Needs an Agent build (0.5.0) to reach the PC
+
+### Slice (2026-10-11) — full videos and clips already cut from the Agent's folder (Q-43)
 - Agent 0.5.0 (source): `agent/library.py` scans the videos folder every 60 s (top-level videos = full videos; sub-folders = clips already cut, .mp4 in natural EP order) and reports names/sizes when changed (`PUT /v1/agent/library`, server feature `video_library`); job claims send `kinds`, and servers keep `local_clips` jobs from older Agents
 - Job runner `local_clips`: per clip sha256 → hard link `<clips>/<job>/clip_NN.mp4` (copy across drives) → `delivery.check_ready_clip` (.mp4, video, audio, 1 s–10 min) → `clip_rendered` (caption = file name, template `ready-cut`) → still; originals untouched; missing folder = SOURCE_NOT_FOUND
 - Server: `local_clips` source kind (bare folder name; no subtitles; up to 100 clips; durations 1–600 s; delete-after-post forced off), `agent_libraries` table (migration 0019), `GET /v1/environments/{id}/library`

@@ -293,7 +293,7 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
 RESOLUTIONS = ("found_published", "confirmed_not_published", "still_unknown")
 # NEEDS_ACTION reasons a person may simply retry once fixed. Approval/text/phone problems are not
 # here: they are fixed by approving again (rebinds automatically) or by scheduling elsewhere.
-RETRYABLE_REASONS = ("AGENT_LOST", "ACCOUNT_MISMATCH", "TRANSFER_FAILED", "GALLERY_NOT_FOUND", "FILE_UNAVAILABLE",
+RETRYABLE_REASONS = ("AGENT_LOST", "ACCOUNT_MISMATCH", "ACCOUNT_UNREADABLE", "TRANSFER_FAILED", "GALLERY_NOT_FOUND", "FILE_UNAVAILABLE",
                      "DOWNLOAD_FAILED", "FILE_HASH_MISMATCH", "DEVICE_NOT_CONNECTED", "AGENT_ERROR", "WIFI_OFFLINE")
 
 
