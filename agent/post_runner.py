@@ -35,6 +35,7 @@ import time
 import uuid
 from pathlib import Path
 
+from agent import thai_keyboard
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -267,6 +268,8 @@ class _Post:
             raise PostFailed("POSTING_NOT_AVAILABLE", "no posting grant for this post")
         if server_grant and server_grant.get("visibility") != "only_me":
             raise PostFailed("VISIBILITY_NOT_SUPPORTED", "this Agent can only post as \"only you\"")
+        if not thai_keyboard.installed(self.adb, self.phone.adb_serial):  # before anything is typed or used
+            raise UiStop("THAI_KEYBOARD_MISSING", "no Thai keyboard (punpun Thai input) on this phone")
         ui = self._ui()
         marker = "cf" + self.id.replace("-", "")[:6]  # ties the post to this attempt (PRD §H, Q-21)
         caption = self._caption(marker)

@@ -31,6 +31,7 @@ const WHY: Record<string, string> = {
   CAPTCHA: 'TikTok ขอยืนยันตัวตน — ทำบนโทรศัพท์แล้วกดลองใหม่',
   LOGIN_REQUIRED: 'TikTok ไม่ได้ล็อกอิน — ล็อกอินบนโทรศัพท์แล้วกดลองใหม่',
   AGENT_LOST: 'Agent หยุดตอบหลายครั้ง — ตรวจเครื่อง Windows แล้วกดลองใหม่',
+  THAI_KEYBOARD_MISSING: 'โทรศัพท์ยังไม่มีคีย์บอร์ดพิมพ์ไทย — กด "ติดตั้งคีย์บอร์ดพิมพ์ไทย" ในหน้าต่างตั้งค่า Agent แล้วกดลองใหม่',
 }
 
 function ymd(d: Date): string {

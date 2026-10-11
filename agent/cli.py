@@ -56,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     p_scr = sub.add_parser("screens", help="show the phone screens now, in the order of their names on the web")
     p_scr.add_argument("--view-only", action="store_true")
     p_scr.add_argument("--data-dir", type=Path, default=None)
+    p_kb = sub.add_parser("thai-keyboard", help="download punpun Thai input (checked) and install it on every ready phone (Q-44)")
+    p_kb.add_argument("--data-dir", type=Path, default=None)
     p_pair = sub.add_parser("pair", help="link this PC with a pairing code from the web (no token to copy)")
     p_pair.add_argument("--server", required=True)
     p_pair.add_argument("--code", required=True, help="the XXXX-XXXX code from the Agents page (10 minutes, once)")
@@ -117,6 +119,13 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.data_dir, args.server)
     if args.cmd == "screens":
         return show_screens(args.data_dir, not args.view_only)
+    if args.cmd == "thai-keyboard":
+        from agent import thai_keyboard
+        from agent.identity import default_data_dir
+
+        lines = thai_keyboard.install_all(Adb(default_runner()), (args.data_dir or default_data_dir()) / "downloads")
+        print("\n".join(lines))
+        return 0 if all(line.startswith("✓") for line in lines) else 1
     if args.cmd == "pair":
         from agent import settings
         from agent.identity import default_data_dir

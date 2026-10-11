@@ -18,6 +18,8 @@ def fake_adb(serial: str):
     def runner(args):
         if args[:2] == ["devices", "-l"]:
             return f"List of devices attached\n{serial}  device model:25078PC3EG transport_id:1\n"
+        if args[3] == "pm list packages":
+            return "package:com.ss.android.ugc.trill\npackage:app.punpun.keyboard\n"
         return props[args[3].split()[1]] + "\n"
 
     return Adb(runner)

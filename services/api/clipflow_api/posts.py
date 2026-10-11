@@ -294,7 +294,8 @@ RESOLUTIONS = ("found_published", "confirmed_not_published", "still_unknown")
 # NEEDS_ACTION reasons a person may simply retry once fixed. Approval/text/phone problems are not
 # here: they are fixed by approving again (rebinds automatically) or by scheduling elsewhere.
 RETRYABLE_REASONS = ("AGENT_LOST", "ACCOUNT_MISMATCH", "ACCOUNT_UNREADABLE", "TRANSFER_FAILED", "GALLERY_NOT_FOUND", "FILE_UNAVAILABLE",
-                     "DOWNLOAD_FAILED", "FILE_HASH_MISMATCH", "DEVICE_NOT_CONNECTED", "AGENT_ERROR", "WIFI_OFFLINE")
+                     "DOWNLOAD_FAILED", "FILE_HASH_MISMATCH", "DEVICE_NOT_CONNECTED", "AGENT_ERROR", "WIFI_OFFLINE",
+                     "THAI_KEYBOARD_MISSING")
 
 
 def _next_slot(db: Session, item: ScheduleItem, at: datetime) -> datetime:

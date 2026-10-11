@@ -26,6 +26,11 @@ class Gallery(FakePhone):
         return super().run(args)
 
 
+class NoKeyboard(Gallery):
+    def run(self, args):
+        return super().run(args).replace("package:com.android.adbkeyboard\n", "")
+
+
 class PostingUi:
     def __init__(self, verify_fails=False, during=None):
         self.verify_fails, self.calls, self.posted, self.during = verify_fails, [], 0, during
@@ -73,12 +78,12 @@ def live(shop, app, live_server_url, server_url, tmp_path):  # server_url serves
     client = ServerClient(live_server_url)
     session = client.authenticate(shop.acc.username, shop.token, str(uuid.uuid4()))
 
-    def make(ui, *, crash=False, allowed=1):
+    def make(ui, *, crash=False, allowed=1, phone_class=None):
         job_id, _ = shop.job(clips=1)
         series = shop.create(job_id, **FULL_DAY).json()
         set_times(app, series["id"], [-1])
         data_dir = tmp_path / "agent-data"
-        phone = Gallery(shop.serial)
+        phone = (phone_class or Gallery)(shop.serial)
         ledger = data_dir / "authorizations.json"
         runner = PostRunner(data_dir, lambda: Adb(phone.run), log=lambda *_: None, retry_wait_s=0.1,
                             ui_factory=lambda adb, serial: ui, crash_after_submit=crash,
@@ -141,3 +146,14 @@ def test_a_session_lost_during_the_tiktok_steps_does_not_spend_the_grant(shop, l
     s = holder["s"] = live(ui)
     assert s["run"]() == "stopped"
     assert "POST" not in ui.calls and not s["ledger"].exists()
+
+
+def test_a_phone_without_the_thai_keyboard_stops_before_anything_is_typed_or_used(shop, live):  # Q-44
+    ui = PostingUi()
+    s = live(ui, phone_class=NoKeyboard)
+    assert s["run"]() == "NEEDS_ACTION"
+    assert ui.calls == [] and not s["ledger"].exists()  # TikTok never driven, no grant touched
+    item = items(shop, s["series"]["id"])[0]
+    assert (item["state"], item["reason"]) == ("NEEDS_ACTION", "THAI_KEYBOARD_MISSING")
+    resp = shop.acc.post(f"/v1/schedule-items/{item['id']}/retry", json={"expected_state_version": item["state_version"]})
+    assert resp.status_code == 200, resp.text  # after installing it, the owner retries from the web

@@ -11,6 +11,10 @@ real on **one TikTok account**, up to N posts until a date, with visibility **"o
 3. The phone/TikTok version is one we tested (`agent/compat.py`). Anything else stops with
    `UNSUPPORTED_DEVICE` before TikTok is touched.
 4. A dry-run post on that phone went through (file in the Gallery).
+5. The phone has the Thai keyboard (Q-44): the **โทรศัพท์** page shows no "ยังไม่มีคีย์บอร์ดพิมพ์ไทย"
+   badge (Agent 0.5.3+ reports it). If it does, the customer presses "ติดตั้งคีย์บอร์ดพิมพ์ไทย" in the Agent's
+   settings window (punpun Thai input, `keyboard/`). Without it a live post stops with
+   `THAI_KEYBOARD_MISSING` before anything is typed or the grant is used.
 
 ## Give a grant (admin only)
 Admin → find the Workspace → **เปิด** → **สิทธิ์โพสต์จริง**. Fill in the TikTok account, the most posts

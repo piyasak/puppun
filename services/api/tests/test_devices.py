@@ -182,3 +182,18 @@ def test_register_answer_says_what_details_are_missing_and_where(owner):
     assert again["created"] is False and again["missing_details"] == []
     assert again["expected_account"] == "shop1"
     assert owner.get("/v1/devices").json()["items"][0]["missing_details"] == []
+
+
+def test_the_agent_reports_whether_the_thai_keyboard_is_there(owner):  # Q-44
+    def keyboard():
+        return owner.get("/v1/devices").json()["items"][0]["thai_keyboard"]
+
+    register(owner.agent)  # an Agent older than 0.5.3 says nothing
+    assert keyboard() is None
+    body = {"serial": SERIAL, "adb_state": "device", "model": "M", "android_version": "15"}
+    assert owner.agent.post("/v1/agent/devices/register", json=body | {"thai_keyboard": False}).status_code == 200
+    assert keyboard() is False
+    register(owner.agent)  # not said again: the last report stays
+    assert keyboard() is False
+    owner.agent.post("/v1/agent/devices/register", json=body | {"thai_keyboard": True})
+    assert keyboard() is True

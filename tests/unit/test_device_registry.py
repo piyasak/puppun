@@ -19,14 +19,17 @@ def runner(args):
     if args[2] == "shell" and args[3].startswith("getprop "):
         assert args[1] == "TST8YD89GI8XCIE6"  # only the ready phone is queried
         return PROPS[args[3].split()[1]] + "\n"
+    if args[2:] == ["shell", "pm list packages"]:
+        assert args[1] == "TST8YD89GI8XCIE6"
+        return "package:com.ss.android.ugc.trill\npackage:com.android.adbkeyboard\n"
     raise AssertionError(args)
 
 
 def test_discover_uses_hardware_serials_and_skips_wifi_ids():
     phones = {p.adb_serial: p for p in discover(Adb(runner))}
     ready = phones["TST8YD89GI8XCIE6"]
-    assert (ready.hw_serial, ready.state, ready.model, ready.android_version) == (
-        "TST8YD89GI8XCIE6", "device", "25078PC3EG", "15")
+    assert (ready.hw_serial, ready.state, ready.model, ready.android_version, ready.thai_keyboard) == (
+        "TST8YD89GI8XCIE6", "device", "25078PC3EG", "15", True)
     assert phones["R58M123ABC"].hw_serial == "R58M123ABC"  # USB transport id = hardware serial
     assert phones["192.168.6.30:5555"].hw_serial is None   # Wi-Fi id is not an identity
     assert report_map(list(phones.values())) == {"TST8YD89GI8XCIE6": "device", "R58M123ABC": "unauthorized"}
@@ -36,7 +39,7 @@ class FakeClient:
     def __init__(self):
         self.reported = None
 
-    def register_device(self, session, serial, state, model, version):
+    def register_device(self, session, serial, state, model, version, thai_keyboard=None):
         if state != "device":
             raise ServerError(409, "DEVICE_NOT_READY", "not ready", {"adb_state": state})
         return {"id": "dev-1", "created": True}
@@ -66,7 +69,7 @@ class RecordingClient(FakeClient):
         super().__init__()
         self.known = {}
 
-    def register_device(self, session, serial, state, model, version):
+    def register_device(self, session, serial, state, model, version, thai_keyboard=None):
         if state != "device":
             raise ServerError(409, "DEVICE_NOT_READY", "ยังไม่พร้อม", {"adb_state": state})
         created = serial not in self.known
@@ -117,3 +120,15 @@ def test_phone_check_without_phones_or_adb_says_so_once():
     missing = DeviceSync(no_adb, log=logs.append)
     assert missing(FakeClient(), object()) == [] and missing(FakeClient(), object()) == []
     assert logs == ["อ่านโทรศัพท์ผ่าน ADB ไม่ได้: adb not found on PATH"]
+
+
+def test_a_phone_without_the_thai_keyboard_is_announced():
+    from agent.device_registry import describe
+
+    line = describe({"outcome": "ALREADY_REGISTERED", "serial": "S", "model": "M", "thai_keyboard": False})
+    assert "ยังไม่มีคีย์บอร์ดพิมพ์ไทย" in line and "ติดตั้งคีย์บอร์ดพิมพ์ไทย" in line
+    assert "คีย์บอร์ด" not in describe({"outcome": "ALREADY_REGISTERED", "serial": "S", "model": "M",
+                                         "thai_keyboard": True, "expected_account": "qa"})
+    with_details = describe({"outcome": "REGISTERED", "serial": "S", "model": "M", "thai_keyboard": False,
+                             "details_url": "http://web/devices"})
+    assert "http://web/devices" in with_details and "ติดตั้งคีย์บอร์ดพิมพ์ไทย" in with_details  # both said
