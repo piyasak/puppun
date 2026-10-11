@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.5.0"  # 0.4.0 + videos folder list for the web, jobs from clips already cut (local_clips)
+SOURCE_VERSION = "0.5.1"  # 0.5.0 + checking a post no longer refused by the feed's LIVE view behind the tab bar
 
 
 # A packaged build (tools/build_agent.py): Nuitka-compiled from 0.4.0 (`__compiled__` exists in

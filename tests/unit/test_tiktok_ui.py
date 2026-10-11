@@ -295,3 +295,42 @@ def test_tiktok_is_opened_again_when_it_is_not_in_front():
     phone = Behind()
     assert ui_for(phone).account() == "qa_account"
     assert phone.launches == 2 and all(state != "home" for state, *_ in phone.presses)  # never tapped the home screen
+
+
+def test_a_forbidden_container_behind_the_target_does_not_block_it_but_a_forbidden_control_does():
+    """QA phone, 2026-10-11: after a post the feed's "LIVE" view (0,436)-(720,1506) lies behind the
+    tab bar, so checking the result was refused at the Profile tab. A container that wholly encloses
+    the target is not what a tap hits; anything forbidden of the target's size or smaller still blocks."""
+    from agent.tiktok_ui import encloses
+
+    tab = node("โปรไฟล์", bounds=(576, 1408, 720, 1506), clickable=True)
+    live = node(desc="LIVE", bounds=(0, 436, 720, 1506))
+    parsed = parse_dump(screen(live, tab))
+    assert encloses(parsed[1], parsed[2]) and not encloses(parsed[2], parsed[1])  # [0] is the root
+
+    class Feed(FakeTikTok):
+        def __init__(self, extra):
+            super().__init__(first="feed")
+            self.extra = extra
+
+        def xml(self):
+            if self.state == "feed":
+                return screen(self.extra, tab)
+            return super().xml()
+
+        def tap(self, x, y):
+            if self.state == "feed" and 576 <= x < 720 and 1408 <= y < 1506:  # the Profile tab
+                self.state = "profile"
+            self.presses.append((self.state, x, y))
+
+    phone = Feed(live)
+    ui_for(phone).press("โปรไฟล์")
+    assert phone.state == "profile"
+
+    for blocker in (node(desc="LIVE", bounds=(600, 1420, 700, 1500)),   # smaller, on top of the tab
+                    node("ร้านค้า", bounds=(560, 1400, 700, 1500))):     # overlaps, does not enclose
+        phone = Feed(blocker)
+        with pytest.raises(UiStop) as err:
+            ui_for(phone).press("โปรไฟล์")
+        assert err.value.code == "REFUSED_ELEMENT" and phone.state == "feed"
+

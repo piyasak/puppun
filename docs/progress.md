@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — ACCOUNT_UNREADABLE on a live post: TikTok reopened, faster read
+### Latest slice (2026-10-11) — first live post under a grant: posted, but UNKNOWN (verify step refused a tab)
+- Post 287943f0 (Agent 0.5.0, grant 8692b1b0): journal CLAIMED → TRANSFERRING → PREPARING → SUBMITTING (grant used) → Post pressed once → VERIFYING → **UNKNOWN** `REFUSED_ELEMENT` at 648,1457. Last screen reading: back on the feed, whose "LIVE" view (0,436)-(720,1506) lies behind the tab bar; `press` refused the Profile tab because a forbidden label was anywhere under the point
+- Checked on the QA phone afterwards (read-only): newest private video on @patsy4404 carries marker `cf287943`, private videos 4 → 5 → **published once**. The PO resolves it on the web ("ยืนยันผล…" → found published, with this evidence)
+- Fix: `press` still refuses a forbidden control at the point, unless it is a larger container that wholly encloses the target (`encloses`); unit test with the real bounds + two blockers that must still refuse (16 passed)
+- Needs Agent 0.5.1 to reach the PC
+
+### Slice (2026-10-11) — ACCOUNT_UNREADABLE on a live post: TikTok reopened, faster read
 - PO saw post 68d31b56 stop with ACCOUNT_UNREADABLE → NEEDS_ACTION (before Post: nothing posted, no grant use). Evidence from the QA phone: the last screen reading (`/sdcard/cf_ui.xml`, 15:01) was the **home screen**, not TikTok; TikTok 40.0.0 runs the For You feed inside `SplashActivity`, so the Agent's "wait for the splash" loop always waited its full ~20 s
 - `tiktok_ui.account`: opens TikTok again whenever the screen is not TikTok's, 6 tries instead of 4, no SplashActivity wait. On the QA phone: 3/3 read @patsy4404 (also starting from the home screen), 30 s instead of 53 s
 - `ACCOUNT_UNREADABLE` is now retryable from the web (like ACCOUNT_MISMATCH)
