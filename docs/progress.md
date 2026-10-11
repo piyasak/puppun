@@ -4,7 +4,16 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — Agent closed source: Nuitka build (E-55)
+### Latest slice (2026-10-11) — full videos and clips already cut from the Agent's folder (Q-43)
+- Agent 0.5.0 (source): `agent/library.py` scans the videos folder every 60 s (top-level videos = full videos; sub-folders = clips already cut, .mp4 in natural EP order) and reports names/sizes when changed (`PUT /v1/agent/library`, server feature `video_library`); job claims send `kinds`, and servers keep `local_clips` jobs from older Agents
+- Job runner `local_clips`: per clip sha256 → hard link `<clips>/<job>/clip_NN.mp4` (copy across drives) → `delivery.check_ready_clip` (.mp4, video, audio, 1 s–10 min) → `clip_rendered` (caption = file name, template `ready-cut`) → still; originals untouched; missing folder = SOURCE_NOT_FOUND
+- Server: `local_clips` source kind (bare folder name; no subtitles; up to 100 clips; durations 1–600 s; delete-after-post forced off), `agent_libraries` table (migration 0019), `GET /v1/environments/{id}/library`
+- Web /create: three sources: link / full video (pick from the Agent's list or type a name) / clips already cut (pick a folder, EP order shown); the settings step only asks about review for clips already cut
+- Agent CLI: stderr also UTF-8 (a Thai warning on stderr broke a test); fixed an invalid escape in the new module's docstring
+- Commands: `test_ready_clips.py` 7 passed; test-integration 296 passed + the one CLI test fixed and rerun (11 passed with the new file); test-unit 203; lint exit 0; tsc clean; e2e full suite 22 passed
+- Not built/released yet: Agent 0.5.0 needs a Nuitka build (~30 min) and the PO's go-ahead to publish
+
+### Slice (2026-10-11) — Agent closed source: Nuitka build (E-55)
 - PO: the Agent is not open source; delete what was published. Found: the public repo had only README + licences, but the v0.3.4 setup (PyInstaller) carried our modules as Python 3.14 bytecode (35 modules: agent.*, clipflow_worker.*). **Deleted release v0.3.4** (download now 404); copies already downloaded cannot be recalled. Render `AGENT_SETUP_URL` now points at a missing file until a new release
 - `tools/build_agent.py` now uses Nuitka 4.2.2 (MSVC 14.3): standalone Agent + onefile setup, docstrings stripped, version info; fails if any agent/ or clipflow_worker/ .py/.pyc lands in the bundle; `--reuse` repackages without compiling. yt-dlp's generated `lazy_extractors` is left out (MSVC ran out of heap; yt-dlp falls back to its normal extractor list)
 - `agent.packaged()` recognises Nuitka (`__compiled__`) and PyInstaller builds (adb, scrcpy, version.txt next to the exe); setup finds the icon in either layout

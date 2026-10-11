@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.4.0"  # 0.3.4 + authorized real posts under a server grant (Q-42; claims say can_post_live)
+SOURCE_VERSION = "0.5.0"  # 0.4.0 + videos folder list for the web, jobs from clips already cut (local_clips)
 
 
 # A packaged build (tools/build_agent.py): Nuitka-compiled from 0.4.0 (`__compiled__` exists in

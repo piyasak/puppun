@@ -26,7 +26,7 @@ from .agent_sessions import AgentContext
 from .entitlements import entitlement
 from .errors import ApiError
 from .models import Clip, Environment, Job, JobEvent, RightsAcceptance, ScheduleItem
-from .sources import check_file_label, classify_url
+from .sources import check_file_label, check_folder_label, classify_url
 
 LEASE_S = 300
 MAX_ATTEMPTS = 3
@@ -44,6 +44,7 @@ def now() -> datetime:
 
 AUTO_MAX_CLIPS = 100  # Q-32: cap for a whole-source split (a 2-hour source at 1 min per clip fits)
 LAST_CLIP_STRETCH = 1.2  # the last clip of a whole-source split may run this much over clip_max_s
+PRECUT_MAX_S = 600  # a clip already cut (local_clips) may be up to TikTok's 10 minutes, and as short as 1 s
 
 
 def longest_clip_s(job: Job, index: int) -> float:
@@ -73,6 +74,12 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
         kind, url, label = classify_url(source.get("url") or ""), source["url"].strip(), None
     elif source.get("kind") == "local_file":
         kind, url, label = "local_file", None, check_file_label(source.get("file_name") or "")
+    elif source.get("kind") == "local_clips":
+        # Clips already cut, one folder per series in EP order (PO 2026-10-11): nothing is cut or rendered,
+        # every file in the folder becomes one clip (up to AUTO_MAX_CLIPS), so no subtitles and no length plan.
+        kind, url, label = "local_clips", None, check_folder_label(source.get("folder") or "")
+        requested_clips, auto_clips, subtitles, delete_after_post = AUTO_MAX_CLIPS, True, False, False
+        clip_min_s, clip_max_s = 15, PRECUT_MAX_S
     else:
         raise ApiError(422, "VALIDATION_ERROR", "ต้องระบุแหล่งที่มาเป็นลิงก์หรือไฟล์บนเครื่อง Agent")
 
@@ -166,20 +173,24 @@ def cancel(db: Session, job: Job) -> None:
 
 # --- Agent side -----------------------------------------------------------------------------
 
-def _claimable(ctx: AgentContext, at: datetime):
+def _claimable(ctx: AgentContext, at: datetime, kinds: list[str] | None):
     # Unfinished and not leased to a live Agent. A claimed job can still be RECEIVED (the Agent
     # has not validated the source yet), so the lease decides, not the state (bug found 2026-10-08).
-    return select(Job).where(
+    stmt = select(Job).where(
         Job.environment_id == ctx.environment_id,
         Job.state.in_(("RECEIVED", *ACTIVE)),
         or_(Job.lease_expires_at.is_(None), Job.lease_expires_at < at),
-    ).order_by(Job.created_at).with_for_update(skip_locked=True)
+    )
+    if not kinds or "local_clips" not in kinds:
+        stmt = stmt.where(Job.source_kind != "local_clips")  # Agents before 0.5.0 cannot read a clips folder
+    return stmt.order_by(Job.created_at).with_for_update(skip_locked=True)
 
 
-def claim(db: Session, ctx: AgentContext) -> Job | None:
+def claim(db: Session, ctx: AgentContext, kinds: list[str] | None = None) -> Job | None:
+    """`kinds`: the source kinds this Agent can work on (sent from 0.5.0); None = an older Agent."""
     at = now()
     while True:
-        job = db.scalars(_claimable(ctx, at).limit(1)).first()
+        job = db.scalars(_claimable(ctx, at, kinds).limit(1)).first()
         if job is None:
             return None
         if job.attempts >= MAX_ATTEMPTS:
@@ -294,7 +305,9 @@ def _clip_rendered(db: Session, job: Job, e: dict, at: datetime) -> None:
     duration_ms = int(e["duration_ms"])
     if not SHA256_RE.match(sha):
         raise ApiError(422, "VALIDATION_ERROR", "sha256 ไม่ถูกต้อง")
-    if not job.clip_min_s * 1000 - 1000 <= duration_ms <= longest_clip_s(job, index) * 1000 + 1000:
+    shortest_ms, longest_ms = ((1000, PRECUT_MAX_S * 1000) if job.source_kind == "local_clips"
+                               else (job.clip_min_s * 1000 - 1000, longest_clip_s(job, index) * 1000 + 1000))
+    if not shortest_ms <= duration_ms <= longest_ms:
         raise ApiError(422, "CLIP_DURATION_OUT_OF_RANGE", "ความยาวคลิปไม่อยู่ในช่วงที่กำหนด")
     checks, agent_path = clips.reported_checks(e.get("checks")), clips.reported_path(e.get("local_path"))
     existing = db.scalars(select(Clip).where(Clip.job_id == job.id, Clip.clip_index == index)

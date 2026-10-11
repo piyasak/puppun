@@ -89,7 +89,7 @@ test('pages work at 360 px, at 200 % zoom and pass axe', async ({ page, browser,
   await page.getByRole('button', { name: 'บันทึก' }).click()
   await expect(page.getByTestId('device-row')).toContainText('@punpun.shop_ladprao_9')
   await page.getByRole('link', { name: 'สร้างงาน' }).click()
-  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ตอนพิเศษ-ชื่อไฟล์ยาวมากเพื่อทดสอบการตัดบรรทัด.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await page.getByLabel('ความยาวต่อคลิป').fill('40')  // clips of 32–40 s (the sample clips are 35 s)
@@ -179,7 +179,7 @@ test('create, approve and schedule a job with the keyboard only', async ({ page,
   await page.goto('/create')
   await tabTo(page, /ลิงก์ YouTube/)
   await page.keyboard.press('ArrowDown')  // radio group: next option
-  await expect(page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent')).toBeChecked()
+  await expect(page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/)).toBeChecked()
   await tabTo(page, /ชื่อไฟล์วิดีโอ/)
   await page.keyboard.type('คีย์บอร์ด.mp4')
   await tabTo(page, /^ถัดไป$/)

@@ -35,6 +35,7 @@ from .routers import (
     devices,
     environments,
     jobs,
+    library,
     pairing,
     posts,
     schedules,
@@ -108,6 +109,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(devices.web_router)
     app.include_router(jobs.web_router)
     app.include_router(jobs.agent_router)
+    app.include_router(library.agent_router)
+    app.include_router(library.web_router)
     app.include_router(clips.web_router)
     app.include_router(clips.agent_router)
     app.include_router(clips.agent_files_router)

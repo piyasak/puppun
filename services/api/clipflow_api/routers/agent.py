@@ -42,8 +42,9 @@ def agent_context(request: Request, db: Session = Depends(get_db)) -> AgentConte
 
 
 # What this server supports, so an Agent never starts work it cannot hand in. "clip_preview" =
-# Q-33 delivery (checks + still via PUT .../preview, the clip stays on the Agent's PC).
-FEATURES = ["clip_preview"]
+# Q-33 delivery (checks + still via PUT .../preview, the clip stays on the Agent's PC). "video_library" =
+# PUT /v1/agent/library and jobs from clips already cut (local_clips, PO 2026-10-11).
+FEATURES = ["clip_preview", "video_library"]
 
 
 def _session_out(new_or_session, env_name: str, generation: int) -> dict:

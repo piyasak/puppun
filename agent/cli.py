@@ -31,8 +31,9 @@ JOURNAL = Path("var/agent/attempts.jsonl")
 
 
 def main(argv: list[str] | None = None) -> int:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    for stream in (sys.stdout, sys.stderr):  # Thai text: the Windows console default (cp874) is not UTF-8
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="agent.cli")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("devices")
@@ -287,6 +288,10 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
             from agent.post_runner import PostRunner
 
             workers = [JobRunner(data_dir, media_dir)] if media_dir else []
+            if media_dir:  # PO 2026-10-11: the web lists the full videos and the folders of clips already cut
+                from agent.library import LibraryWorker
+
+                workers.append(LibraryWorker(media_dir))
             wall = screen_wall(load_config(data_dir), exe)  # phone screens on the PC (PO 2026-10-10)
             if posts:  # P5: scheduled posts, dry-run only (the server refuses Submit, E-40)
                 workers.append(PostRunner(data_dir, lambda: Adb(default_runner()), ui_rehearsal=ui_rehearsal,

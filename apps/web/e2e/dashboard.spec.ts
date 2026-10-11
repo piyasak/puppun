@@ -26,7 +26,7 @@ test('dashboard shows the next post, quota, phones and recent jobs', async ({ pa
   await expect(page.getByTestId('device-row')).toContainText('@shop1')
 
   await page.goto('/create')
-  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ตอนพิเศษ.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await page.getByLabel('ความยาวต่อคลิป').fill('40')  // clips of 32–40 s (the sample clips are 35 s)

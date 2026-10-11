@@ -45,6 +45,46 @@ def check_clip(path: Path, *, reported_duration_ms: int, clip_min_s: float, clip
     return {"status": "passed" if all(c["ok"] for c in checks) else "failed", "checks": checks}
 
 
+PRECUT_MAX_S = 600  # TikTok's longest upload from the phone app
+
+
+def probe_duration_s(path: Path) -> float:
+    """Length of a video file in seconds (0 when it cannot be read)."""
+    proc = subprocess.run([binary("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of",
+                           "default=nw=1:nk=1", str(path)], capture_output=True, text=True, timeout=60)
+    try:
+        return float(proc.stdout.strip() or 0)
+    except ValueError:
+        return 0.0
+
+
+def check_ready_clip(path: Path) -> dict:
+    """Checks for a clip that was already cut (PO 2026-10-11): it is posted as it is, so it must be a
+    readable .mp4 with picture and sound, 1 s to 10 minutes. Its size is reported, not required."""
+    try:
+        exe = binary("ffprobe")
+    except FileNotFoundError:
+        return {"status": "skipped", "reason": "ffprobe_not_available", "checks": []}
+    proc = subprocess.run([exe, "-v", "error", "-print_format", "json", "-show_streams", "-show_format", str(path)],
+                          capture_output=True, text=True, timeout=60)
+    if proc.returncode != 0:
+        return {"status": "failed", "reason": "not_a_media_file", "checks": [
+            {"name": "readable", "ok": False, "detail": "not a readable video file"}]}
+    info = json.loads(proc.stdout or "{}")
+    streams = info.get("streams", [])
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    duration = float(info.get("format", {}).get("duration") or 0)
+    detail = f"{video.get('codec_name')} {video.get('width')}x{video.get('height')}" if video else None
+    checks = [
+        {"name": "mp4_file", "ok": path.suffix.lower() == ".mp4", "detail": path.suffix.lower()},
+        {"name": "video_stream", "ok": video is not None, "detail": detail},
+        {"name": "audio_stream", "ok": audio is not None, "detail": audio.get("codec_name") if audio else None},
+        {"name": "duration_up_to_10_min", "ok": 1 <= duration <= PRECUT_MAX_S, "detail": round(duration, 2)},
+    ]
+    return {"status": "passed" if all(c["ok"] for c in checks) else "failed", "checks": checks}
+
+
 def contact_sheet(path: Path, out: Path, duration_s: float) -> Path:
     """One JPEG with three frames side by side (at 15 %, 50 % and 85 %), 810x480, a few dozen KB."""
     start = max(0.0, duration_s * 0.15)

@@ -15,7 +15,7 @@ test('create a job, watch it progress, preview, edit and approve clips', async (
 
   // Wizard: source -> format -> review
   await page.getByRole('link', { name: 'สร้างงาน' }).click()
-  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await expect(page.getByRole('alert')).toHaveText('ใส่ชื่อไฟล์วิดีโอ')
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('C:\\Videos\\ตอนพิเศษ.mp4')
@@ -127,7 +127,7 @@ test('by default the clip count follows the source, with clips of about 300 s', 
   const owner = await signUpAndOnboard(page, request)
   const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
   await page.goto('/create')
-  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ไลฟ์ยาว.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await expect(page.getByLabel('ความยาวต่อคลิป')).toHaveValue('300')
@@ -154,7 +154,7 @@ test('a clip kept on the Agent shows its frames and where the file is, and can b
   const owner = await signUpAndOnboard(page, request)
   const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
   await page.goto('/create')
-  await page.getByLabel('ไฟล์วิดีโอบนเครื่อง Agent').check()
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
   await page.getByLabel('ชื่อไฟล์วิดีโอ').fill('ไลฟ์.mp4')
   await page.getByRole('button', { name: 'ถัดไป' }).click()
   await page.getByLabel('ความยาวต่อคลิป').fill('40')
@@ -200,4 +200,30 @@ test('a clip kept on the Agent shows its frames and where the file is, and can b
   expect(again.id).toBe(jobId)
   expect(again.remake).toEqual([1, 2])  // both kept clips: found where they were moved, or made again
   await expect(first.getByTestId('approval')).toHaveText('อนุมัติแล้ว')  // nothing is lost by asking
+})
+
+test('pick a full video or a folder of clips already cut from the Agent (PO 2026-10-11)', async ({ page, request }) => {
+  const owner = await signUpAndOnboard(page, request)
+  const agent = new FakeAgent(request, await agentSession(page, request, owner.username))
+  await agent.reportLibrary({
+    videos: [{ name: 'เรื่องเต็ม.mp4', size_bytes: 734_003_200 }],
+    sets: [{ folder: 'เรื่องA', clips: ['EP10.mp4', 'EP2.mp4', 'EP1.mp4'] }],
+  })
+  await page.goto('/create')
+  await page.getByLabel(/วิดีโอเต็มบนเครื่อง Agent/).check()
+  await page.getByLabel('เลือกวิดีโอจากเครื่อง Agent').selectOption('เรื่องเต็ม.mp4')
+  await expect(page.getByLabel('ชื่อไฟล์วิดีโอ')).toHaveValue('เรื่องเต็ม.mp4')
+
+  await page.getByLabel(/คลิปที่ตัดแล้ว/).check()
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByRole('alert')).toHaveText('เลือกโฟลเดอร์คลิปที่ตัดแล้ว')
+  await page.getByLabel('โฟลเดอร์คลิปที่ตัดแล้ว').selectOption('เรื่องA')
+  await expect(page.getByTestId('set-order')).toHaveText('ลำดับ: EP1.mp4, EP2.mp4, EP10.mp4')  // EP order
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByLabel('ความยาวต่อคลิป (วินาที)')).toHaveCount(0)  // nothing is cut
+  await page.getByRole('button', { name: 'ถัดไป' }).click()
+  await expect(page.getByTestId('clips-preview')).toHaveText('3 คลิปตามไฟล์ในโฟลเดอร์ เรียงตาม EP')
+  await page.getByRole('button', { name: 'สร้างงาน' }).click()
+  await expect(page.locator('#job-title')).toHaveText('คลิปที่ตัดแล้ว: เรื่องA')
+  await expect(page.getByTestId('job-state')).toHaveText('รอ Agent รับงาน')
 })
