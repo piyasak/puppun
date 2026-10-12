@@ -16,9 +16,9 @@ from __future__ import annotations
 import hashlib
 import re
 import subprocess
-import urllib.request
 from pathlib import Path
 
+from agent import net
 from agent.adb import Adb, AdbError
 
 PACKAGE = "app.punpun.keyboard"
@@ -51,7 +51,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def download(folder: Path, opener=urllib.request.urlopen) -> Path:
+def download(folder: Path, opener=net.urlopen) -> Path:
     """The checked APK in `folder` (downloaded once; a copy that does not match is replaced)."""
     path = folder / f"punpun-keyboard-{APK_SHA256[:12]}.apk"
     if path.is_file() and _sha256(path.read_bytes()) == APK_SHA256:
@@ -70,7 +70,7 @@ def download(folder: Path, opener=urllib.request.urlopen) -> Path:
     return path
 
 
-def install(adb: Adb, serial: str, folder: Path, opener=urllib.request.urlopen) -> str:
+def install(adb: Adb, serial: str, folder: Path, opener=net.urlopen) -> str:
     """Install on one phone if missing. Returns 'present' or 'installed'; raises KeyboardError."""
     if ime(adb, serial) == IME:
         adb.shell(serial, f"ime enable {IME}")
@@ -108,7 +108,7 @@ def install_hint(message: str) -> str:
     return f"ติดตั้งคีย์บอร์ดพิมพ์ไทยไม่สำเร็จ: {message.strip()[:200]}"
 
 
-def install_all(adb: Adb, folder: Path, opener=urllib.request.urlopen) -> list[str]:
+def install_all(adb: Adb, folder: Path, opener=net.urlopen) -> list[str]:
     """Every ready phone on this PC: one Thai line each (settings window, `agent.cli thai-keyboard`)."""
     phones = [d for d in adb.devices() if d.ready]
     if not phones:

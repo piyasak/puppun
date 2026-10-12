@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from agent import __version__ as AGENT_VERSION  # noqa: E402,N812
+from agent import net  # noqa: E402
 
 
 class ServerError(Exception):
@@ -67,7 +68,7 @@ class ServerClient:
                      **({"Authorization": f"Bearer {bearer}"} if bearer else {}), **(extra_headers or {})},
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout_s or self.timeout_s) as resp:
+            with net.urlopen(req, timeout=timeout_s or self.timeout_s) as resp:
                 raw = resp.read()
                 return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as exc:
@@ -153,7 +154,7 @@ class ServerClient:
         req = urllib.request.Request(url, headers={"User-Agent": f"ClipFlowAgent/{AGENT_VERSION}"})
         tmp = dest.with_suffix(dest.suffix + ".part")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp, open(tmp, "wb") as out:
+        with net.urlopen(req, timeout=timeout_s) as resp, open(tmp, "wb") as out:
             while chunk := resp.read(1024 * 1024):
                 out.write(chunk)
         tmp.replace(dest)

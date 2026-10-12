@@ -16,9 +16,10 @@ import os
 import shutil
 import subprocess
 import time
-import urllib.request
 import zipfile
 from pathlib import Path
+
+from agent import net
 
 VERSION = "9.0.2"
 ZIP_URL = f"https://github.com/GyanD/codexffmpeg/releases/download/{VERSION}/ffmpeg-{VERSION}-essentials_build.zip"
@@ -85,7 +86,7 @@ def _move_into_place(staging: Path, target: Path, tries: int = 10, wait_s: float
         shutil.copy2(path, target / path.name)
 
 
-def install(opener=urllib.request.urlopen, progress=None, run=subprocess.run) -> str:
+def install(opener=net.urlopen, progress=None, run=subprocess.run) -> str:
     """Download, check and install. Returns 'present' or 'installed'; raises FfmpegError."""
     if found():
         return "present"
