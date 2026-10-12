@@ -4,7 +4,13 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-12) — Agent server URL: punpun's real domain
+### Latest slice (2026-10-12) — FFmpeg: the Agent runs without it and installs it on request (Q-46)
+- PO saw "cannot reach server: ffmpeg not found; install FFmpeg or set FFMPEG_DIR": `JobRunner.__init__` required FFmpeg, so a PC without it stopped the whole Agent, and the FileNotFoundError was reported as a network error
+- Now (source 0.5.5): the job runner looks for FFmpeg on every poll and only holds clip jobs, saying once what to do; `connect` reports a missing file as such. Settings window card "FFmpeg (ใช้ตัดคลิป)" with status + "ติดตั้ง FFmpeg"; `agent.cli ffmpeg`; `agent/ffmpeg_setup.py` downloads Gyan FFmpeg 9.0.2 essentials (SHA-256 60f46726…47ba, 114,768,076 bytes; libx264 + libass checked), extracts only ffmpeg/ffprobe/LICENSE/README to %LOCALAPPDATA%/ClipFlowAgent/ffmpeg; `media.binary` searches there
+- Checks: unit tests (installer 5 incl. wrong hash and missing libass refused, job runner without FFmpeg 1; test-unit 222); worker tests with that build 63 passed; simulated PC without FFmpeg (bare PATH, empty LOCALAPPDATA): before None → `agent.cli ffmpeg` downloaded from GitHub and installed → job runner finds it → second run downloads nothing; settings window built in both states. test-integration 303 passed (after the PO restarted Docker Desktop)
+- Docs: pilot guide step 5 + troubleshooting, decisions Q-46, CLAUDE.md. Not built/released
+
+### Slice (2026-10-12) — Agent server URL: punpun's real domain
 - PO: the Agent's URL follows the real domain, https://punpun.tomatoparadise.online. Checked: `/healthz` there answers ok with the same build (59340c6) as https://punpun-staging.onrender.com, HTTPS valid, `/v1/agent/authenticate` reachable
 - `agent.DEFAULT_SERVER` (settings window, `agent settings --server` default) and `tools/build_agent.py` (`CLIPFLOW_SETUP_SERVER` default, baked into the setup) now use it; pilot guide and README links too. Installations that saved the staging URL keep working (same service)
 - Agent 0.5.4 published 2026-10-12 (domain + caption retry): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.4, setup SHA-256 fd808f21…e440, 59.1 MB, setup payload server https://punpun.tomatoparadise.online; no .py/.pyc; exe reports 0.5.4, yt-dlp 1751 sites; bundle test 0.5.3 → 0.5.4 passed; anonymous download HTTP 200, hash matches
