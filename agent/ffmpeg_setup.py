@@ -15,6 +15,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -68,6 +69,22 @@ def _download(dest: Path, opener, progress) -> None:
         raise FfmpegError("ไฟล์ FFmpeg ที่ดาวน์โหลดมาไม่ตรงกับไฟล์ที่ตรวจไว้ จึงไม่ติดตั้ง")
 
 
+def _move_into_place(staging: Path, target: Path, tries: int = 10, wait_s: float = 1.0, sleep=time.sleep) -> None:
+    """Packaged Agent, 2026-10-12: renaming the folder right after the exes were written and run failed with
+    "Access is denied" (antivirus still scanning them); it worked a moment later. So try for a while, then
+    copy file by file."""
+    shutil.rmtree(target, ignore_errors=True)
+    for _ in range(tries):
+        try:
+            staging.replace(target)
+            return
+        except PermissionError:
+            sleep(wait_s)
+    target.mkdir(parents=True, exist_ok=True)
+    for path in staging.iterdir():
+        shutil.copy2(path, target / path.name)
+
+
 def install(opener=urllib.request.urlopen, progress=None, run=subprocess.run) -> str:
     """Download, check and install. Returns 'present' or 'installed'; raises FfmpegError."""
     if found():
@@ -89,8 +106,7 @@ def install(opener=urllib.request.urlopen, progress=None, run=subprocess.run) ->
         probe = run([str(staging / "ffmpeg.exe"), "-hide_banner", "-version"], capture_output=True, text=True, timeout=60)
         if probe.returncode != 0 or "--enable-libass" not in probe.stdout or "--enable-libx264" not in probe.stdout:
             raise FfmpegError("FFmpeg ที่ติดตั้งเปิดไม่ได้หรือไม่มีส่วนที่ต้องใช้ (libx264, libass)")
-        shutil.rmtree(target, ignore_errors=True)
-        staging.replace(target)
+        _move_into_place(staging, target)
     except zipfile.BadZipFile:
         raise FfmpegError("ไฟล์ FFmpeg เสีย ลองใหม่อีกครั้ง") from None
     finally:
