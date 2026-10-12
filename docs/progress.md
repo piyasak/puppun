@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-12) — HTTPS on a fresh PC: certificate roots
+- PO, Agent 0.5.5 on a customer PC: "ดาวน์โหลด FFmpeg ไม่ได้: CERTIFICATE_VERIFY_FAILED unable to get local issuer certificate". Python only sees the roots Windows has already stored; Windows fetches missing roots only for its own programs
+- `agent/net.py`: one SSL context, verification on, Windows' roots + certifi's (certifi is already in the bundle through yt-dlp); used for the FFmpeg and keyboard downloads and every server call. Checked against the real hosts: with no roots the same error; with certifi's roots alone GitHub (release asset redirect) and https://punpun.tomatoparadise.online verify
+- Tests: test-unit 224 (net context); Agent HTTP integration (client, job runner, live post, phone check) passed. Source 0.5.6
+
 ### Latest slice (2026-10-12) — FFmpeg: the Agent runs without it and installs it on request (Q-46)
 - PO saw "cannot reach server: ffmpeg not found; install FFmpeg or set FFMPEG_DIR": `JobRunner.__init__` required FFmpeg, so a PC without it stopped the whole Agent, and the FileNotFoundError was reported as a network error
 - Now (source 0.5.5): the job runner looks for FFmpeg on every poll and only holds clip jobs, saying once what to do; `connect` reports a missing file as such. Settings window card "FFmpeg (ใช้ตัดคลิป)" with status + "ติดตั้ง FFmpeg"; `agent.cli ffmpeg`; `agent/ffmpeg_setup.py` downloads Gyan FFmpeg 9.0.2 essentials (SHA-256 60f46726…47ba, 114,768,076 bytes; libx264 + libass checked), extracts only ffmpeg/ffprobe/LICENSE/README to %LOCALAPPDATA%/ClipFlowAgent/ffmpeg; `media.binary` searches there
