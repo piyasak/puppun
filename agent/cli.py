@@ -23,6 +23,7 @@ import uuid
 from dataclasses import asdict
 from pathlib import Path
 
+from agent import DEFAULT_SERVER
 from agent.adb import Adb, AdbError, default_runner, is_wireless_serial
 from agent.attempt import AttemptJournal, State
 from agent.power import DeviceNotOnline, PowerSaver
@@ -51,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("version", help="print the Agent version")
     sub.add_parser("licenses", help="third-party software in this Agent and where its licences are")
     p_set = sub.add_parser("settings", help="settings window: pairing code, clips/videos folders, start with Windows")
-    p_set.add_argument("--server", default="https://punpun-staging.onrender.com", help="used until one is saved")
+    p_set.add_argument("--server", default=DEFAULT_SERVER, help="used until one is saved")
     p_set.add_argument("--data-dir", type=Path, default=None)
     p_scr = sub.add_parser("screens", help="show the phone screens now, in the order of their names on the web")
     p_scr.add_argument("--view-only", action="store_true")

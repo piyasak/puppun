@@ -11,7 +11,7 @@ accepts only a bundle whose files all match this manifest.
 
 It also builds the double-click setup (E-50): var/dist/punpun-agent-setup-<version>.exe (+ .sha256),
 one Nuitka onefile exe that carries the bundle, its SHA-256 and the default server
-(CLIPFLOW_SETUP_SERVER, default the staging URL) and runs agent/setup_win.py.
+(CLIPFLOW_SETUP_SERVER, default punpun's domain) and runs agent/setup_win.py.
 
 adb comes with the Agent (E-51: adb.exe + its two DLLs, NOTICE.txt and source.properties from
 Android platform-tools, in an adb folder next to the exe). FFmpeg is not bundled: it is a separate download, and
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "var" / "dist"
 WORK = ROOT / "var" / "build-agent"
 ICON = ROOT / "agent" / "assets" / "punpun.ico"  # from logo/sub.png
-SERVER = os.environ.get("CLIPFLOW_SETUP_SERVER", "https://punpun-staging.onrender.com")
+SERVER = os.environ.get("CLIPFLOW_SETUP_SERVER", "https://punpun.tomatoparadise.online")  # PO 2026-10-12: the real domain
 NUITKA = [sys.executable, "-m", "nuitka", "--assume-yes-for-downloads", "--msvc=latest", "--jobs=8",
           "--remove-output", "--no-pyi-file", "--python-flag=no_docstrings"]  # docstrings describe our design
 

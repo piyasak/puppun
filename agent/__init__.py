@@ -3,7 +3,10 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.5.4"  # 0.5.3 + a caption lost while the keyboard starts is typed again
+SOURCE_VERSION = "0.5.4"  # 0.5.3 + a caption lost while the keyboard starts is typed again; server on punpun's domain
+# The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
+# the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
+DEFAULT_SERVER = "https://punpun.tomatoparadise.online"
 
 
 # A packaged build (tools/build_agent.py): Nuitka-compiled from 0.4.0 (`__compiled__` exists in

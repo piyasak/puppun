@@ -20,7 +20,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font
 
-from agent import clips_folder, settings
+from agent import DEFAULT_SERVER, clips_folder, settings
 from agent.identity import default_data_dir
 from agent.updater import default_install_dir
 
@@ -358,7 +358,7 @@ class SettingsWindow:
             self.root.destroy()
 
 
-def run(data_dir: Path | None = None, default_server: str = "https://punpun-staging.onrender.com") -> int:
+def run(data_dir: Path | None = None, default_server: str = DEFAULT_SERVER) -> int:
     import subprocess
 
     if sys.platform == "win32":

@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-12) — Agent server URL: punpun's real domain
+- PO: the Agent's URL follows the real domain, https://punpun.tomatoparadise.online. Checked: `/healthz` there answers ok with the same build (59340c6) as https://punpun-staging.onrender.com, HTTPS valid, `/v1/agent/authenticate` reachable
+- `agent.DEFAULT_SERVER` (settings window, `agent settings --server` default) and `tools/build_agent.py` (`CLIPFLOW_SETUP_SERVER` default, baked into the setup) now use it; pilot guide and README links too. Installations that saved the staging URL keep working (same service)
+- PO still to do on Render: `WEB_ORIGIN` = the domain (CORS and the phone-details links the Agent prints) and the Supabase auth Site URL/redirects for the domain
+
 ### Latest slice (2026-10-12) — live posts with Agent 0.5.3: 5 verified on their own; one caption retry fix
 - PO asked to check the posting. Agent journal since 0.5.3 started (2026-10-11 23:10): live posts 23246c50, 851ef85b, c536cfec, 773ad66e, ca840d74 (hourly 02:00–06:00) all SUBMITTING → one Post → **VERIFIED_SUCCESS** by marker on @patsy4404 (the 0.5.2 marker check with a full private grid, 5 → 5). No UNKNOWN
 - 28d3b5ee (01:00, the first post after the restart) stopped before Post with CAPTION_MISMATCH (no grant use, NEEDS_ACTION). The phone was disconnected when checked, so it could not be reproduced. Likely cause in the code: the caption was broadcast right after `ime set`, before the keyboard listened. Fix (source 0.5.4): wait after switching, clear and type once more if the screen is wrong (still before Post; the exact check still decides), and the stop now says what the screen showed. Unit test with a lost first broadcast; tests/unit 153 passed. Not built/released
