@@ -63,7 +63,7 @@ class FakeTikTok:
     def __init__(self, handle="qa_account", first="feed", share_lands_on=SHARE, typed=None):
         self.handle, self.state, self.share_lands_on, self.typed_override = handle, first, share_lands_on, typed
         self.caption, self.visibility, self.ime = None, "ทุกคนสามารถดูโพสต์นี้ได้", GBOARD
-        self.presses, self.keyboard, self.stopped = [], False, False
+        self.presses, self.keyboard, self.stopped, self.lose_first = [], False, False, False
 
     def xml(self) -> str:
         if self.state == "feed":
@@ -117,6 +117,9 @@ class FakeTikTok:
             return self.ime + "\n"
         elif cmd.startswith("am broadcast -a ADB_INPUT_B64"):
             assert self.ime == IME
+            if self.lose_first:  # the keyboard was not listening yet
+                self.lose_first = False
+                return ""
             text = base64.b64decode(cmd.split()[-1]).decode()
             self.caption = self.typed_override if self.typed_override is not None else text
         elif cmd.startswith("dumpsys input_method"):
@@ -200,6 +203,16 @@ def test_caption_that_does_not_match_stops_and_the_keyboard_is_restored():
     with pytest.raises(UiStop) as err:
         ui.type_caption("ซ้อมระบบ punpun 🎬 ห้ามเผยแพร่")
     assert err.value.code == "CAPTION_MISMATCH" and phone.ime == GBOARD
+    assert "ซ้อมระบบ punpun ห้ามเผยแพร่" in err.value.detail  # what the screen showed, for whoever checks
+
+
+def test_a_caption_lost_while_the_keyboard_starts_is_typed_again():  # QA phone, 2026-10-12
+    phone = FakeTikTok()
+    phone.lose_first = True
+    ui = ui_for(phone)
+    ui.open_post_screen("60")
+    ui.type_caption("ตอนที่ 1/3 #ละคร")
+    assert phone.caption == "ตอนที่ 1/3 #ละคร" and phone.ime == GBOARD
 
 
 def test_post_draft_story_and_shop_are_never_pressed():

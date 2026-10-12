@@ -291,19 +291,32 @@ class TikTokUi:
         if keyboard is None:
             raise UiStop("THAI_KEYBOARD_MISSING", "no Thai keyboard (punpun Thai input) on this phone")
         original = self.sh("settings get secure default_input_method").strip()
+        msg = base64.b64encode(caption.encode("utf-8")).decode()
+        on_screen = None
         try:
             self.sh(f"ime enable {keyboard}")  # available, not the default (a no-op when it already is)
             self.sh(f"ime set {keyboard}")
-            self.sh("am broadcast -a ADB_CLEAR_TEXT")
-            msg = base64.b64encode(caption.encode("utf-8")).decode()
-            self.sh(f"am broadcast -a ADB_INPUT_B64 --es msg {msg}")
+            # QA phone, 2026-10-12: one caption came out wrong on the first post after a restart. Typing
+            # right after `ime set` can reach the keyboard before it listens, so it gets a moment, and a
+            # wrong result is cleared and typed once more (all before Post; the check below still decides).
             self.sleep(self.settle_s)
+            for _ in range(2):
+                self.sh("am broadcast -a ADB_CLEAR_TEXT")
+                self.sh(f"am broadcast -a ADB_INPUT_B64 --es msg {msg}")
+                self.sleep(self.settle_s)
+                typed = next((n for n in self.read() if n.cls.endswith("EditText")), None)
+                on_screen = typed.text if typed is not None else None
+                if on_screen is not None and on_screen.strip() == caption.strip():
+                    break
         finally:
             if original and original != keyboard:
                 self.sh(f"ime set {original}")  # the owner's keyboard comes back every time
         typed = next((n for n in self.read() if n.cls.endswith("EditText")), None)
         if typed is None or typed.text.strip() != caption.strip():
-            raise UiStop("CAPTION_MISMATCH", "the caption on screen is not the approved text")
+            seen = typed.text if typed is not None else on_screen
+            raise UiStop("CAPTION_MISMATCH", f"the caption on screen is not the approved text: {len(caption.strip())} "
+                                             f"characters approved, screen shows {seen[:120]!r}" if seen is not None
+                         else "the caption on screen is not the approved text: no caption field")
         if self.keyboard_shown():
             self.sh("input keyevent KEYCODE_BACK")  # only closes the keyboard: checked above
             self.sleep(self.settle_s)
