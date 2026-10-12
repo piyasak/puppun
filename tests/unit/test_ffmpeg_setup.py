@@ -107,3 +107,27 @@ def test_the_installed_copy_is_where_the_worker_looks(tmp_path, monkeypatch):
     ffmpeg_setup.folder().mkdir(parents=True)
     (ffmpeg_setup.folder() / "ffmpeg.exe").write_bytes(b"exe")
     assert media.binary("ffmpeg").endswith("ffmpeg.exe")
+
+
+def test_a_folder_still_held_by_antivirus_is_moved_a_moment_later_or_copied(tmp_path, monkeypatch):
+    staging, target = tmp_path / "ffmpeg.new", tmp_path / "ffmpeg"
+    staging.mkdir()
+    (staging / "ffmpeg.exe").write_bytes(b"exe")
+    real, calls, busy = type(staging).replace, [], {"left": 2}
+
+    def held(self, dest):
+        calls.append(1)
+        if busy["left"]:
+            busy["left"] -= 1
+            raise PermissionError(5, "Access is denied")
+        return real(self, dest)
+
+    monkeypatch.setattr(type(staging), "replace", held)
+    ffmpeg_setup._move_into_place(staging, target, sleep=lambda s: None)
+    assert len(calls) == 3 and (target / "ffmpeg.exe").read_bytes() == b"exe"
+
+    staging.mkdir()
+    (staging / "ffprobe.exe").write_bytes(b"probe")
+    monkeypatch.setattr(type(staging), "replace", lambda self, dest: (_ for _ in ()).throw(PermissionError(5, "denied")))
+    ffmpeg_setup._move_into_place(staging, target, tries=2, sleep=lambda s: None)
+    assert (target / "ffprobe.exe").read_bytes() == b"probe"  # copied file by file
