@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     p_scr.add_argument("--data-dir", type=Path, default=None)
     p_kb = sub.add_parser("thai-keyboard", help="download punpun Thai input (checked) and install it on every ready phone (Q-44)")
     p_kb.add_argument("--data-dir", type=Path, default=None)
+    sub.add_parser("ffmpeg", help="install FFmpeg for cutting clips if it is missing (download, SHA-256 checked)")
     p_pair = sub.add_parser("pair", help="link this PC with a pairing code from the web (no token to copy)")
     p_pair.add_argument("--server", required=True)
     p_pair.add_argument("--code", required=True, help="the XXXX-XXXX code from the Agents page (10 minutes, once)")
@@ -120,6 +121,16 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.data_dir, args.server)
     if args.cmd == "screens":
         return show_screens(args.data_dir, not args.view_only)
+    if args.cmd == "ffmpeg":
+        from agent import ffmpeg_setup
+
+        try:
+            done = ffmpeg_setup.install(progress=lambda got, total: print(f"\r{got * 100 // total}%", end="", flush=True))
+        except ffmpeg_setup.FfmpegError as exc:
+            print(f"\n✗ {exc}")
+            return 1
+        print(f"\n✓ {'มี FFmpeg อยู่แล้ว' if done == 'present' else 'ติดตั้ง FFmpeg แล้ว'}: {ffmpeg_setup.found()}")
+        return 0
     if args.cmd == "thai-keyboard":
         from agent import thai_keyboard
         from agent.identity import default_data_dir
@@ -320,6 +331,9 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
         return 3
     except ServerError as exc:
         print(f"server refused: {exc.code} — {exc.message}")
+        return 2
+    except FileNotFoundError as exc:  # a missing program or folder on this PC, not the network
+        print(f"Agent หยุด: ไม่พบไฟล์ที่ต้องใช้บนเครื่องนี้ ({exc})")
         return 2
     except (OSError, ValueError) as exc:
         print(f"cannot reach server: {exc}")

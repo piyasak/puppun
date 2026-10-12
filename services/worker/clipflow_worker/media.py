@@ -10,7 +10,8 @@ from pathlib import Path
 
 
 def binary(name: str) -> str:
-    """Resolve ffmpeg/ffprobe: FFMPEG_DIR env, then PATH, then the winget links folder."""
+    """Resolve ffmpeg/ffprobe: FFMPEG_DIR env, then PATH, then the winget links folder, then the copy the
+    Agent installed on request (agent.ffmpeg_setup)."""
     env_dir = os.environ.get("FFMPEG_DIR")
     candidates = [Path(env_dir) / f"{name}.exe", Path(env_dir) / name] if env_dir else []
     found = shutil.which(name)
@@ -19,6 +20,7 @@ def binary(name: str) -> str:
     local = os.environ.get("LOCALAPPDATA")
     if local:
         candidates.append(Path(local) / "Microsoft" / "WinGet" / "Links" / f"{name}.exe")
+        candidates.append(Path(local) / "ClipFlowAgent" / "ffmpeg" / f"{name}.exe")
     for candidate in candidates:
         if candidate.exists():
             # winget installs symlinks; yt-dlp needs the real folder holding ffmpeg+ffprobe.

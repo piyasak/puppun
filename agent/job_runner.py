@@ -63,10 +63,12 @@ class JobRunner:
                  keepalive_s: float = 60.0, max_height: int = 1080, retries: int = 3, retry_wait_s: float = 2.0,
                  clips_dir: Path | None = None):
         from clipflow_worker.cooldown import Cooldown
-        from clipflow_worker.media import ensure_on_path
 
-        ensure_on_path()  # before the first yt-dlp call: it caches ffmpeg detection per process
         self.data_dir, self.media_dir, self.log = Path(data_dir), media_dir, log
+        # Without FFmpeg only clip jobs wait: the Agent still connects, checks phones and posts (a PC
+        # without it stopped the whole Agent with "cannot reach server", 2026-10-12).
+        self._ffmpeg = self._find_ffmpeg()
+        self._said_no_ffmpeg = False
         self.clips_dir = Path(clips_dir) if clips_dir else clips_folder.current(self.data_dir)
         self.poll_s, self.keepalive_s, self.max_height = poll_s, keepalive_s, max_height
         self.retries, self.retry_wait_s = retries, retry_wait_s
@@ -98,8 +100,27 @@ class JobRunner:
             if outcome is None:
                 self._halt.wait(self.poll_s)
 
+    @staticmethod
+    def _find_ffmpeg() -> bool:
+        from clipflow_worker.media import ensure_on_path
+
+        try:
+            ensure_on_path()  # before the first yt-dlp call: it caches ffmpeg detection per process
+            return True
+        except FileNotFoundError:
+            return False
+
     def run_once(self, client: ServerClient, get_session) -> str | None:
         """Claim and run one job. Returns its final state, "stopped", or None when nothing was waiting."""
+        if not self._ffmpeg:
+            self._ffmpeg = self._find_ffmpeg()  # installed while the Agent runs: picked up on the next poll
+            if not self._ffmpeg:
+                if not self._said_no_ffmpeg:
+                    self.log("งาน: ไม่พบ FFmpeg บนเครื่องนี้ — ยังไม่รับงานตัดคลิป (เชื่อมต่อ ตรวจโทรศัพท์ และโพสต์ทำงานตามปกติ) "
+                             "เปิดหน้าต่างตั้งค่า Agent แล้วกด \"ติดตั้ง FFmpeg\" (หรือ  punpun-agent ffmpeg)")
+                    self._said_no_ffmpeg = True
+                return None
+            self.log("งาน: พบ FFmpeg แล้ว — เริ่มรับงานตัดคลิป")
         if not clips_folder.has_room(self.clips_dir):
             gb = clips_folder.free_bytes(self.clips_dir) / 1024**3
             self.log(f"งาน: พื้นที่ว่างในโฟลเดอร์คลิปเหลือ {gb:.1f} GB (ต้องมีอย่างน้อย "

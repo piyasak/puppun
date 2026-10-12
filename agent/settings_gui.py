@@ -223,6 +223,21 @@ class SettingsWindow:
                        "ในโทรศัพท์ทุกเครื่องที่เสียบอยู่ ไม่ตั้งเป็นคีย์บอร์ดหลัก (Agent สลับใช้เฉพาะตอนพิมพ์คำบรรยาย)", 9).grid(
             row=2, column=0, sticky="w", pady=(6, 0))
 
+        # --- FFmpeg for cutting clips (PO 2026-10-12): checked here, downloaded and installed on request only ---
+        from agent import ffmpeg_setup
+
+        tools = Card(page, "FFmpeg (ใช้ตัดคลิป)", family)
+        tools.pack(fill="x", pady=6)
+        ff = tools.body
+        self.ffmpeg_button = Button(ff, "ติดตั้ง FFmpeg", self.install_ffmpeg, family=family)
+        self.ffmpeg_button.grid(row=1, column=0, sticky="w")
+        self.ffmpeg_state = tk.StringVar()
+        self.ffmpeg_label = tk.Label(ff, textvariable=self.ffmpeg_state, bg=CARD, font=(family, 9))
+        self.ffmpeg_label.grid(row=1, column=1, sticky="w", padx=10)
+        self.muted(ff, f"ดาวน์โหลด FFmpeg {ffmpeg_setup.VERSION} (GPL, ประมาณ 115 MB) ตรวจไฟล์ แล้วติดตั้งในเครื่องนี้ ไม่ต้องติดตั้งเอง", 9).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.show_ffmpeg()
+
         # --- start with Windows + actions ---
         self.autostart = tk.BooleanVar(value=state.autostart)
         box = tk.Checkbutton(page, text="เริ่ม punpun Agent เองเมื่อเปิดเครื่อง (login Windows)", variable=self.autostart,
@@ -311,6 +326,44 @@ class SettingsWindow:
         self.linked.set(f"✓ เชื่อมต่อแล้ว: {result['username']} • Environment {result['environment']}")
         self.linked_label.configure(fg=SUCCESS)
         self.say("เชื่อมต่อแล้ว เลือกโฟลเดอร์แล้วกดบันทึก", ok=True)
+
+    def show_ffmpeg(self) -> None:
+        from agent import ffmpeg_setup
+
+        path = ffmpeg_setup.found()
+        self.ffmpeg_state.set("✓ มี FFmpeg แล้ว" if path else "ยังไม่มี FFmpeg — Agent ยังรับงานตัดคลิปไม่ได้")
+        self.ffmpeg_label.configure(fg=SUCCESS if path else DANGER)
+        self.ffmpeg_button.set_enabled(path is None)
+
+    def install_ffmpeg(self) -> None:
+        self.ffmpeg_button.set_enabled(False)
+        self.say("กำลังดาวน์โหลด FFmpeg…")
+        outcome: list = []
+        percent = [0]
+
+        def work():  # download + checks off the window's thread
+            from agent import ffmpeg_setup
+
+            try:
+                done = ffmpeg_setup.install(progress=lambda got, total: percent.__setitem__(0, got * 100 // total))
+                outcome.append(("✓ มี FFmpeg อยู่แล้ว" if done == "present" else "✓ ติดตั้ง FFmpeg แล้ว Agent รับงานตัดคลิปได้", True))
+            except ffmpeg_setup.FfmpegError as exc:
+                outcome.append((f"✗ {exc}", False))
+            except OSError as exc:
+                outcome.append((f"✗ ติดตั้ง FFmpeg ไม่ได้: {exc}", False))
+
+        def wait():
+            if not outcome:
+                if percent[0]:
+                    self.say(f"กำลังดาวน์โหลด FFmpeg… {percent[0]}%")
+                self.root.after(300, wait)
+                return
+            text, ok = outcome[0]
+            self.say(text, ok=ok)
+            self.show_ffmpeg()
+
+        threading.Thread(target=work, daemon=True).start()
+        wait()
 
     def install_keyboard(self) -> None:
         self.keyboard_button.set_enabled(False)
