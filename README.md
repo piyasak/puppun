@@ -7,7 +7,7 @@
 | Gate | ผล | หมายเหตุ |
 |---|---|---|
 | G0, G3, G4, G5 | **Yes** | ลงนามแล้ว |
-| G2 | **Yes** | staging บน Render: https://punpun-staging.onrender.com |
+| G2 | **Yes** | staging บน Render: https://punpun.tomatoparadise.online |
 | G1 | **Yes** | ลงนาม 2026-10-10; ต้นทุนใน `docs/cost-model.md` |
 | G6 | **Yes** | ลงนาม 2026-10-10; Stripe โหมดทดสอบใช้ได้บน staging; รับเงินจริงต้องมี production + live key ก่อน |
 | G7 | No (0/5) | P7 เริ่มแล้ว: regression T01–T25 บนเครื่อง; ยังไม่มีผู้ใช้ Pilot (D07) |
