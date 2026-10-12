@@ -4,7 +4,12 @@
 
 Last updated: 2026-10-07
 
-### Latest slice (2026-10-11) — series title and hashtags when a job is made (Q-45)
+### Latest slice (2026-10-12) — live posts with Agent 0.5.3: 5 verified on their own; one caption retry fix
+- PO asked to check the posting. Agent journal since 0.5.3 started (2026-10-11 23:10): live posts 23246c50, 851ef85b, c536cfec, 773ad66e, ca840d74 (hourly 02:00–06:00) all SUBMITTING → one Post → **VERIFIED_SUCCESS** by marker on @patsy4404 (the 0.5.2 marker check with a full private grid, 5 → 5). No UNKNOWN
+- 28d3b5ee (01:00, the first post after the restart) stopped before Post with CAPTION_MISMATCH (no grant use, NEEDS_ACTION). The phone was disconnected when checked, so it could not be reproduced. Likely cause in the code: the caption was broadcast right after `ime set`, before the keyboard listened. Fix (source 0.5.4): wait after switching, clear and type once more if the screen is wrong (still before Post; the exact check still decides), and the stop now says what the screen showed. Unit test with a lost first broadcast; tests/unit 153 passed. Not built/released
+- G7-02 count: 8 real posts (Q-30 1 + grant 7: 5 verified, 2 published but UNKNOWN until the PO resolves them)
+
+### Slice (2026-10-11) — series title and hashtags when a job is made (Q-45)
 - Agent 0.5.3 published 2026-10-11 (Q-44 keyboard + Q-45 burned-in title): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.3, setup SHA-256 157ea1d0…10fcfd, 59.1 MB; no .py/.pyc; packaged exe reports 0.5.3, yt-dlp 1751 sites, `thai-keyboard` finds punpun Thai input on the QA phone; bundle test 0.5.2 → 0.5.3 passed; anonymous download HTTP 200, hash matches. #25 had merged into p7-thai-keyboard after #24 merged, so Q-45 reaches master through #26
 - PO: enter the title and hashtags when creating a job, so automation need not wait for approval
 - Server: `JobIn.title` / `hashtags` → `jobs.caption_title` / `caption_hashtags` (migration 0021, hashtags normalized like clip edits); each clip's first caption = "<title> — ตอนที่ i/N" + those hashtags (`jobs.episode_caption`), for every source kind; the claim spec carries `title`
