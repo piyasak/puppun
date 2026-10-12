@@ -7,6 +7,7 @@ Last updated: 2026-10-07
 ### Latest slice (2026-10-12) — Agent server URL: punpun's real domain
 - PO: the Agent's URL follows the real domain, https://punpun.tomatoparadise.online. Checked: `/healthz` there answers ok with the same build (59340c6) as https://punpun-staging.onrender.com, HTTPS valid, `/v1/agent/authenticate` reachable
 - `agent.DEFAULT_SERVER` (settings window, `agent settings --server` default) and `tools/build_agent.py` (`CLIPFLOW_SETUP_SERVER` default, baked into the setup) now use it; pilot guide and README links too. Installations that saved the staging URL keep working (same service)
+- Agent 0.5.4 published 2026-10-12 (domain + caption retry): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.4, setup SHA-256 fd808f21…e440, 59.1 MB, setup payload server https://punpun.tomatoparadise.online; no .py/.pyc; exe reports 0.5.4, yt-dlp 1751 sites; bundle test 0.5.3 → 0.5.4 passed; anonymous download HTTP 200, hash matches
 - PO still to do on Render: `WEB_ORIGIN` = the domain (CORS and the phone-details links the Agent prints) and the Supabase auth Site URL/redirects for the domain
 
 ### Latest slice (2026-10-12) — live posts with Agent 0.5.3: 5 verified on their own; one caption retry fix
