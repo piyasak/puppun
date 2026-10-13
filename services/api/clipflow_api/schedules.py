@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import clips as clip_rules
-from . import slots
+from . import posting_grants, slots
 from .entitlements import entitlement
 from .errors import ApiError
 from .models import Clip, Device, Job, ScheduleItem, ScheduleSeries
@@ -105,7 +105,7 @@ def build(db: Session, workspace_id: uuid.UUID, req: Request, *, lock: bool) -> 
     if device.environment_id != job.environment_id:
         # The Agent that made the clips keeps the files and posts them (Q-15).
         raise ApiError(409, "DEVICE_OTHER_ENVIRONMENT", "โทรศัพท์ต้องอยู่ใน Environment เดียวกับงานที่ผลิตคลิป")
-    if not device.expected_account:
+    if not device.expected_account and posting_grants.account_check(db, workspace_id):
         raise ApiError(409, "DEVICE_NEEDS_DETAILS", "ใส่บัญชี TikTok ของโทรศัพท์นี้ก่อน (หน้าโทรศัพท์)")
 
     stmt = select(Clip).where(Clip.job_id == job.id).order_by(Clip.clip_index)

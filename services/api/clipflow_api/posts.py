@@ -117,7 +117,7 @@ def _busy(db: Session, device_id: uuid.UUID) -> bool:
 
 
 def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_live: bool = False,
-          server_mode: str = "dry_run") -> ScheduleItem | None:
+          can_skip_account_check: bool = False, server_mode: str = "dry_run") -> ScheduleItem | None:
     at = now()
     expire_leases(db, ctx.environment_id, at)
     apply_offline_policy(db, ctx.environment_id, at)
@@ -157,7 +157,9 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
         if server_mode == "live":
             item.posting_mode = "live"  # test-only server mode
         elif can_post_live:
-            grant = posting_grants.for_claim(db, item.workspace_id, phone.expected_account, at)
+            # Q-48: with the Workspace's account check off, an Agent that can post without it uses any grant.
+            any_account = can_skip_account_check and not posting_grants.account_check(db, item.workspace_id)
+            grant = posting_grants.for_claim(db, item.workspace_id, phone.expected_account, at, any_account=any_account)
             if grant is not None:
                 item.posting_mode, item.grant_id = "live", grant.id
         item.attempts += 1
@@ -180,7 +182,9 @@ def spec(db: Session, item: ScheduleItem, storage, ttl_s: int, posting_mode: str
         "posting_mode": item.posting_mode or posting_mode, "scheduled_at": item.scheduled_at.isoformat(),
         "grant": {"id": str(grant.id), "visibility": grant.visibility} if grant else None,
         "lease_expires_at": item.lease_expires_at.isoformat() if item.lease_expires_at else None,
-        "device": {"serial": phone.serial, "expected_account": phone.expected_account},
+        "device": {"serial": phone.serial, "expected_account": phone.expected_account,
+                   # Q-48: False = the Agent neither checks the account nor ties the evidence to it.
+                   "account_check": posting_grants.account_check(db, item.workspace_id)},
         "clip": {"id": str(clip.id), "job_id": str(clip.job_id), "index": clip.clip_index,
                  "sha256": item.clip_sha256, "size_bytes": clip.size_bytes,
                  # The Agent prefers its own copy when the hash matches; otherwise it downloads (FR-17).

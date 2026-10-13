@@ -367,7 +367,7 @@ def test_verification_trusts_the_marker_not_a_full_grid_and_looks_again_while_up
     # QA phone, 2026-10-11: Profile shows 5 private tiles; the 6th post read 5 -> 5 and became UNKNOWN.
     phone = Shell()
     ui = TikTokUi(phone, "S", sleep=lambda s: None)
-    monkeypatch.setattr(ui, "account", lambda: "qa")
+    monkeypatch.setattr(ui, "account", lambda **kw: "qa")
     monkeypatch.setattr(ui, "private_count", lambda: 5)
     monkeypatch.setattr(ui, "read", lambda **kw: [])
     with pytest.raises(UiStop) as stop:  # nothing on the private tab: looked 4 times, then unknown
@@ -389,7 +389,7 @@ def test_verification_trusts_the_marker_not_a_full_grid_and_looks_again_while_up
 def test_fewer_private_videos_than_before_stops_at_once(monkeypatch):
     phone = Shell()
     ui = TikTokUi(phone, "S", sleep=lambda s: None)
-    monkeypatch.setattr(ui, "account", lambda: "qa")
+    monkeypatch.setattr(ui, "account", lambda **kw: "qa")
     monkeypatch.setattr(ui, "private_count", lambda: 3)
     with pytest.raises(UiStop) as stop:
         ui.verify_private_post("cfabc123", 5)
@@ -417,3 +417,21 @@ def test_an_unreadable_account_right_after_post_is_read_again_not_unknown(monkey
     with pytest.raises(UiStop) as stop:  # still unreadable after 4 looks: UNKNOWN, never guessed
         ui.verify_private_post("cfabc123", 5)
     assert stop.value.code == "ACCOUNT_UNREADABLE"
+
+
+def test_with_the_account_check_off_another_account_is_used_and_not_compared():
+    # Q-48: an admin turned the Workspace's account check off.
+    phone = FakeTikTok(handle="someone_else")
+    ui = ui_for(phone)
+    with pytest.raises(UiStop) as stop:
+        ui.check_account("qa_account")
+    assert stop.value.code == "ACCOUNT_MISMATCH"  # on (the default): refused
+    ui.account_check = False
+    assert ui.check_account("qa_account") == "someone_else"
+    assert ui.check_account(None) == "someone_else"  # no account set for the phone: fine when off
+
+
+def test_with_the_account_check_on_a_phone_without_an_account_never_posts():
+    with pytest.raises(UiStop) as stop:
+        ui_for(FakeTikTok()).check_account(None)
+    assert stop.value.code == "ACCOUNT_NOT_SET"

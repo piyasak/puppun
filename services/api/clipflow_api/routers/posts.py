@@ -21,6 +21,8 @@ class ClaimIn(BaseModel):
     ready_serials: list[str] = Field(default_factory=list, max_length=50)
     # Q-42: Agents from 0.4.0 can carry out a live post under a server grant; older ones never get one.
     can_post_live: bool = False
+    # Q-48: Agents from 0.5.7 can post without the account check when an admin turned it off.
+    can_skip_account_check: bool = False
 
 
 class EventIn(BaseModel):
@@ -33,7 +35,7 @@ class EventIn(BaseModel):
 @agent_router.post("/claim")
 def claim(body: ClaimIn, request: Request, ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
     item = posts.claim(db, ctx, body.ready_serials, can_post_live=body.can_post_live,
-                       server_mode=request.app.state.posting_mode)
+                       can_skip_account_check=body.can_skip_account_check, server_mode=request.app.state.posting_mode)
     db.commit()  # parked/deferred/expired items are kept even when nothing is handed out
     if item is None:
         return {"post": None}

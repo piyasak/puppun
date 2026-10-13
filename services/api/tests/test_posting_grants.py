@@ -16,7 +16,7 @@ from agent.adb import Adb
 from agent.post_runner import PostRunner
 from agent.server_client import ServerClient
 from clipflow_api import manage
-from clipflow_api.models import AuditEvent, PostingGrant
+from clipflow_api.models import AuditEvent, PostingGrant, ScheduleItem
 
 REASON = "Pilot ลูกค้า A ได้รับอนุญาตโพสต์จริง 5 ครั้ง"
 
@@ -200,3 +200,70 @@ def test_post_now_says_what_to_expect(shop, app, admin):
     grant(admin, shop)
     second = shop.acc.post(f"/v1/clips/{clip_ids[1]}/post-now", json={"device_id": shop.devices[0], "idempotency_key": key()})
     assert second.json()["posting_mode"] == "live"
+
+
+# --- Q-48: an admin turns the account check off for a Workspace ------------------------------------------
+
+def account_check(admin, shop, enabled, reason="PO ขอปิดการตรวจบัญชีให้ลูกค้าใช้ง่าย"):
+    return admin.post(f"/v1/admin/workspaces/{shop.acc.body['workspace']['id']}/account-check",
+                      json={"enabled": enabled, "reason": reason})
+
+
+def test_only_an_admin_turns_the_account_check_off_and_it_is_audited(shop, app, admin, onboard):
+    support = onboard()
+    with app.state.db.sessionmaker() as s:
+        assert manage.grant_role(s, support.email, "support") == 0
+    ws = shop.acc.body["workspace"]["id"]
+    assert admin.get(f"/v1/admin/workspaces/{ws}").json()["account_check"] is True  # on by default
+    assert support.post(f"/v1/admin/workspaces/{ws}/account-check",
+                        json={"enabled": False, "reason": "support ลองปิดการตรวจ"}).status_code == 403
+    assert shop.acc.post(f"/v1/admin/workspaces/{ws}/account-check",
+                         json={"enabled": False, "reason": "ลูกค้าลองปิดเอง"}).status_code == 404
+    assert account_check(admin, shop, False, reason="short").status_code == 422  # a reason is required
+    off = account_check(admin, shop, False)
+    assert off.status_code == 200 and off.json()["account_check"] is False
+    with app.state.db.sessionmaker() as s:
+        row = s.scalars(select(AuditEvent).where(AuditEvent.action == "admin.account_check.set")).one()
+        assert row.details == {"before": True, "after": False} and row.reason
+
+
+def requeue(app):
+    """The claimed post back to SCHEDULED, so the next claim sees it again (simulates a lost lease)."""
+    with app.state.db.sessionmaker() as s:
+        for it in s.scalars(select(ScheduleItem)).all():
+            it.state, it.lease_session_id, it.lease_expires_at = "SCHEDULED", None, None
+        s.commit()
+
+
+def test_with_the_check_off_any_grant_covers_whatever_account_the_phone_has(shop, app, admin):
+    g = grant(admin, shop, account="")  # any account
+    assert g["account"] == "*"
+    due(app, shop)
+    assert claim(shop)["posting_mode"] == "dry_run"  # the check is still on: "*" never matches an account
+    requeue(app)
+    assert account_check(admin, shop, False).status_code == 200
+    old = shop.w.post("/v1/agent/posts/claim", json={"ready_serials": [shop.serial], "can_post_live": True}).json()["post"]
+    assert old["posting_mode"] == "dry_run"  # an Agent older than 0.5.7 keeps the old rules
+    requeue(app)
+    post = shop.w.post("/v1/agent/posts/claim", json={"ready_serials": [shop.serial], "can_post_live": True,
+                                                       "can_skip_account_check": True}).json()["post"]
+    assert post["posting_mode"] == "live" and post["grant"]["id"] == g["id"]
+    assert post["device"]["account_check"] is False
+    to_preparing(shop, post)
+    assert ev(shop, post, "SUBMITTING").status_code == 200  # the phone's account is not compared
+    assert used(app, g["id"]) == 1
+    assert ev(shop, post, "VERIFYING").status_code == 200
+    assert ev(shop, post, "VERIFIED_SUCCESS", evidence={"method": "caption_marker", "value": "cfabc123"}).status_code == 200
+
+
+def test_with_the_check_off_a_phone_without_an_account_can_be_scheduled(shop, app, admin):
+    shop.acc.patch(f"/v1/environments/{shop.env['id']}", json={"name": shop.env["name"], "device_limit": 2})
+    phone = shop.phone(None)
+    job_id, _ = shop.job(clips=1)
+    assert shop.create(job_id, device=phone, **FULL_DAY).json()["code"] == "DEVICE_NEEDS_DETAILS"
+    listed = next(d for d in shop.acc.get("/v1/devices").json()["items"] if d["id"] == phone)
+    assert "expected_account" in listed["missing_details"]
+    assert account_check(admin, shop, False).status_code == 200
+    assert shop.create(job_id, device=phone, **FULL_DAY).status_code == 201
+    listed = next(d for d in shop.acc.get("/v1/devices").json()["items"] if d["id"] == phone)
+    assert "expected_account" not in listed["missing_details"]

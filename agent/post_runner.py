@@ -253,7 +253,9 @@ class _Post:
             raise UiStop("UNSUPPORTED_DEVICE", verdict.reason)
 
     def _ui(self):
-        return (self.r.ui_factory or TikTokUi.for_phone)(self.adb, self.phone.adb_serial)
+        ui = (self.r.ui_factory or TikTokUi.for_phone)(self.adb, self.phone.adb_serial)
+        ui.account_check = self.post["device"].get("account_check", True) is not False  # Q-48; older servers: on
+        return ui
 
     def _caption(self, marker: str | None = None) -> str:
         text = self.post["text"]

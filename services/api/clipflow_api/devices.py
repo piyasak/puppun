@@ -112,13 +112,14 @@ def report(db: Session, ctx: AgentContext, states: dict[str, str]) -> int:
     return len(rows)
 
 
-def missing_details(device: Device) -> list[str]:
+def missing_details(device: Device, account_check: bool = True) -> list[str]:
     """Owner-entered fields still empty. The phone cannot be scheduled for posting until the
-    expected TikTok account is set (FR-16); the display name is for the owner's convenience."""
+    expected TikTok account is set (FR-16), unless an admin turned the account check off (Q-48);
+    the display name is for the owner's convenience."""
     missing = []
     if not device.display_name:
         missing.append("display_name")
-    if not device.expected_account:
+    if not device.expected_account and account_check:
         missing.append("expected_account")
     return missing
 

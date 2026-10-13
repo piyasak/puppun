@@ -155,6 +155,9 @@ class TikTokUi:
         """`reader` (agent.screen_reader.U2Reader, see for_phone) reads the screens `uiautomator dump` cannot."""
         self.adb, self.serial, self.sleep, self.settle_s, self.wait_s = adb, serial, sleep, settle_s, wait_s
         self.reader, self.reader_on = reader, False
+        # Q-48: False when an admin turned the Workspace's account check off: the account is neither
+        # compared nor put in the evidence; Profile is still opened (the private tab and the marker are there).
+        self.account_check = True
 
     @classmethod
     def for_phone(cls, adb: Adb, serial: str) -> TikTokUi:
@@ -246,7 +249,7 @@ class TikTokUi:
         self.sh(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         self.sleep(self.settle_s * 3)
 
-    def account(self, tries: int = 6) -> str:
+    def account(self, tries: int = 6, *, require: bool = True) -> str:
         """Open TikTok on Profile and read the @handle. TikTok can take a while to start or show a
         popup first, so it looks again a few times; it never guesses an account.
 
@@ -265,7 +268,10 @@ class TikTokUi:
             handle = account_handle(nodes)
             if handle is not None:
                 return handle
-            if self.find(nodes, "กำลังติดตาม", "Following") and self.find(nodes, "ผู้ติดตาม", "Followers"):
+            on_profile = bool(self.find(nodes, "กำลังติดตาม", "Following") and self.find(nodes, "ผู้ติดตาม", "Followers"))
+            if on_profile and not require:
+                return ""  # Q-48, account check off: being on Profile is enough
+            if on_profile:
                 # Already on Profile, the @handle covered (tx1, 2026-10-13: the "continue editing your
                 # unposted video?" banner, closed with ยกเลิก). Anything else is waited out once, then
                 # Profile is pressed again as before 0.5.6 (tx2, 2026-10-13: right after a post the handle
@@ -341,7 +347,11 @@ class TikTokUi:
             raise UiStop("RESUME_BANNER", "TikTok's 'continue editing?' banner stayed after ยกเลิก")
         return True
 
-    def check_account(self, expected: str) -> str:
+    def check_account(self, expected: str | None) -> str:
+        if not self.account_check:  # Q-48: opens Profile only; whatever account is logged in is used
+            return self.account(require=False)
+        if not expected:
+            raise UiStop("ACCOUNT_NOT_SET", "no TikTok account is set for this phone on the web")
         handle = self.account()
         if handle != expected.lower().lstrip("@"):
             raise UiStop("ACCOUNT_MISMATCH", f"phone is logged in as @{handle}, expected @{expected.lstrip('@')}")
@@ -476,7 +486,7 @@ class TikTokUi:
         raise AssertionError("unreachable")
 
     def _newest_private_has(self, marker: str, before: int) -> dict:
-        handle = self.account()
+        handle = self.account(require=self.account_check) or None  # Q-48 off: the marker alone decides
         after = self.private_count()
         if after < before:
             raise UiStop("VERIFY_COUNT", f"private videos {before} -> {after}, fewer than before")
