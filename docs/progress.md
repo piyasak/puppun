@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-13) — verification reads the account again (source 0.5.7)
+- Staging (read-only): b7f207dd (@patsy4404, tx2, Agent 0.5.6) pressed Post at 21:01:40 BKK and became UNKNOWN 56 s later with ACCOUNT_UNREADABLE in VERIFYING; `verify_private_post` retried only VERIFY_MARKER / VERIFY_UNREADABLE. The 13 earlier verifications (0.5.5) passed; 0.5.6 had stopped pressing Profile again when the handle was covered
+- Fix: verification also looks again on ACCOUNT_UNREADABLE (Back, 20 s, up to 4 looks; still unreadable = UNKNOWN). On Profile with the handle covered the Agent waits once, then presses Profile again as before 0.5.6; a refused press (shop card behind the tab bar) presses nothing and waits. Unit tests 177 passed
+- Not tested on a real phone (tx1/tx2 are on the other PC). The PO resolves b7f207dd (marker cfb7f207 on tx2's private tab)
+
 ### Latest slice (2026-10-13) — tx1 ACCOUNT_UNREADABLE: a second screen reader (Q-47)
 - tx1 (@jk.mickey) on the QA PC: the Agent's account check reproduced ACCOUNT_UNREADABLE; `uiautomator dump` failed 3/3 with "could not get idle state" on Profile's TikTok Shop tab (flash-sale countdown); each failure takes ~12 s
 - uiautomator2 (u2.jar 0.4.0, MIT, SHA-256 0b74e83c…0eb6) read the same screen 3/3 in ~1.5 s with the handle. Agent (`agent/screen_reader.py`, `TikTokUi.for_phone`): fallback only when `uiautomator dump` reads nothing; jar downloaded on first need, hash-checked on PC and phone, run with app_process, front window only; on for the rest of the session, stopped on close (nothing left running, no forward left)

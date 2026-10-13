@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.5.6"  # 0.5.5 + HTTPS with certifi's roots (fresh PC) + second screen reader for moving screens (Q-47)
+SOURCE_VERSION = "0.5.7"  # 0.5.6 + verification reads the account again (b7f207dd became UNKNOWN)
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"

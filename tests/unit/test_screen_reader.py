@@ -199,27 +199,28 @@ def test_the_agent_builds_its_tiktok_steps_with_the_second_reader():
     assert isinstance(ui.reader, U2Reader) and re.fullmatch(r"[0-9a-f]{64}", screen_reader.JAR_SHA256)
 
 
-def test_on_profile_with_the_handle_covered_it_waits_and_never_presses():
-    # tx1, 2026-10-13: a "continue editing?" banner hid the header; a shop card sat behind the Profile tab.
+def test_on_profile_with_the_handle_covered_it_waits_once_then_presses_profile_again():
+    # tx2, 2026-10-13: right after Post the header stayed covered while the Agent only waited.
     covered = SHOP_PROFILE.replace('<node text="@jk.mickey"', '<node text="332"').replace(
         "</hierarchy>", '<node text="กำลังติดตาม" content-desc="" resource-id="" class="android.widget.TextView" '
                         'clickable="false" bounds="[59,544][259,576]" /><node text="ผู้ติดตาม" content-desc="" '
                         'resource-id="" class="android.widget.TextView" clickable="false" bounds="[312,542][409,576]" />'
                         '<node text="โปรไฟล์" content-desc="" resource-id="" class="android.widget.FrameLayout" '
                         'clickable="true" bounds="[576,1408][720,1506]" /></hierarchy>')
-    screens = iter([covered, covered, SHOP_PROFILE])
+    commands = []
 
     class Banner(FakeReader):
-        def dump(self, all_windows=False):
-            return next(screens) if not all_windows else SHOP_PROFILE
+        def dump(self, all_windows=False):  # the header shows again once Profile is pressed
+            if all_windows:
+                return SHOP_PROFILE.replace("@jk.mickey", "")
+            return SHOP_PROFILE if any(c.startswith("input") for c in commands) else covered
 
     phone = ShopPhone()
-    commands = []
     run = phone.run
     phone.run = lambda args: commands.append(args[3] if len(args) > 3 else "") or run(args)
     ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0, reader=Banner())
     assert ui.account() == "jk.mickey"
-    assert not [c for c in commands if c.startswith("input")]
+    assert [c for c in commands if c.startswith("input")] == ["input swipe 648 1457 648 1457 120"]
 
 
 def node_xml(text, bounds, cls="android.widget.TextView", clickable=False):
@@ -288,4 +289,18 @@ def test_a_cancel_button_outside_that_banner_is_never_pressed():
     ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0, reader=reader)
     with pytest.raises(UiStop) as stop:
         ui.account(tries=2)
+    assert stop.value.code == "ACCOUNT_UNREADABLE" and (286, 252) not in phone.presses  # Profile only
+
+
+def test_a_shop_card_behind_the_profile_tab_means_nothing_is_pressed_and_it_never_guesses():
+    # tx1, 2026-10-13: "Yatawee Shop" scrolled behind the tab bar, right under the Profile tab.
+    covered = COVERED.replace("</hierarchy>", node_xml("Yatawee Shop", "[384,1429][688,1461]",
+                                                       "com.lynx.tasm.behavior.ui.LynxFlattenUI") + "</hierarchy>")
+    phone = BannerPhone()
+    phone.banner = False
+    reader = FakeReader()
+    reader.dump = lambda all_windows=False: covered if not all_windows else SHOP_PROFILE.replace("@jk.mickey", "")
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0, reader=reader)
+    with pytest.raises(UiStop) as stop:
+        ui.account(tries=4)
     assert stop.value.code == "ACCOUNT_UNREADABLE" and phone.presses == []

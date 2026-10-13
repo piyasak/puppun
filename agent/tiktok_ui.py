@@ -257,6 +257,7 @@ class TikTokUi:
         self.open_app()
         size = re.search(r"(\d+)x(\d+)", self.sh("wm size"))
         w, h = (int(size.group(1)), int(size.group(2))) if size else (720, 1600)
+        covered = 0
         for _ in range(tries):
             if not self.focus().startswith(PACKAGE):  # TikTok closed or went behind another app
                 self.open_app()
@@ -266,10 +267,21 @@ class TikTokUi:
                 return handle
             if self.find(nodes, "กำลังติดตาม", "Following") and self.find(nodes, "ผู้ติดตาม", "Followers"):
                 # Already on Profile, the @handle covered (tx1, 2026-10-13: the "continue editing your
-                # unposted video?" banner). Profile is not pressed again: a shop card scrolled behind the
-                # tab bar blocks that. The banner is closed with ยกเลิก; anything else is waited out.
-                if not self.dismiss_resume_banner():
-                    self.sleep(self.settle_s * 3)
+                # unposted video?" banner, closed with ยกเลิก). Anything else is waited out once, then
+                # Profile is pressed again as before 0.5.6 (tx2, 2026-10-13: right after a post the handle
+                # stayed covered while only waiting, and the post became UNKNOWN). A shop card behind the
+                # tab bar makes that press refused: then nothing is pressed and it waits again.
+                covered += 1
+                if self.dismiss_resume_banner():
+                    continue
+                if covered >= 2 and self.find(nodes, "โปรไฟล์", "Profile") is not None:
+                    try:
+                        self.press("โปรไฟล์", "Profile")
+                        continue
+                    except UiStop as exc:  # refused or moved: nothing was pressed
+                        if exc.code not in ("SCREEN_CHANGED", "UNKNOWN_SCREEN", "REFUSED_ELEMENT"):
+                            raise
+                self.sleep(self.settle_s * 3)
                 continue
             tab = self.find(nodes, "โปรไฟล์", "Profile")
             if tab is not None:
@@ -457,7 +469,9 @@ class TikTokUi:
             try:
                 return self._newest_private_has(marker, before)
             except UiStop as exc:
-                if exc.code not in ("VERIFY_MARKER", "VERIFY_UNREADABLE") or attempt == tries - 1:
+                # ACCOUNT_UNREADABLE too (tx2, 2026-10-13: right after Post, b7f207dd became UNKNOWN on the
+                # first reading of Profile): reading again a little later decides, never a guess.
+                if exc.code not in ("VERIFY_MARKER", "VERIFY_UNREADABLE", "ACCOUNT_UNREADABLE") or attempt == tries - 1:
                     raise
         raise AssertionError("unreachable")
 
