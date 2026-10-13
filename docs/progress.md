@@ -4,6 +4,14 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-13) — tx1 ACCOUNT_UNREADABLE: a second screen reader (Q-47)
+- tx1 (@jk.mickey) on the QA PC: the Agent's account check reproduced ACCOUNT_UNREADABLE; `uiautomator dump` failed 3/3 with "could not get idle state" on Profile's TikTok Shop tab (flash-sale countdown); each failure takes ~12 s
+- uiautomator2 (u2.jar 0.4.0, MIT, SHA-256 0b74e83c…0eb6) read the same screen 3/3 in ~1.5 s with the handle. Agent (`agent/screen_reader.py`, `TikTokUi.for_phone`): fallback only when `uiautomator dump` reads nothing; jar downloaded on first need, hash-checked on PC and phone, run with app_process, front window only; on for the rest of the session, stopped on close (nothing left running, no forward left)
+- Found on tx1: it shows emoji as ".." → every caption check reads with `uiautomator dump` only (first rehearsal stopped with CAPTION_MISMATCH before that fix, nothing posted)
+- Found on tx1: TikTok's "continue editing your unposted video?" banner (left by force-stops in the editor) hid the Profile header from both readers > 3 min. PO option 1: the Agent presses ยกเลิก on exactly that banner, re-reads, else RESUME_BANNER. On Profile with the handle covered it no longer presses Profile again (a shop card behind the tab bar made that a REFUSED_ELEMENT)
+- tx1 real checks (never Post): account read through the banner (ยกเลิก pressed at 286,252, banner gone); two `ui-rehearsal` runs in a row passed (account jk.mickey, only you, caption with emoji exact; ~85 s each); private count read (4). test-unit 175 passed
+- Not yet: QA phone regression with this code (the phone that reads fine today should never switch); release of source 0.5.6 (TLS + this)
+
 ### Latest slice (2026-10-13) — "post now" never ran: a paused series held the phone
 - PO: post now did not work; when its time came it ended cancelled. Staging data (read-only SQL): post now at 07:12:40 (series 539db3ec), moved by the PO to 07:20 at 07:17, never claimed (attempts 0), cancelled by the PO at 07:29 (USER_CANCELLED). Agent 0.5.5 (new installation on another PC, 2026-10-12 23:33) was online with the QA phone reported `device` the whole time, yet no post on that phone had been claimed since 2026-10-12 06:00
 - Cause (server): series 741fa914 was paused at 2026-10-12 00:19; its post due 15:00 stayed SCHEDULED. `posts.claim` takes due posts oldest first and marked the phone "tried" before learning the series was paused, so every claim skipped the phone: series b423d619 (deferred to 06:34) and the post now never went out for ~16 h

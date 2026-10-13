@@ -253,7 +253,7 @@ class _Post:
             raise UiStop("UNSUPPORTED_DEVICE", verdict.reason)
 
     def _ui(self):
-        return (self.r.ui_factory or (lambda adb, serial: TikTokUi(adb, serial)))(self.adb, self.phone.adb_serial)
+        return (self.r.ui_factory or TikTokUi.for_phone)(self.adb, self.phone.adb_serial)
 
     def _caption(self, marker: str | None = None) -> str:
         text = self.post["text"]

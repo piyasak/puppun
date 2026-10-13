@@ -239,6 +239,19 @@ class Adb:
     def install(self, serial: str, apk: Path) -> str:
         return self._run(["-s", serial, "install", "-r", str(apk)])
 
+    def push(self, serial: str, local: Path, remote: str) -> None:
+        self._run(["-s", serial, "push", str(local), remote])
+
+    def forward(self, serial: str, device_port: int) -> int:
+        """Forward a free 127.0.0.1 port on this PC to a port on the phone; returns the PC port."""
+        out = self._run(["-s", serial, "forward", "tcp:0", f"tcp:{device_port}"]).strip()
+        if not out.isdigit():
+            raise AdbError(f"adb forward gave no port: {out[:100]}")
+        return int(out)
+
+    def forward_remove(self, serial: str, port: int) -> None:
+        self._run(["-s", serial, "forward", "--remove", f"tcp:{port}"])
+
     def doctor(self, serial: str) -> DoctorReport:
         match = [d for d in self.devices() if normalize_serial(d.serial) == normalize_serial(serial)]
         if not match:

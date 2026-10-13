@@ -16,7 +16,8 @@ so a position from an older reading can land on a different control.
 
 Learned on the QA phone (POCO 25078PC3EG, TikTok 40.0.0, 2026-10-08):
 - `uiautomator dump` fails on the For You feed ("could not get idle state": the video never stops);
-  Profile, the share sheet, the editor and the post screen dump fine.
+  Profile, the share sheet, the editor and the post screen dump fine. A screen that never stops moving
+  (tx1, 2026-10-13: Profile on the TikTok Shop tab, a countdown) is read with agent.screen_reader instead.
 - an old dump file stays on the phone, so it is deleted before every new dump;
 - the share sheet can be in English ("Share on TikTok" / "Video") even when the rest is Thai;
 - choosing "เฉพาะคุณเท่านั้น" closes the visibility sheet by itself: pressing BACK there would
@@ -48,6 +49,10 @@ CAPTCHA_MARKERS = ("captcha", "ยืนยันว่าคุณไม่ใ�
                    "select 2 objects", "ตรวจสอบความปลอดภัย", "security check")
 VISIBILITY_ROW = ("ดูโพสต์นี้ได้", "can view this post", "can watch this")
 ONLY_ME = ("เฉพาะคุณ", "only you", "only me")
+# TikTok closed in the editor (the Agent force-stops it after a rehearsal or a failed attempt) asks this
+# in a floating banner that hides the Profile header from both readers (tx1, 2026-10-13, > 3 minutes).
+RESUME_BANNER = ("แก้ไขวิดีโอที่ยังไม่ได้โพสต์ของคุณต่อหรือไม่",)
+RESUME_CANCEL = ("ยกเลิก",)  # PO 2026-10-13: press ยกเลิก on that banner (the unposted edit may be dropped)
 
 
 class UiStop(Exception):
@@ -145,8 +150,18 @@ def visibility_row(nodes: list[Node]) -> Node | None:
 
 
 class TikTokUi:
-    def __init__(self, adb: Adb, serial: str, sleep=time.sleep, settle_s: float = 2.0, wait_s: float = 15.0):
+    def __init__(self, adb: Adb, serial: str, sleep=time.sleep, settle_s: float = 2.0, wait_s: float = 15.0,
+                 reader=None):
+        """`reader` (agent.screen_reader.U2Reader, see for_phone) reads the screens `uiautomator dump` cannot."""
         self.adb, self.serial, self.sleep, self.settle_s, self.wait_s = adb, serial, sleep, settle_s, wait_s
+        self.reader, self.reader_on = reader, False
+
+    @classmethod
+    def for_phone(cls, adb: Adb, serial: str) -> TikTokUi:
+        """The Agent's TikTokUi: with the second screen reader for screens that never stop moving."""
+        from agent.screen_reader import U2Reader
+
+        return cls(adb, serial, reader=U2Reader(adb, serial))
 
     def sh(self, command: str) -> str:
         return self.adb.shell(self.serial, command)
@@ -157,14 +172,32 @@ class TikTokUi:
         m = re.search(r"mCurrentFocus=\S+ \S+ (\S+?)\}", self.sh("dumpsys window | grep mCurrentFocus"))
         return m.group(1) if m else ""
 
-    def read(self, *, check: bool = True) -> list[Node]:
-        """A fresh reading of the screen (the old dump is deleted first: it would be read otherwise)."""
-        self.sh(f"rm -f {DUMP}")
-        try:
-            self.sh(f"uiautomator dump {DUMP} >/dev/null")
-            nodes = parse_dump(self.sh(f"cat {DUMP}"))
-        except AdbError:
-            nodes = []
+    def read(self, *, check: bool = True, exact: bool = False) -> list[Node]:
+        """A fresh reading of the screen (the old dump is deleted first: it would be read otherwise).
+
+        When `uiautomator dump` reads nothing (a screen that never stops moving), the second reader is
+        used from then on: `uiautomator dump` takes ~12 s to give up each time (tx1, 2026-10-13) and cannot
+        run beside it. The second reader shows emoji as "..", so `exact` (every caption check) stops it and
+        reads with `uiautomator dump` only: a caption is never checked from the second reader."""
+        nodes: list[Node] = []
+        if exact and self.reader_on:
+            self.reader.stop()
+            self.reader_on = False
+        if not self.reader_on:
+            self.sh(f"rm -f {DUMP}")
+            try:
+                self.sh(f"uiautomator dump {DUMP} >/dev/null")
+                nodes = parse_dump(self.sh(f"cat {DUMP}"))
+            except AdbError:
+                nodes = []
+        if not nodes and not exact and self.reader is not None:
+            from agent.screen_reader import ReaderError
+
+            try:
+                self.reader_on = True
+                nodes = parse_dump(self.reader.dump())
+            except (ReaderError, AdbError):
+                nodes = []  # read as "nothing on screen": the callers look again or stop, never guess
         if check:
             stop = classify(nodes)
             if stop:
@@ -231,6 +264,13 @@ class TikTokUi:
             handle = account_handle(nodes)
             if handle is not None:
                 return handle
+            if self.find(nodes, "กำลังติดตาม", "Following") and self.find(nodes, "ผู้ติดตาม", "Followers"):
+                # Already on Profile, the @handle covered (tx1, 2026-10-13: the "continue editing your
+                # unposted video?" banner). Profile is not pressed again: a shop card scrolled behind the
+                # tab bar blocks that. The banner is closed with ยกเลิก; anything else is waited out.
+                if not self.dismiss_resume_banner():
+                    self.sleep(self.settle_s * 3)
+                continue
             tab = self.find(nodes, "โปรไฟล์", "Profile")
             if tab is not None:
                 try:
@@ -246,6 +286,48 @@ class TikTokUi:
                 self.sleep(self.settle_s * 2)
         self.sh("screencap -p /sdcard/cf_last.png")  # kept on the phone for diagnosis (removed by cleanup)
         raise UiStop("ACCOUNT_UNREADABLE", f"could not read the logged-in account on Profile; focus {self.focus()}")
+
+    def dismiss_resume_banner(self) -> bool:
+        """Press ยกเลิก on TikTok's "continue editing your unposted video?" banner (PO 2026-10-13), and
+        nothing else: the button must sit inside the small banner that carries exactly that question, and
+        nothing else of the banner may be under the point. Returns False when there is no such banner."""
+        if self.reader is None:
+            return False
+        from agent.screen_reader import ReaderError
+
+        def banner(nodes: list[Node]) -> tuple[Node, Node] | None:
+            question = next((n for n in nodes if n.label in RESUME_BANNER), None)
+            if question is None:
+                return None
+            boxes = [n for n in nodes if not n.label and encloses(n, question) and n.area < question.area * 6]
+            for box in sorted(boxes, key=lambda n: n.area):
+                buttons = [n for n in nodes if n.label in RESUME_CANCEL and n.clickable and encloses(box, n)]
+                if len(buttons) == 1:
+                    return box, buttons[0]
+            return None
+
+        try:
+            self.reader_on = True
+            nodes = parse_dump(self.reader.dump(all_windows=True))
+        except (ReaderError, AdbError):
+            return False
+        found = banner(nodes)
+        if found is None:
+            return False
+        box, cancel = found
+        x, y = cancel.center
+        inside = [n for n in under(nodes, x, y) if encloses(box, n)]
+        if any(n.label and n.label not in RESUME_CANCEL for n in inside) or any(forbidden(n) for n in inside):
+            raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: not only ยกเลิก on the banner")
+        self.sh(f"input swipe {x} {y} {x} {y} 120")
+        self.sleep(self.settle_s)
+        try:
+            still = banner(parse_dump(self.reader.dump(all_windows=True)))
+        except (ReaderError, AdbError):
+            still = None
+        if still is not None:
+            raise UiStop("RESUME_BANNER", "TikTok's 'continue editing?' banner stayed after ยกเลิก")
+        return True
 
     def check_account(self, expected: str) -> str:
         handle = self.account()
@@ -304,14 +386,14 @@ class TikTokUi:
                 self.sh("am broadcast -a ADB_CLEAR_TEXT")
                 self.sh(f"am broadcast -a ADB_INPUT_B64 --es msg {msg}")
                 self.sleep(self.settle_s)
-                typed = next((n for n in self.read() if n.cls.endswith("EditText")), None)
+                typed = next((n for n in self.read(exact=True) if n.cls.endswith("EditText")), None)
                 on_screen = typed.text if typed is not None else None
                 if on_screen is not None and on_screen.strip() == caption.strip():
                     break
         finally:
             if original and original != keyboard:
                 self.sh(f"ime set {original}")  # the owner's keyboard comes back every time
-        typed = next((n for n in self.read() if n.cls.endswith("EditText")), None)
+        typed = next((n for n in self.read(exact=True) if n.cls.endswith("EditText")), None)
         if typed is None or typed.text.strip() != caption.strip():
             seen = typed.text if typed is not None else on_screen
             raise UiStop("CAPTION_MISMATCH", f"the caption on screen is not the approved text: {len(caption.strip())} "
@@ -345,7 +427,7 @@ class TikTokUi:
             raise UiStop("NO_GRANT", "posting needs a recorded one-time grant")
         if self.keyboard_shown():
             raise UiStop("KEYBOARD_SHOWN", "the keyboard is up; Post would be at another place")
-        nodes = self.read()
+        nodes = self.read(exact=True)
         field = next((n for n in nodes if n.cls.endswith("EditText")), None)
         row = visibility_row(nodes)
         if field is None or field.text.strip() != caption.strip():
@@ -413,6 +495,9 @@ class TikTokUi:
     def close(self) -> None:
         """Leave without posting or keeping anything."""
         self.sh(f"am force-stop {PACKAGE}")
+        if self.reader is not None and self.reader_on:
+            self.reader.stop()
+            self.reader_on = False
 
 
 def media_id(adb: Adb, serial: str, name: str) -> str | None:

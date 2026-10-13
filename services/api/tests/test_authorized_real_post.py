@@ -57,7 +57,7 @@ def test_the_one_authorized_post(onboard, client, real_clip, app, server_url, li
     phones = [p for p in discover(adb) if p.state == "device" and p.hw_serial]
     assert phones, "connect the QA phone over USB, unlocked"
     phone = phones[0]
-    ui = TikTokUi(adb, phone.adb_serial)
+    ui = TikTokUi.for_phone(adb, phone.adb_serial)
 
     shop = Shop(onboard(), client, real_clip, devices=0)
     shop.acc.patch(f"/v1/environments/{shop.env['id']}", json={
