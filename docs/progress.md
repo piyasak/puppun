@@ -14,6 +14,7 @@ Last updated: 2026-10-07
 - Staging (read-only): b7f207dd (@patsy4404, tx2, Agent 0.5.6) pressed Post at 21:01:40 BKK and became UNKNOWN 56 s later with ACCOUNT_UNREADABLE in VERIFYING; `verify_private_post` retried only VERIFY_MARKER / VERIFY_UNREADABLE. The 13 earlier verifications (0.5.5) passed; 0.5.6 had stopped pressing Profile again when the handle was covered
 - Fix: verification also looks again on ACCOUNT_UNREADABLE (Back, 20 s, up to 4 looks; still unreadable = UNKNOWN). On Profile with the handle covered the Agent waits once, then presses Profile again as before 0.5.6; a refused press (shop card behind the tab bar) presses nothing and waits. Unit tests 177 passed
 - Not tested on a real phone (tx1/tx2 are on the other PC). The PO resolves b7f207dd (marker cfb7f207 on tx2's private tab)
+- Agent 0.5.7 published 2026-10-14 (#35 + Q-48 #36): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.7, setup SHA-256 b3aa8223…2152, 59.3 MB, server https://punpun.tomatoparadise.online; no .py/.pyc; packaged exe reports 0.5.7; simulated fresh PC: FFmpeg downloaded over HTTPS and installed; bundle test 0.5.6 → 0.5.7 passed; anonymous download HTTP 200, hash matches
 
 ### Latest slice (2026-10-13) — tx1 ACCOUNT_UNREADABLE: a second screen reader (Q-47)
 - tx1 (@jk.mickey) on the QA PC: the Agent's account check reproduced ACCOUNT_UNREADABLE; `uiautomator dump` failed 3/3 with "could not get idle state" on Profile's TikTok Shop tab (flash-sale countdown); each failure takes ~12 s
