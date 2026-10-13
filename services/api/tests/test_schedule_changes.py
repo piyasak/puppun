@@ -125,3 +125,20 @@ def test_calendar_shows_planned_and_actual_times_and_the_phone_queue(shop, app, 
     assert calendar(stranger, now - timedelta(days=7), now + timedelta(days=7)).json()["items"] == []
     bad = calendar(shop.acc, now, now - timedelta(hours=1))
     assert bad.status_code == 422 and bad.json()["code"] == "RANGE_INVALID"
+
+
+def test_a_paused_series_never_holds_the_phone_for_other_posts(shop, app):
+    """Staging, 2026-10-12/13: a paused series' post fell due at 15:00 and, being the oldest, came first on
+    every claim; the phone was counted as tried and nothing else on it (another series, a "post now")
+    was handed out for 16 hours."""
+    import uuid
+
+    paused = schedule(shop, clips=1)
+    shop.acc.post(f"/v1/schedules/{paused['id']}/pause")
+    set_times(app, paused["id"], [-960])  # 16 h overdue while paused
+    _, clips = shop.job(clips=1, approve=1)
+    now = shop.acc.post(f"/v1/clips/{clips[0]}/post-now",
+                        json={"device_id": shop.devices[0], "idempotency_key": uuid.uuid4().hex}).json()
+    post = claim(shop.w, [shop.serial])
+    assert post is not None and post["id"] == now["items"][0]["id"]
+    assert items(shop, paused["id"])[0]["state"] == "SCHEDULED"  # still waiting for resume, untouched
