@@ -384,7 +384,7 @@ def ui_rehearsal(adb: Adb, serial: str, clip: Path, caption: str, account: str) 
     if not report.ready:
         print(json.dumps({"ready": False, "problems": report.problems}, ensure_ascii=False))
         return 1
-    ui = TikTokUi(adb, report.serial)
+    ui = TikTokUi.for_phone(adb, report.serial)
     remote = None
     result: dict = {"stopped_before_post": True}
     try:
