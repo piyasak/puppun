@@ -66,6 +66,10 @@ class PlanStatus(Reason):
     demo: bool | None = None  # labelled as an example price (Demo) instead of a live price
 
 
+class AccountCheck(Reason):
+    enabled: bool
+
+
 class RetentionRun(Reason):
     dry_run: bool = True
 
@@ -74,7 +78,7 @@ def _workspace_out(db: Session, ws: Workspace, *, detail: bool = False, role: st
     ent = entitlement(db, ws.id)
     owner = db.execute(select(User).join(Membership, Membership.user_id == User.id)
                        .where(Membership.workspace_id == ws.id).order_by(Membership.created_at)).scalars().first()
-    out = {"id": str(ws.id), "name": ws.name, "owner": {"username": owner.username, "email": owner.email} if owner else None,
+    out = {"id": str(ws.id), "name": ws.name, "account_check": ws.account_check, "owner": {"username": owner.username, "email": owner.email} if owner else None,
            "subscription": {"status": ent.cycle.status, "plan": f"{ent.plan.code} v{ent.plan.version}",
                             "cycle_end": ent.cycle.end.isoformat(), "paid_cycles_ahead": ent.cycle.paid_cycles_ahead}}
     if detail:
@@ -314,7 +318,7 @@ def pilot_report(days: int = Query(default=30, ge=1, le=366), who: StaffAuth = D
 # --- authorized real posting (Q-42) -----------------------------------------------------------------
 
 class GrantIn(Reason):
-    account: str = Field(min_length=2, max_length=25)
+    account: str = Field(default="*", max_length=25)  # "*" or empty: any account (Q-48, only with the check off)
     max_posts: int = Field(ge=1, le=1000)
     days: int = Field(ge=1, le=90)  # the grant ends this many days from now
     visibility: Literal["only_me"] = "only_me"
@@ -341,6 +345,23 @@ def create_grant(workspace_id: uuid.UUID, body: GrantIn, request: Request, who: 
                  target_id=grant.id, reason=body.reason, details=posting_grants.out(grant, at))
     db.commit()
     return posting_grants.out(grant, at)
+
+
+@router.post("/workspaces/{workspace_id}/account-check")
+def set_account_check(workspace_id: uuid.UUID, body: AccountCheck, request: Request, who: StaffAuth = Depends(admin_only),
+                      db: Session = Depends(get_db)):
+    """Q-48 (PO 2026-10-13): turn the TikTok account check on or off for this Workspace. Off: real posts go to
+    whatever account the phone is logged in to, any grant of the Workspace covers them, and only the caption
+    marker verifies the post. Admin only, with a reason, audited with the value before and after."""
+    ws = db.scalars(select(Workspace).where(Workspace.id == workspace_id).with_for_update()).first()
+    if ws is None:
+        raise not_found()
+    before = ws.account_check
+    ws.account_check = body.enabled
+    audit.record(db, request, "admin.account_check.set", workspace_id=ws.id, actor_user_id=who.user_id,
+                 target_id=ws.id, reason=body.reason, details={"before": before, "after": body.enabled})
+    db.commit()
+    return _workspace_out(db, ws, detail=True, role=who.role)
 
 
 @router.post("/posting-grants/{grant_id}/revoke")

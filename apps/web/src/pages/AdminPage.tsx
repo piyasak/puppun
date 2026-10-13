@@ -12,7 +12,7 @@ import { quotaText, type Quota } from '../lib/plans'
    (the API answers 404 to them). */
 
 type WorkspaceRow = {
-  id: string; name: string; owner: { username: string; email: string } | null
+  id: string; name: string; account_check: boolean; owner: { username: string; email: string } | null
   subscription: { status: string; plan: string; cycle_end: string; paid_cycles_ahead: number }
 }
 type WorkspaceDetail = WorkspaceRow & {
@@ -195,11 +195,21 @@ export function AdminPage() {
               <ReasonForm label="สิ้นสุดแพ็กเกจทันที" onSubmit={(reason) => act('end', { reason })} />
             </div>
           )}
+          <h3>ตรวจบัญชี TikTok</h3>
+          <p className="muted" data-testid="admin-account-check">
+            {detail.account_check
+              ? 'เปิดอยู่: Agent ตรวจว่าโทรศัพท์ล็อกอินบัญชีที่ตั้งไว้ก่อนโพสต์จริง และผูกผลโพสต์กับบัญชีนั้น'
+              : 'ปิดอยู่: Agent โพสต์ลงบัญชีที่ล็อกอินในโทรศัพท์โดยไม่ตรวจ สิทธิ์โพสต์จริงของ Workspace นี้ใช้ได้กับทุกบัญชี ยืนยันผลด้วยรหัสท้ายข้อความเท่านั้น (ต้องใช้ Agent 0.5.7 ขึ้นไป)'}
+          </p>
+          {isAdmin && (
+            <ReasonForm label={detail.account_check ? 'ปิดการตรวจบัญชี' : 'เปิดการตรวจบัญชี'}
+              onSubmit={(reason) => act('account-check', { enabled: !detail.account_check, reason })} />
+          )}
           <h3>สิทธิ์โพสต์จริง</h3>
           <p className="muted">ไม่มีสิทธิ์ = ทุกโพสต์หยุดก่อนกดโพสต์ (dry run) • ตอนนี้เปิดได้เฉพาะแบบ "เฉพาะฉัน" • ต้องใช้ Agent 0.4.0 ขึ้นไป</p>
           <ul className="rows" data-testid="admin-grants">{grants.map((g) => (
             <li key={g.id} className="row"><div className="row-main">
-              <strong>@{g.account} • {GRANT_STATUS[g.status]}</strong>
+              <strong>{g.account === '*' ? 'ทุกบัญชี' : `@${g.account}`} • {GRANT_STATUS[g.status]}</strong>
               <span className="muted">ใช้ {g.used_posts}/{g.max_posts} • ถึง {formatDate(g.expires_at)} • {g.reason}</span>
             </div>
             {isAdmin && g.status === 'active' && (
@@ -210,7 +220,7 @@ export function AdminPage() {
           {isAdmin && (
             <ReasonForm label="ให้สิทธิ์โพสต์จริง" onSubmit={(reason) => grantAct(`/v1/admin/workspaces/${detail.id}/posting-grants`,
               { account: grantAccount, max_posts: grantPosts, days: grantDays, visibility: 'only_me', reason })}>
-              <input aria-label="บัญชี TikTok" placeholder="@บัญชี" value={grantAccount} onChange={(e) => setGrantAccount(e.target.value)} />
+              <input aria-label="บัญชี TikTok" placeholder={detail.account_check ? '@บัญชี' : '@บัญชี (เว้นว่าง = ทุกบัญชี)'} value={grantAccount} onChange={(e) => setGrantAccount(e.target.value)} />
               <input type="number" aria-label="จำนวนโพสต์สูงสุด" min={1} max={1000} value={grantPosts} onChange={(e) => setGrantPosts(Number(e.target.value))} />
               <input type="number" aria-label="ใช้ได้กี่วัน" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(Number(e.target.value))} />
             </ReasonForm>

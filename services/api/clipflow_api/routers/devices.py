@@ -53,7 +53,7 @@ class DevicePatch(BaseModel):
         return v.lstrip("@").lower()
 
 
-def _out(d: Device, env_name: str, agent_online: bool) -> dict:
+def _out(d: Device, env_name: str, agent_online: bool, account_check: bool = True) -> dict:
     return {
         "id": str(d.id),
         "serial": d.serial,
@@ -67,7 +67,7 @@ def _out(d: Device, env_name: str, agent_online: bool) -> dict:
         "last_reported_at": d.last_reported_at.isoformat() if d.last_reported_at else None,
         "created_at": d.created_at.isoformat(),
         "unbound_at": d.unbound_at.isoformat() if d.unbound_at else None,
-        "missing_details": devices.missing_details(d) if d.unbound_at is None else [],
+        "missing_details": devices.missing_details(d, account_check) if d.unbound_at is None else [],
     }
 
 
@@ -84,7 +84,7 @@ def register(body: RegisterIn, request: Request, ctx: AgentContext = Depends(age
     return {"id": str(device.id), "serial": device.serial, "created": created,
             "environment_id": str(device.environment_id),
             "display_name": device.display_name, "expected_account": device.expected_account,
-            "missing_details": devices.missing_details(device),
+            "missing_details": devices.missing_details(device, posting_grants_rules.account_check(db, device.workspace_id)),
             "details_url": f"{origin}/devices?edit={device.id}"}
 
 
@@ -123,7 +123,8 @@ def list_devices(auth: WebAuth = Depends(web_auth), db: Session = Depends(get_db
         .add_columns(Environment.name)
         .order_by(Device.unbound_at.is_not(None), Device.created_at)
     ).all()
-    return {"items": [_out(d, name, d.environment_id in online) for d, name in rows]}
+    check = posting_grants_rules.account_check(db, auth.workspace_id)
+    return {"items": [_out(d, name, d.environment_id in online, check) for d, name in rows]}
 
 
 @web_router.patch("/{device_id}")
@@ -138,7 +139,8 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, request: Request, aut
     audit.record(db, request, "device.update", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=d.id)
     db.commit()
-    return _out(d, db.get(Environment, d.environment_id).name, d.environment_id in _online_envs(db, auth.workspace_id))
+    return _out(d, db.get(Environment, d.environment_id).name, d.environment_id in _online_envs(db, auth.workspace_id),
+                posting_grants_rules.account_check(db, auth.workspace_id))
 
 
 @web_router.post("/{device_id}/unbind")

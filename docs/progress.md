@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-13) — admin switch for the TikTok account check (Q-48)
+- PO: an admin can turn TikTok ID checking off/on to make posting easier. Chosen: per Workspace, off = no account check at all, grants then cover any account
+- Server: `workspaces.account_check` (0022, default on), admin route + Admin page card (reason, audited); claim/grant/SUBMITTING/scheduling/phone details follow it; grants may be "*" (any account, used only while off); only Agents that send `can_skip_account_check` (0.5.7+) get live posts without the check
+- Agent: `ui.account_check` from the claim spec; off = Profile is opened (private tab + marker) without comparing or reading the account into the evidence; on with no account set = ACCOUNT_NOT_SET
+- Tests: integration (grants, live post, post runner) 29 passed on a throwaway Postgres (port 5433; 5432 was taken by another project); test-unit 179 passed; web tsc clean. Not tested on a real phone
+
 ### Latest slice (2026-10-13) — verification reads the account again (source 0.5.7)
 - Staging (read-only): b7f207dd (@patsy4404, tx2, Agent 0.5.6) pressed Post at 21:01:40 BKK and became UNKNOWN 56 s later with ACCOUNT_UNREADABLE in VERIFYING; `verify_private_post` retried only VERIFY_MARKER / VERIFY_UNREADABLE. The 13 earlier verifications (0.5.5) passed; 0.5.6 had stopped pressing Profile again when the handle was covered
 - Fix: verification also looks again on ACCOUNT_UNREADABLE (Back, 20 s, up to 4 looks; still unreadable = UNKNOWN). On Profile with the handle covered the Agent waits once, then presses Profile again as before 0.5.6; a refused press (shop card behind the tab bar) presses nothing and waits. Unit tests 177 passed

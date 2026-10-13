@@ -24,7 +24,7 @@ def test_claim_hands_out_due_posts_one_per_phone_in_dry_run(shop, app):
 
     post = claim(shop.w, [shop.serial])
     assert post["state"] == "CLAIMED" and post["posting_mode"] == "dry_run" and post["attempt"] == 1
-    assert post["device"] == {"serial": shop.serial, "expected_account": "handle0"}
+    assert post["device"] == {"serial": shop.serial, "expected_account": "handle0", "account_check": True}
     assert post["text"]["metadata_version"] == 1 and post["text"]["caption"]
     assert post["clip"]["sha256"] == series["items"][0]["clip_sha256"] and post["clip"]["download_url"]
     # The phone is busy: the second due post waits (Q-05), even though it is due.

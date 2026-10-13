@@ -10,6 +10,10 @@ reason (audited, revocable). Everything else stays a dry run:
   the Agent presses Post, so a crash after Post can never lead to an extra post.
 
 No env value, setting or CLI command creates a grant.
+
+Q-48 (PO 2026-10-13): a platform admin can turn the account check off for a Workspace (`account_check`).
+Then a grant of that Workspace covers any account (the phone's account is neither required nor compared),
+but only for Agents that say they can post without the check (0.5.7+); older Agents keep the old rules.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .errors import ApiError
-from .models import PostingGrant, ScheduleItem
+from .models import PostingGrant, ScheduleItem, Workspace
 
 HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._]{2,24}$")
 VISIBILITIES = ("only_me",)
@@ -30,8 +34,13 @@ VISIBILITIES = ("only_me",)
 PENDING_LIVE = ("CLAIMED", "TRANSFERRING", "PREPARING")
 
 
+ANY_ACCOUNT = "*"  # Q-48: a grant for any account of the Workspace; it is used only while the account check is off
+
+
 def normalize_account(raw: str) -> str:
     value = (raw or "").strip()
+    if value in ("", ANY_ACCOUNT):
+        return ANY_ACCOUNT
     if not HANDLE_RE.match(value):
         raise ApiError(422, "VALIDATION_ERROR", "ชื่อบัญชี TikTok ไม่ถูกต้อง", {"field": "account"})
     return value.lstrip("@").lower()
@@ -81,14 +90,23 @@ def _pending(db: Session, grant_id: uuid.UUID) -> int:
         ScheduleItem.state.in_(PENDING_LIVE))) or 0
 
 
-def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime) -> PostingGrant | None:
-    """The grant a post on this account may go out live under, or None (a dry run).
+def account_check(db: Session, workspace_id: uuid.UUID) -> bool:
+    ws = db.get(Workspace, workspace_id)
+    return True if ws is None else bool(ws.account_check)
+
+
+def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime, *,
+              any_account: bool = False) -> PostingGrant | None:
+    """The grant a post on this account may go out live under, or None (a dry run). `any_account`
+    (Q-48, account check off): any grant of the Workspace, whatever the phone's account.
     The oldest valid grant with room is used first; the row is locked so two claims count the same room."""
-    if not account:
+    if not account and not any_account:
         return None
+    where = [PostingGrant.workspace_id == workspace_id]
+    if not any_account:
+        where.append(PostingGrant.account == account.lower())
     grants = db.scalars(select(PostingGrant).where(
-        PostingGrant.workspace_id == workspace_id, PostingGrant.account == account.lower(),
-        PostingGrant.revoked_at.is_(None), PostingGrant.expires_at > at,
+        *where, PostingGrant.revoked_at.is_(None), PostingGrant.expires_at > at,
         PostingGrant.used_posts < PostingGrant.max_posts).order_by(PostingGrant.created_at)
         .with_for_update()).all()
     for grant in grants:
@@ -104,7 +122,7 @@ def use(db: Session, item: ScheduleItem, account: str | None, at: datetime) -> s
     grant = db.scalars(select(PostingGrant).where(PostingGrant.id == item.grant_id).with_for_update()).first()
     if grant is None or grant.workspace_id != item.workspace_id:
         return "POSTING_GRANT_MISSING"
-    if (account or "").lower() != grant.account:
+    if account_check(db, item.workspace_id) and (account or "").lower() != grant.account:
         return "POSTING_GRANT_ACCOUNT"  # the phone's account was changed after the claim
     state = status(grant, at)
     if state != "active":
@@ -119,4 +137,5 @@ def expected_mode(db: Session, workspace_id: uuid.UUID, account: str | None, at:
     the Agent must also be 0.4.0+ and the grant may be used up by then)."""
     if server_mode == "live":
         return "live"
-    return "live" if account and for_claim(db, workspace_id, account, at) is not None else "dry_run"
+    any_account = not account_check(db, workspace_id)
+    return "live" if for_claim(db, workspace_id, account, at, any_account=any_account) is not None else "dry_run"

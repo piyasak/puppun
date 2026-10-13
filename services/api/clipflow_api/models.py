@@ -22,6 +22,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import true as sa_true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -44,6 +45,8 @@ class Workspace(Base):
     id: Mapped[uuid.UUID] = _uuid()
     name: Mapped[str] = mapped_column(String(100))
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Bangkok")  # Q-04: only option in MVP
+    # Q-48: the Agent checks the phone's TikTok account for real posts. Off only by a platform admin.
+    account_check: Mapped[bool] = mapped_column(Boolean, default=True, server_default=sa_true())
     created_at: Mapped[datetime] = _created()
 
 
