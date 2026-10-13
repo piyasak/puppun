@@ -227,11 +227,11 @@ def test_only_an_admin_turns_the_account_check_off_and_it_is_audited(shop, app, 
         assert row.details == {"before": True, "after": False} and row.reason
 
 
-def requeue(app):
-    """The claimed post back to SCHEDULED, so the next claim sees it again (simulates a lost lease)."""
+def requeue(app, post):
+    """This claimed post back to SCHEDULED, so the next claim sees it again (simulates a lost lease)."""
     with app.state.db.sessionmaker() as s:
-        for it in s.scalars(select(ScheduleItem)).all():
-            it.state, it.lease_session_id, it.lease_expires_at = "SCHEDULED", None, None
+        it = s.get(ScheduleItem, uuid.UUID(post["id"]))
+        it.state, it.lease_session_id, it.lease_expires_at = "SCHEDULED", None, None
         s.commit()
 
 
@@ -239,12 +239,13 @@ def test_with_the_check_off_any_grant_covers_whatever_account_the_phone_has(shop
     g = grant(admin, shop, account="")  # any account
     assert g["account"] == "*"
     due(app, shop)
-    assert claim(shop)["posting_mode"] == "dry_run"  # the check is still on: "*" never matches an account
-    requeue(app)
+    first = claim(shop)
+    assert first["posting_mode"] == "dry_run"  # the check is still on: "*" never matches an account
+    requeue(app, first)
     assert account_check(admin, shop, False).status_code == 200
     old = shop.w.post("/v1/agent/posts/claim", json={"ready_serials": [shop.serial], "can_post_live": True}).json()["post"]
     assert old["posting_mode"] == "dry_run"  # an Agent older than 0.5.7 keeps the old rules
-    requeue(app)
+    requeue(app, old)
     post = shop.w.post("/v1/agent/posts/claim", json={"ready_serials": [shop.serial], "can_post_live": True,
                                                        "can_skip_account_check": True}).json()["post"]
     assert post["posting_mode"] == "live" and post["grant"]["id"] == g["id"]
