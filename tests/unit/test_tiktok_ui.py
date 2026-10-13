@@ -394,3 +394,26 @@ def test_fewer_private_videos_than_before_stops_at_once(monkeypatch):
     with pytest.raises(UiStop) as stop:
         ui.verify_private_post("cfabc123", 5)
     assert stop.value.code == "VERIFY_COUNT" and "input keyevent KEYCODE_BACK" not in phone.commands
+
+
+def test_an_unreadable_account_right_after_post_is_read_again_not_unknown(monkeypatch):
+    # tx2, 2026-10-13: b7f207dd became UNKNOWN on the first ACCOUNT_UNREADABLE after Post.
+    phone = Shell()
+    ui = TikTokUi(phone, "S", sleep=lambda s: None)
+    seen = iter([UiStop("ACCOUNT_UNREADABLE", "covered"), UiStop("ACCOUNT_UNREADABLE", "covered"),
+                 {"value": "cfabc123"}])
+
+    def newest(marker, before):
+        result = next(seen)
+        if isinstance(result, UiStop):
+            raise result
+        return result
+
+    monkeypatch.setattr(ui, "_newest_private_has", newest)
+    assert ui.verify_private_post("cfabc123", 5) == {"value": "cfabc123"}
+    assert phone.commands.count("input keyevent KEYCODE_BACK") == 2
+
+    seen = iter([UiStop("ACCOUNT_UNREADABLE", "covered")] * 4)
+    with pytest.raises(UiStop) as stop:  # still unreadable after 4 looks: UNKNOWN, never guessed
+        ui.verify_private_post("cfabc123", 5)
+    assert stop.value.code == "ACCOUNT_UNREADABLE"
