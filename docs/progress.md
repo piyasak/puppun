@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-13) — "post now" never ran: a paused series held the phone
+- PO: post now did not work; when its time came it ended cancelled. Staging data (read-only SQL): post now at 07:12:40 (series 539db3ec), moved by the PO to 07:20 at 07:17, never claimed (attempts 0), cancelled by the PO at 07:29 (USER_CANCELLED). Agent 0.5.5 (new installation on another PC, 2026-10-12 23:33) was online with the QA phone reported `device` the whole time, yet no post on that phone had been claimed since 2026-10-12 06:00
+- Cause (server): series 741fa914 was paused at 2026-10-12 00:19; its post due 15:00 stayed SCHEDULED. `posts.claim` takes due posts oldest first and marked the phone "tried" before learning the series was paused, so every claim skipped the phone: series b423d619 (deferred to 06:34) and the post now never went out for ~16 h
+- Fix: a paused / unpaid post waits without holding the phone; the next due post on it is handed out. Regression test reproduces it (fails on the old code: claim returned nothing) and passes; test-integration 304 passed
+- Server only (no Agent release needed); takes effect after merge + Render deploy
+
 ### Latest slice (2026-10-12) — HTTPS on a fresh PC: certificate roots
 - PO, Agent 0.5.5 on a customer PC: "ดาวน์โหลด FFmpeg ไม่ได้: CERTIFICATE_VERIFY_FAILED unable to get local issuer certificate". Python only sees the roots Windows has already stored; Windows fetches missing roots only for its own programs
 - `agent/net.py`: one SSL context, verification on, Windows' roots + certifi's (certifi is already in the bundle through yt-dlp); used for the FFmpeg and keyboard downloads and every server call. Checked against the real hosts: with no roots the same error; with certifi's roots alone GitHub (release asset redirect) and https://punpun.tomatoparadise.online verify

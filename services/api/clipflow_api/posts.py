@@ -138,14 +138,18 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
     for item in due:
         if item.device_id in tried:
             continue  # one post per phone per claim; the next waits for this one (Q-05)
-        tried.add(item.device_id)
         phone = db.scalars(select(Device).where(Device.id == item.device_id)
                            .with_for_update(skip_locked=True)).first()
         if phone is None or _busy(db, phone.id):
+            tried.add(item.device_id)
             continue
         reason = schedules.dispatchable(db, item)
         if reason in ("SERIES_NOT_ACTIVE", "SUBSCRIPTION_INACTIVE"):
-            continue  # paused or not paid: waits, keeps its slot rules
+            # Paused or not paid: this one waits, keeping its slot rules, but it does not hold the phone. Staging,
+            # 2026-10-12/13: a paused series' overdue post came first on every claim and blocked the phone's
+            # other posts (another series and a "post now") for 16 hours.
+            continue
+        tried.add(item.device_id)
         if reason:
             _move(item, "NEEDS_ACTION", reason, at)
             continue
