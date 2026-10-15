@@ -292,3 +292,22 @@ def test_links_are_refused_in_captions_and_titles(shop, app):
         assert resp.status_code == 422 and resp.json()["code"] == "CAPTION_HAS_LINK", text
     ok = shop.acc.patch(f"/v1/clips/{clip}/metadata", json={"caption": "ตอนที่ 3/10 ราคา 1.50 บาท", "expected_version": 1})
     assert ok.status_code == 200, ok.text  # numbers alone are fine
+
+
+def test_with_the_check_off_the_phones_own_account_grant_comes_first(shop, app, admin):
+    # PO 2026-10-15: tx1's post used tx2's older "only you" grant instead of tx1's own public grant.
+    other = grant(admin, shop, account="someone_else")  # oldest, another account
+    anyone = grant(admin, shop, account="")             # "*"
+    own = grant(admin, shop, account="handle0", visibility="everyone")  # newest, this phone's account
+    assert account_check(admin, shop, False).status_code == 200
+    due(app, shop)
+    body = {"ready_serials": [shop.serial], "can_post_live": True, "can_skip_account_check": True}
+    post = shop.w.post("/v1/agent/posts/claim", json=body | {"can_post_public": True}).json()["post"]
+    assert post["grant"]["id"] == own["id"] and post["grant"]["visibility"] == "everyone"
+    requeue(app, post)
+    post = shop.w.post("/v1/agent/posts/claim", json=body).json()["post"]  # cannot post publicly: next is "*"
+    assert post["grant"]["id"] == anyone["id"]
+    requeue(app, post)
+    admin.post(f"/v1/admin/posting-grants/{anyone['id']}/revoke", json={"reason": "ทดสอบลำดับสิทธิ์โพสต์"})
+    post = shop.w.post("/v1/agent/posts/claim", json=body).json()["post"]  # then another account's
+    assert post["grant"]["id"] == other["id"]
