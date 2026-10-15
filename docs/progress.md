@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — hashtag suggestions over Post; stuck at SUBMITTING; journal blocking updates (source 0.6.0)
+- PO: UNKNOWN_SCREEN, the hashtag suggestion list shows over the action buttons. Cause: Q-49's invisible marker was glued to the last hashtag, so TikTok kept suggesting hashtags over Post (the old "cf…" marker came after a space). Posts with hashtags on 0.5.8/0.5.9 hit it; tx1 tests passed only because their captions had no hashtag
+- Worse: the Post-button check ran only after SUBMITTING, so the server refused NEEDS_ACTION and the post stayed SUBMITTING with a grant use and no press; TikTok was closed mid-edit (a draft: 5b3b367d, "save as draft waiting file upload"), and that journal record then refused every update (installer: "a post is between Submit and its result")
+- Fixes: a space before the marker; `TikTokUi.ready_to_post` checked before SUBMITTING (covered Post = NEEDS_ACTION, retryable, nothing used); a failure after SUBMITTING but before the press is reported UNKNOWN at once; UNKNOWN_SCREEN, SCREEN_CHANGED, KEYBOARD_SHOWN, CAPTION_MISMATCH, VISIBILITY_NOT_SET retryable on server and web
+- Journal: `GET /v1/agent/posts/{id}` (state, attempt); on start the Agent settles SUBMITTING/VERIFYING records the server no longer waits for (`PostRunner.settle_journal`), pre-Submit ones become RETRYABLE_FAILED; `agent recover` reads the Agent's data folder journal (it read var/agent/attempts.jsonl)
+- Tests: test-unit 187; test-integration 311 passed (throwaway Postgres); web tsc clean. Not run on a phone yet (tx1/tx2 on the other PC): needs one post with hashtags
+
 ### Latest slice (2026-10-15) — a retried post stopped the Agent's posting thread (source 0.5.9)
 - PO, Agent 0.5.8 on the tx1/tx2 PC: `Exception in thread clipflow-posts … TransitionError: attempt f240f595-…-1 already exists`. f240f595 had been attempt 1 on that PC (ACCOUNT_UNREADABLE at 19:00); the PO pressed retry, `posts.retry` sets attempts back to 0, so the next claim was attempt 1 again; the journal refused the repeated id and `_loop` only caught ServerError/OSError/AdbError, so posting stopped for every phone on that PC (the heartbeat kept the Agent looking online)
 - Fix: a repeated attempt id gets a suffix (`…-1.r2`; the old record stays); `_loop` logs any unexpected error and keeps going. Unit tests (repeated id, loop survives); posting integration 39 passed

@@ -525,6 +525,13 @@ class TikTokUi:
 
         if not isinstance(grant, PostGrant):
             raise UiStop("NO_GRANT", "posting needs a recorded one-time grant")
+        x, y = self.ready_to_post(caption, visibility)
+        self.sh(f"input swipe {x} {y} {x} {y} 120")
+
+    def ready_to_post(self, caption: str, visibility: str = "only_me") -> tuple[int, int]:
+        """Where Post is, when the post screen shows exactly this caption and visibility and nothing covers
+        Post. Checked before SUBMITTING too (PC of tx1/tx2, 2026-10-15: TikTok's hashtag suggestion list
+        covered Post, the check failed only after SUBMITTING and the post was left there)."""
         if self.keyboard_shown():
             raise UiStop("KEYBOARD_SHOWN", "the keyboard is up; Post would be at another place")
         nodes = self.read(exact=True)
@@ -540,7 +547,7 @@ class TikTokUi:
         x, y = buttons[0].center
         if any(n.label not in ("โพสต์", "Post") for n in under(nodes, x, y)):
             raise UiStop("SCREEN_CHANGED", "something else is under the Post button")
-        self.sh(f"input swipe {x} {y} {x} {y} 120")
+        return x, y
 
     def verify_private_post(self, marker: str, before: int, tries: int = 4, wait_s: float = 20.0) -> dict:
         """PRD §H: the post is on this account's private tab and its caption carries the attempt marker.

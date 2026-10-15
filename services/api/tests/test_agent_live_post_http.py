@@ -32,8 +32,9 @@ class NoKeyboard(Gallery):
 
 
 class PostingUi:
-    def __init__(self, verify_fails=False, during=None):
+    def __init__(self, verify_fails=False, during=None, covered=None):
         self.verify_fails, self.calls, self.posted, self.during = verify_fails, [], 0, during
+        self.covered = covered  # "before" / "after" SUBMITTING: Post covered (hashtag suggestions, 2026-10-15)
 
     def check_account(self, expected):
         self.calls.append("account")
@@ -54,8 +55,15 @@ class PostingUi:
         self.calls.append("caption")
         self.caption = caption
 
+    def ready_to_post(self, caption, visibility="only_me"):
+        if self.covered == "before":
+            raise UiStop("UNKNOWN_SCREEN", "the Post button is not where it belongs")
+        return 360, 1400
+
     def submit(self, grant, caption, visibility="only_me"):
         assert isinstance(grant, authorization.PostGrant)
+        if self.covered == "after":
+            raise UiStop("SCREEN_CHANGED", "something else is under the Post button")
         self.posted += 1
         self.calls.append("POST")
 
@@ -140,6 +148,24 @@ def test_verification_that_fails_after_post_is_unknown_not_a_retry(shop, live):
     assert s["run"]() == "UNKNOWN"
     item = items(shop, s["series"]["id"])[0]
     assert (item["state"], item["reason"]) == ("UNKNOWN", "VERIFY_MARKER") and ui.posted == 1
+
+
+def test_a_covered_post_button_stops_before_submitting_and_can_be_retried(shop, live):
+    # PC of tx1/tx2, 2026-10-15: the hashtag suggestion list covered Post; the post was left at SUBMITTING.
+    ui = PostingUi(covered="before")
+    s = live(ui)
+    assert s["run"]() == "NEEDS_ACTION"
+    item = items(shop, s["series"]["id"])[0]
+    assert (item["state"], item["reason"]) == ("NEEDS_ACTION", "UNKNOWN_SCREEN") and ui.posted == 0
+    assert not s["ledger"].exists()  # no grant use: nothing was submitted
+
+
+def test_a_post_that_could_not_be_pressed_after_submitting_is_unknown_not_stuck(shop, live):
+    ui = PostingUi(covered="after")
+    s = live(ui)
+    assert s["run"]() == "UNKNOWN"
+    item = items(shop, s["series"]["id"])[0]
+    assert (item["state"], item["reason"]) == ("UNKNOWN", "SCREEN_CHANGED") and ui.posted == 0
 
 
 def test_a_session_lost_during_the_tiktok_steps_does_not_spend_the_grant(shop, live):

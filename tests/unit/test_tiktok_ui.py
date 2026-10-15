@@ -488,3 +488,17 @@ def test_the_videos_tab_opens_despite_its_post_icon_but_a_real_post_button_never
     with pytest.raises(UiStop) as stop:  # a pressable Post control is never treated as the tab's icon
         ui.open_videos_tab()
     assert stop.value.code == "REFUSED_ELEMENT" and phone.presses == []
+
+
+def test_a_covered_post_button_is_found_before_submitting_and_never_pressed():
+    # PC of tx1/tx2, 2026-10-15: TikTok's hashtag suggestion list covered Post.
+    covered = post_screen("ทดสอบ #punpun", "เฉพาะคุณเท่านั้นที่ดูโพสต์นี้ได้", False).replace(
+        "</hierarchy>", '<node text="#punpun_sutatta" content-desc="" resource-id="" class="android.widget.TextView" '
+                        'clickable="true" bounds="[0,1300][720,1600]" /></hierarchy>')
+    phone = FakeTikTok()
+    phone.state = "post"
+    phone.xml = lambda: covered
+    ui = ui_for(phone)
+    with pytest.raises(UiStop) as stop:
+        ui.ready_to_post("ทดสอบ #punpun")
+    assert stop.value.code in ("UNKNOWN_SCREEN", "SCREEN_CHANGED") and not phone.presses

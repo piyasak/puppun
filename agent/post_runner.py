@@ -313,10 +313,12 @@ class _Post:
         return ui
 
     def _caption(self, marker: str | None = None) -> str:
-        """The approved text and hashtags, then the attempt's invisible marker (Q-49: no visible digits)."""
+        """The approved text and hashtags, then a space and the attempt's invisible marker (Q-49: no visible
+        digits). The space ends the last hashtag: glued to it, TikTok kept the hashtag suggestion list open
+        over Post (PC of tx1/tx2, 2026-10-15)."""
         text = self.post["text"]
         parts = [text["caption"], *[t for t in text["hashtags"] if t not in text["caption"]]]
-        return " ".join(parts).strip() + (marker or "")
+        return " ".join(parts).strip() + (" " + marker if marker else "")
 
     def _live(self) -> bool:
         """An authorized post (Q-42 server grant, or the Q-29 local ledger in the opt-in test).
@@ -344,6 +346,7 @@ class _Post:
             ui.open_post_screen(found)
             ui.set_visibility(visibility)
             ui.type_caption(caption)
+            ui.ready_to_post(caption, visibility)  # before SUBMITTING: a covered Post stops here, nothing used
             # The session must be alive before a grant is spent: a grant used and then refused by the server
             # is lost (QA run 2026-10-08: the session expired during the TikTok steps).
             try:
@@ -362,7 +365,13 @@ class _Post:
             if self.r.grant_source is None:
                 grant = PostGrant(f"server:{server_grant['id']}", 0)
             self.r.journal.advance(self.attempt_id, State.SUBMITTING, f"grant {grant.decision} #{grant.number}")
-            ui.submit(grant, caption, visibility)
+            try:
+                ui.submit(grant, caption, visibility)
+            except UiStop as exc:  # after SUBMITTING the server accepts only UNKNOWN; Post was not pressed
+                detail = f"stopped before pressing Post: {exc.detail}"
+                self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {detail}")
+                self.event("UNKNOWN", code=exc.code, detail=detail[:300])
+                return False
             if self.r.crash_after_submit:
                 crashed = True
                 return True
