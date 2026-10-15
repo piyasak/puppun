@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3, 4, 5, 6, 7, 8]
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,5 +19,5 @@ jobs:
           python-version: "3.14"
       - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
       - run: |
-          echo "CPU $(lscpu | sed -n 's/^Model name: *//p') avx512=$(grep -c avx512f /proc/cpuinfo | head -1) nproc=$(nproc)"
+          echo "CPU $(lscpu | sed -n 's/^Model name: *//p') avx512=$(grep -c avx512f /proc/cpuinfo | head -1) nproc=$(nproc) libass=$(dpkg-query -W -f="${Version}" libass9)"
           python tools/diag/cross_cpu.py "$RUNNER_TEMP/x"
