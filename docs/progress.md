@@ -4,6 +4,14 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-15) — a remake is the same file on any CPU (render sha256)
+- CI master run 38743242112 (b487a55): `test_reset_remakes_a_deleted_file_with_the_same_hash` failed once (remake aaa7a040… vs first render bfe6c199…); green on re-run, 6/6 on this PC. Approvals and schedule items are bound to the render sha256, so a remake with another hash parks the posts
+- Found (CI diagnostics on the branch, since removed; table in `docs/compatibility.md`): ffmpeg/x264 output depended on the CPU, not on timing. Same args on AVX-512 runners (Xeon 8573C/8370C, EPYC 9V74): different video from one render to the next on one VM (3 renders → 3 hashes) = the CI flake; AVX2 runners (EPYC 7763) stable. Also: hash changed with `cpu_count()//2` encoder threads; AAC differed by SIMD level; Intel vs AMD video differed; the source's creation_time/location tags were copied into the clip. Segment choice, planning and CPU load (6 busy processes, 30 renders) were not the cause
+- Fix (`services/worker/clipflow_worker/render.py`): x264 `cpu-independent=1` with a fixed 4 threads (filters still follow RenderLimits), FFmpeg `-cpuflags` held to SSE2 on x86-64, `+bitexact` muxer/encoders, `-map_metadata -1 -map_chapters -1`. No visible change (same CRF/preset/filters). 12 runners / 5 CPU models × 3 renders: one file. Cost on this PC ≈ +10% render time (60 s clip)
+- Test `services/worker/tests/test_render_repeatable.py`: same segment twice and with 1 vs 3 threads → same sha256; no source metadata; encoder args. Fails on the old render.py (threads → other hash; creation_time/location copied), passes now
+- Hashes of new renders change once: clips already rendered keep their files and hashes; a remake of a clip rendered before this change (reset, files missing) gets a new hash: delivered and approved again, its posts parked until then (`jobs.py`, same as any remake that changed the file). Needs an Agent release to reach customer PCs (renders run in the Agent)
+- Tests: ruff clean; test-unit 249 passed; test-integration 309 passed, 10 opt-in skips (throwaway Postgres on 5433; 5432 taken by another project); CI Python job green (PR #42)
+
 ### Latest slice (2026-10-15) — with the account check off, a phone uses its own account's grant first
 - Public test on tx1: post e153363c went out "only you" under 6aac753c (patsy4404) instead of the new public grant 27c99a50 (jk.mickey): with Q-48 off any grant applies and the oldest came first. Verified by the hidden marker (`hidden:e15336`)
 - Fix (PO option 2): `posting_grants.for_claim` with the check off ranks the phone's own account first, then "*" (any account), then other accounts; oldest first within each. Integration test covers own → "*" → other
