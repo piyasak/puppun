@@ -49,9 +49,8 @@ STOP_CODES = {"LEASE_LOST", "ITEM_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
 FREE_SPACE_EVERY_S = 300.0
 
 
-# Q-49 (PO 2026-10-15): "everyone" (public) is not posted until finding a public post on Profile has been
-# tested on a phone; until then a public grant stops before anything is typed (nothing is used).
-SUPPORTED_VISIBILITY = ("only_me",)
+# Q-49 (PO 2026-10-15): "everyone" = public; verified on Profile's videos grid (TikTokUi.verify_public_post).
+SUPPORTED_VISIBILITY = ("only_me", "everyone")
 LINK_RE = re.compile(r"(https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|co|th|io|me|ly|gl|link|shop|app|xyz|info|biz|tv|cc|to)\b)",
                      re.IGNORECASE)
 
@@ -289,7 +288,7 @@ class _Post:
         crashed = False
         try:
             ui.check_account(self.post["device"]["expected_account"])
-            before = ui.private_count()
+            before = ui.private_count() if visibility == "only_me" else None
             found = media_id(self.adb, self.phone.adb_serial, self.remote.rsplit("/", 1)[-1])
             if found is None:
                 raise PostFailed("GALLERY_NOT_FOUND", "no MediaStore id for the clip")
@@ -320,7 +319,8 @@ class _Post:
                 return True
             self.step(State.VERIFYING, "VERIFYING")
             try:
-                evidence = ui.verify_private_post(mark, before)
+                evidence = (ui.verify_private_post(mark, before) if visibility == "only_me"
+                            else ui.verify_public_post(mark, caption))
             except UiStop as exc:  # after Post a failure is not knowable: UNKNOWN, never retried
                 self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {exc.detail}")
                 self.event("UNKNOWN", code=exc.code, detail=exc.detail[:300])

@@ -131,7 +131,7 @@ class ServerClient:
         # can_post_live (Q-42): this Agent can carry out a post the server hands out live under a grant.
         # can_skip_account_check (Q-48, 0.5.7): this Agent posts without the account check when the server says so.
         return self._post("/v1/agent/posts/claim", {"ready_serials": ready_serials, "can_post_live": True,
-                                                    "can_skip_account_check": True},
+                                                    "can_skip_account_check": True, "can_post_public": True},
                           bearer=session.token)["post"]
 
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
