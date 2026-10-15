@@ -28,29 +28,14 @@ DURATION_TOLERANCE_S = 0.5
 # bit-exact for any count and still follow RenderLimits.
 ENCODER_THREADS = 4
 
-
-def _has_sse42() -> bool:
-    if sys.platform == "win32":
-        import ctypes
-
-        return bool(ctypes.windll.kernel32.IsProcessorFeaturePresent(38))  # PF_SSE4_2_INSTRUCTIONS_AVAILABLE
-    try:
-        return "sse4_2" in Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace").split()
-    except OSError:
-        return False
-
-
-# FFmpeg and x264 pick SIMD code by the CPU, and some of it rounds differently: FFmpeg's AAC
-# encoder with AVX/AVX2/FMA, x264 with AVX-512 (one AVX-512 CI runner also made different video
-# from three others of the same kind). So the same clip was different bytes on different CPUs.
-# On x86-64, FFmpeg is held to SSE2 (every x86-64 CPU has it; ~10% slower on a 60 s
-# clip) and x264 to SSE4.2 when the CPU has it (same video as its AVX/AVX2 code, same speed).
-# Never force a level the CPU lacks: that crashes.
-_X86_64 = platform.machine().lower() in ("amd64", "x86_64")
-CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if _X86_64 else ()
-# cpu-independent: x264 uses the same algorithms on every CPU (its float mb-tree code differed
-# between Intel and AMD); no measurable cost.
-X264_ARGS = ("-x264-params", "cpu-independent=1" + (":asm=SSE4.2" if _X86_64 and _has_sse42() else ""))
+# FFmpeg picks SIMD code by the CPU, and its AAC encoder (float) rounds differently with
+# AVX/AVX2/FMA; on x86-64 it is held to SSE2, which every x86-64 CPU has (forcing a level the CPU
+# lacks would crash; ~10% slower on a 60 s clip). x264's cpu-independent mode uses the same
+# algorithms on every CPU: its own SIMD choice gave different video on Intel and AMD, and on
+# AVX-512 CPUs different video from one render to the next. Checked on 12 CI runners (5 CPU
+# models, AVX2 and AVX-512): one file. No measurable cost.
+CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if platform.machine().lower() in ("amd64", "x86_64") else ()
+X264_ARGS = ("-x264-params", "cpu-independent=1")
 # No metadata from the source (creation time, location, chapters) and no version strings from the
 # muxer: only the frames and samples decide the bytes.
 BITEXACT_ARGS = ("-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact",

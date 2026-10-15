@@ -36,3 +36,20 @@ def test_source_metadata_is_not_carried_into_the_clip(tmp_path):
     result = render_clip(src, 0, 3.0, TEXT, tmp_path / "clip.mp4", Template(), RenderLimits(threads=1))
     tags = probe(result.path)["format"].get("tags", {})
     assert "creation_time" not in tags and "location" not in tags
+
+
+def test_the_encoder_runs_the_same_on_every_cpu(tmp_path, monkeypatch):
+    """What one CPU cannot show: x264 in cpu-independent mode with a fixed thread count, FFmpeg's
+    SIMD held to SSE2 on x86-64 (12 CI runners, 5 CPU models: one file; without it AAC differed by
+    CPU and x264 differed Intel/AMD and, on AVX-512, from one render to the next)."""
+    import platform
+
+    src = _source(tmp_path / "src.mp4")
+    seen = []
+    real_run = subprocess.run
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: (seen.append(cmd), real_run(cmd, **kw))[1])
+    render_clip(src, 0, 2.0, TEXT, tmp_path / "clip.mp4", Template(), RenderLimits(threads=1))
+    cmd = next(c for c in seen if "libx264" in c)
+    assert cmd[cmd.index("-x264-params") + 1] == "cpu-independent=1" and cmd[cmd.index("-threads") + 1] == "4"
+    if platform.machine().lower() in ("amd64", "x86_64"):
+        assert cmd[cmd.index("-cpuflags") + 1] == "mmx+mmxext+sse+sse2+cmov"
