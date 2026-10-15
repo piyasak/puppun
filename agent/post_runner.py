@@ -38,7 +38,7 @@ from pathlib import Path
 
 from agent import marker, thai_keyboard
 from agent.adb import Adb, AdbError, normalize_serial
-from agent.attempt import AttemptJournal, State, TransitionError
+from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
 from agent.compat import check_phone
 from agent.device_registry import discover
@@ -51,6 +51,8 @@ FREE_SPACE_EVERY_S = 300.0
 
 # Q-49 (PO 2026-10-15): "everyone" = public; verified on Profile's videos grid (TikTokUi.verify_public_post).
 SUPPORTED_VISIBILITY = ("only_me", "everyone")
+# "<post id>-<server attempt>" with an optional ".r<k>" when that number came back after a retry
+ATTEMPT_ID_RE = re.compile(r"^(?P<post>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(?P<n>\d+)(?:\.r\d+)?$")
 LINK_RE = re.compile(r"(https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|co|th|io|me|ly|gl|link|shop|app|xyz|info|biz|tv|cc|to)\b)",
                      re.IGNORECASE)
 
@@ -92,6 +94,36 @@ class PostRunner:
 
     # --- background loop -------------------------------------------------------------------
 
+    def settle_journal(self, client: ServerClient, get_session) -> list[str]:
+        """On start: records this PC left between Submit and a result (Agent closed or updated mid-post) are
+        settled when the server no longer waits for that attempt (2026-10-15, 5b3b367d-…-1: resolved by a
+        person on the web, still SUBMITTING here, and every update was refused). Records the server still
+        waits for stay as they are. Records stopped before Submit become RETRYABLE_FAILED (nothing posted)."""
+        settled = []
+        for attempt_id in self.journal.ids():
+            current = self.journal.current(attempt_id)
+            if current in PRE_SUBMIT:
+                self.journal.recover(attempt_id)
+                continue
+            if current not in (State.SUBMITTING, State.VERIFYING):
+                continue
+            m = ATTEMPT_ID_RE.match(attempt_id)
+            if m is None:
+                continue
+            try:
+                server = client.post_state(get_session(), m["post"])
+            except ServerError as exc:
+                if exc.code != "NOT_FOUND":
+                    continue  # try again on the next start
+                server = {"state": "NOT_FOUND", "attempt": None}
+            if server["state"] in ("SUBMITTING", "VERIFYING") and server.get("attempt") == int(m["n"]):
+                continue  # the server still waits for this very attempt
+            self.journal.settle(attempt_id, f"settled: server says {server['state']} (attempt {server.get('attempt')})")
+            settled.append(attempt_id)
+        if settled:
+            self.log(f"บันทึกโพสต์ค้าง {len(settled)} รายการ: เซิร์ฟเวอร์มีผลแล้ว ปิดรายการในเครื่องนี้")
+        return settled
+
     def start(self, client: ServerClient, get_session) -> None:
         self._thread = threading.Thread(target=self._loop, args=(client, get_session), daemon=True,
                                         name="clipflow-posts")
@@ -103,6 +135,10 @@ class PostRunner:
             self._thread.join(timeout_s)
 
     def _loop(self, client: ServerClient, get_session) -> None:
+        try:
+            self.settle_journal(client, get_session)
+        except Exception as exc:  # noqa: BLE001 - a journal check must never keep posting from starting
+            self.log(f"ตรวจบันทึกโพสต์ค้าง: ทำไม่ได้ ({type(exc).__name__}: {exc}); โพสต์ต่อ")
         next_free = 0.0
         while not self._halt.is_set():
             if time.monotonic() >= next_free:
@@ -277,10 +313,12 @@ class _Post:
         return ui
 
     def _caption(self, marker: str | None = None) -> str:
-        """The approved text and hashtags, then the attempt's invisible marker (Q-49: no visible digits)."""
+        """The approved text and hashtags, then a space and the attempt's invisible marker (Q-49: no visible
+        digits). The space ends the last hashtag: glued to it, TikTok kept the hashtag suggestion list open
+        over Post (PC of tx1/tx2, 2026-10-15)."""
         text = self.post["text"]
         parts = [text["caption"], *[t for t in text["hashtags"] if t not in text["caption"]]]
-        return " ".join(parts).strip() + (marker or "")
+        return " ".join(parts).strip() + (" " + marker if marker else "")
 
     def _live(self) -> bool:
         """An authorized post (Q-42 server grant, or the Q-29 local ledger in the opt-in test).
@@ -308,6 +346,7 @@ class _Post:
             ui.open_post_screen(found)
             ui.set_visibility(visibility)
             ui.type_caption(caption)
+            ui.ready_to_post(caption, visibility)  # before SUBMITTING: a covered Post stops here, nothing used
             # The session must be alive before a grant is spent: a grant used and then refused by the server
             # is lost (QA run 2026-10-08: the session expired during the TikTok steps).
             try:
@@ -326,7 +365,13 @@ class _Post:
             if self.r.grant_source is None:
                 grant = PostGrant(f"server:{server_grant['id']}", 0)
             self.r.journal.advance(self.attempt_id, State.SUBMITTING, f"grant {grant.decision} #{grant.number}")
-            ui.submit(grant, caption, visibility)
+            try:
+                ui.submit(grant, caption, visibility)
+            except UiStop as exc:  # after SUBMITTING the server accepts only UNKNOWN; Post was not pressed
+                detail = f"stopped before pressing Post: {exc.detail}"
+                self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {detail}")
+                self.event("UNKNOWN", code=exc.code, detail=detail[:300])
+                return False
             if self.r.crash_after_submit:
                 crashed = True
                 return True

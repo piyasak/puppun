@@ -108,6 +108,23 @@ class AttemptJournal:
             raise TransitionError(f"{cur} -> {new} is not allowed")
         self._append(Record(attempt_id, new, time.time(), detail))
 
+    def ids(self) -> list[str]:
+        """Every attempt in the journal, in first-seen order."""
+        if not self.path.exists():
+            return []
+        seen: dict[str, None] = {}
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            try:
+                seen.setdefault(json.loads(line)["attempt_id"], None)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+        return list(seen)
+
+    def settle(self, attempt_id: str, detail: str) -> None:
+        """A record left at SUBMITTING/VERIFYING whose result the server already holds: UNKNOWN here (the
+        server's state, often a person's verdict, is the one that counts)."""
+        self._append(Record(attempt_id, State.UNKNOWN, time.time(), detail))
+
     def recover(self, attempt_id: str) -> State:
         """After a crash/disconnect, decide the safe state without touching the device."""
         cur = self.current(attempt_id)

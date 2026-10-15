@@ -46,6 +46,13 @@ def claim(body: ClaimIn, request: Request, ctx: AgentContext = Depends(agent_con
     return {"post": posts.spec(db, item, state.storage, state.settings.preview_ttl_s, state.posting_mode)}
 
 
+@agent_router.get("/{item_id}")
+def state(item_id: uuid.UUID, ctx: AgentContext = Depends(agent_context), db: Session = Depends(get_db)):
+    """Where a post of this Environment stands, so an Agent can settle its own journal after a crash or an
+    update (2026-10-15: a record left at SUBMITTING blocked every update although a person had resolved it)."""
+    return posts.agent_state(db, ctx, item_id)
+
+
 @agent_router.post("/{item_id}/events")
 def event(item_id: uuid.UUID, body: EventIn, request: Request, ctx: AgentContext = Depends(agent_context),
           db: Session = Depends(get_db)):

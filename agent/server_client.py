@@ -137,6 +137,10 @@ class ServerClient:
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)
 
+    def post_state(self, session: Session, post_id: str) -> dict:
+        """Where one of this Environment's posts stands: state, reason, attempt."""
+        return self._send("GET", f"/v1/agent/posts/{post_id}", None, "application/json", session.token)
+
     def devices(self, session: Session) -> list[dict]:
         """This Environment's phones with the names set on the web (for the phone screen windows)."""
         return self._send("GET", "/v1/agent/devices", None, "application/json", session.token)["items"]

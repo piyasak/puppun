@@ -172,6 +172,14 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
     return None
 
 
+def agent_state(db: Session, ctx: AgentContext, item_id: uuid.UUID) -> dict:
+    item = db.scalars(select(ScheduleItem).join(Device, Device.id == ScheduleItem.device_id).where(
+        ScheduleItem.id == item_id, Device.environment_id == ctx.environment_id)).first()
+    if item is None:
+        raise ApiError(404, "NOT_FOUND", "ไม่พบรายการนี้")
+    return {"id": str(item.id), "state": item.state, "reason": item.reason, "attempt": item.attempts}
+
+
 def spec(db: Session, item: ScheduleItem, storage, ttl_s: int, posting_mode: str) -> dict:
     """What the Agent needs for one post: the bound file and text, the phone and account."""
     clip = db.get(Clip, item.clip_id)
@@ -305,7 +313,8 @@ RESOLUTIONS = ("found_published", "confirmed_not_published", "still_unknown")
 # here: they are fixed by approving again (rebinds automatically) or by scheduling elsewhere.
 RETRYABLE_REASONS = ("AGENT_LOST", "ACCOUNT_MISMATCH", "ACCOUNT_UNREADABLE", "TRANSFER_FAILED", "GALLERY_NOT_FOUND", "FILE_UNAVAILABLE",
                      "DOWNLOAD_FAILED", "FILE_HASH_MISMATCH", "DEVICE_NOT_CONNECTED", "AGENT_ERROR", "WIFI_OFFLINE",
-                     "THAI_KEYBOARD_MISSING")
+                     "THAI_KEYBOARD_MISSING", "UNKNOWN_SCREEN", "SCREEN_CHANGED", "KEYBOARD_SHOWN",
+                     "CAPTION_MISMATCH", "VISIBILITY_NOT_SET")
 
 
 def _next_slot(db: Session, item: ScheduleItem, at: datetime) -> datetime:

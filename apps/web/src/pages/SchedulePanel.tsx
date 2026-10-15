@@ -35,7 +35,8 @@ const DECISIONS: { id: Decision; text: string; hint: string }[] = [
 ]
 const RETRYABLE = ['AGENT_LOST', 'ACCOUNT_MISMATCH', 'TRANSFER_FAILED', 'GALLERY_NOT_FOUND', 'FILE_UNAVAILABLE',
   'DOWNLOAD_FAILED', 'FILE_HASH_MISMATCH', 'DEVICE_NOT_CONNECTED', 'AGENT_ERROR', 'WIFI_OFFLINE',
-  'ACCOUNT_UNREADABLE', 'THAI_KEYBOARD_MISSING']  // = posts.RETRYABLE_REASONS
+  'ACCOUNT_UNREADABLE', 'THAI_KEYBOARD_MISSING', 'UNKNOWN_SCREEN', 'SCREEN_CHANGED', 'KEYBOARD_SHOWN',
+  'CAPTION_MISMATCH', 'VISIBILITY_NOT_SET']  // = posts.RETRYABLE_REASONS
 type ResumePreview = { series_version: number; moves: { seq: number; from: string; to: string }[] }
 
 function toLocalInput(iso: string): string {
