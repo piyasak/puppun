@@ -172,6 +172,14 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
     return None
 
 
+def agent_state(db: Session, ctx: AgentContext, item_id: uuid.UUID) -> dict:
+    item = db.scalars(select(ScheduleItem).join(Device, Device.id == ScheduleItem.device_id).where(
+        ScheduleItem.id == item_id, Device.environment_id == ctx.environment_id)).first()
+    if item is None:
+        raise ApiError(404, "NOT_FOUND", "ไม่พบรายการนี้")
+    return {"id": str(item.id), "state": item.state, "reason": item.reason, "attempt": item.attempts}
+
+
 def spec(db: Session, item: ScheduleItem, storage, ttl_s: int, posting_mode: str) -> dict:
     """What the Agent needs for one post: the bound file and text, the phone and account."""
     clip = db.get(Clip, item.clip_id)

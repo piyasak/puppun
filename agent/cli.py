@@ -48,7 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     p_pow = sub.add_parser("power", help="phone Wi-Fi control used by power saving (Q-23)")
     p_pow.add_argument("--serial", required=True)
     p_pow.add_argument("action", choices=["status", "on", "off"])
-    sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
+    p_rec = sub.add_parser("recover", help="after a crash: settle every unfinished attempt in the journal")
+    p_rec.add_argument("--data-dir", type=Path, default=None, help="default: the Agent's data folder")
     sub.add_parser("version", help="print the Agent version")
     sub.add_parser("licenses", help="third-party software in this Agent and where its licences are")
     p_set = sub.add_parser("settings", help="settings window: pairing code, clips/videos folders, start with Windows")
@@ -165,7 +166,9 @@ def main(argv: list[str] | None = None) -> int:
 
         return getattr(admin, args.cmd.replace("-", "_"))(args)
     if args.cmd == "recover":
-        return recover_all()
+        from agent.identity import default_data_dir
+
+        return recover_all((args.data_dir or default_data_dir()) / "attempts.jsonl")
     if args.cmd == "connect":
         return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check,
                        None if args.no_jobs else (args.media_dir or saved_media_dir(args.data_dir) or Path.cwd()),
@@ -414,20 +417,14 @@ def ui_rehearsal(adb: Adb, serial: str, clip: Path, caption: str, account: str) 
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-def recover_all() -> int:
-    """Run on Agent start: unfinished attempts become RETRYABLE_FAILED or UNKNOWN (never resubmitted)."""
-    journal = AttemptJournal(JOURNAL)
-    ids = []
-    if JOURNAL.exists():
-        for line in JOURNAL.read_text(encoding="utf-8").splitlines():
-            try:
-                attempt_id = json.loads(line)["attempt_id"]
-            except (json.JSONDecodeError, KeyError):
-                continue
-            if attempt_id not in ids:
-                ids.append(attempt_id)
+def recover_all(path: Path) -> int:
+    """By hand, offline: unfinished attempts in the Agent's journal (`path`, the data folder's attempts.jsonl;
+    until 2026-10-15 this read var/agent/attempts.jsonl and so never the installed Agent's) become
+    RETRYABLE_FAILED or UNKNOWN (never resubmitted). The Agent also settles them itself on start against
+    the server (PostRunner.settle_journal)."""
+    journal = AttemptJournal(path)
     results = {}
-    for attempt_id in ids:
+    for attempt_id in journal.ids():
         before = journal.current(attempt_id)
         after = journal.recover(attempt_id)
         if before != after:
