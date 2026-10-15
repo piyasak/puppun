@@ -7,7 +7,7 @@ Last updated: 2026-10-07
 ### Latest slice (2026-10-15) — with the account check off, a phone uses its own account's grant first
 - Public test on tx1: post e153363c went out "only you" under 6aac753c (patsy4404) instead of the new public grant 27c99a50 (jk.mickey): with Q-48 off any grant applies and the oldest came first. Verified by the hidden marker (`hidden:e15336`)
 - Fix (PO option 2): `posting_grants.for_claim` with the check off ranks the phone's own account first, then "*" (any account), then other accounts; oldest first within each. Integration test covers own → "*" → other
-- Next: public test post on tx1 after deploy
+- Deployed 2cc8def. **Public test passed**: 3a958ce5 on tx1 (@jk.mickey) under public grant 27c99a50, posted "everyone", VERIFIED_SUCCESS 54 s after Post with `hidden:3a958c` (branch Agent run on the QA PC, PO entered the token). Q-49 works end to end; the Agent release (0.5.8) is next
 
 ### Latest slice (2026-10-15) — public posting, no digits/links in captions (Q-49), part 1
 - PO: open real (public) posting; no numbers or links in captions (against TikTok's rules). Chosen: public, remove the "cf…" marker and links, verify with a hidden marker
