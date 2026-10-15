@@ -17,15 +17,17 @@ variant = sys.argv[4]; real = subprocess.run
 def run(cmd, **kw):
     if "libx264" in cmd:
         cmd = list(cmd)
+        if variant.startswith("cpuind_only"):
+            i = cmd.index("-x264-params") + 1; cmd[i] = "cpu-independent=1"
         if variant == "nosubs":
             i = cmd.index("-filter_complex") + 1; cmd[i] = cmd[i].replace("subtitles=clip.ass,", "")
         if variant == "x264_c":
-            cmd[cmd.index("asm=SSE4.2")] = "asm=0"
+            i = cmd.index("-x264-params") + 1; cmd[i] = "asm=0"
         if variant == "lav_c":
             cmd[cmd.index("-cpuflags") + 1] = "0"
         if variant == "x264_c_nosubs":
             i = cmd.index("-filter_complex") + 1; cmd[i] = cmd[i].replace("subtitles=clip.ass,", "")
-            cmd[cmd.index("asm=SSE4.2")] = "asm=0"
+            i = cmd.index("-x264-params") + 1; cmd[i] = "asm=0"
     return real(cmd, **kw)
 R.subprocess.run = run
 t = R.ClipText("ทดสอบ ตอนที่ 1/2", "ติดตามตอนต่อไป", [Cue(1.0, 4.0, "สวัสดีครับ")])
@@ -35,8 +37,8 @@ print(r.sha256)
 def md5(f, sel):
     return subprocess.run(["ffmpeg", "-v", "error", "-i", str(f), "-map", sel, "-c", "copy", "-f", "md5", "-"],
                           capture_output=True, text=True).stdout.strip()[-8:]
-for variant in ("new", "nosubs", "x264_c", "lav_c", "x264_c_nosubs"):
-    f = out / variant / "clip.mp4"
+for variant in ("new", "new", "new", "cpuind_only", "cpuind_only", "cpuind_only", "x264_c"):
+    f = out / f"{variant}_{len(list(out.glob(variant + '*')))}" / "clip.mp4"
     subprocess.run([sys.executable, "-c", code, str(repo / "services/worker"), str(src), str(f), variant],
                    capture_output=True, text=True, check=True)
     print(f"RESULT {variant} v={md5(f, '0:v')} a={md5(f, '0:a')}", flush=True)

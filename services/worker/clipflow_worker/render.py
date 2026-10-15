@@ -48,7 +48,9 @@ def _has_sse42() -> bool:
 # Never force a level the CPU lacks: that crashes.
 _X86_64 = platform.machine().lower() in ("amd64", "x86_64")
 CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if _X86_64 else ()
-X264_ARGS = ("-x264-params", "asm=SSE4.2") if _X86_64 and _has_sse42() else ()
+# cpu-independent: x264 uses the same algorithms on every CPU (its float mb-tree code differed
+# between Intel and AMD); no measurable cost.
+X264_ARGS = ("-x264-params", "cpu-independent=1" + (":asm=SSE4.2" if _X86_64 and _has_sse42() else ""))
 # No metadata from the source (creation time, location, chapters) and no version strings from the
 # muxer: only the frames and samples decide the bytes.
 BITEXACT_ARGS = ("-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact",
