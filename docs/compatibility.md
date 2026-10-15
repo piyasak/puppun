@@ -104,6 +104,16 @@ Segment selection บนเสียงจริงที่ดาวน์โ�
 
 Render 300 วินาทีจากวิดีโอสังเคราะห์ (ffmpeg testsrc2 1280×720 + sine, ซับไทย 29 cues): ผล 1080×1920, 300.00s, H.264/AAC; ตรวจภาพที่ 286s (title + ซับ) และ 299s (ending card, ไม่มีซับทับ) ถูกต้อง; **render ใช้ 236.3s ต่อคลิป 5 นาที (≈0.79× realtime)** บนเครื่องนี้ → งาน 3 คลิป × 5 นาที ≈ 12 นาที render ต่อ Job ต่อ worker 1 ตัว (ข้อมูลสำหรับ G1-06/capacity)
 
+### Same render, same bytes (2026-10-15)
+Approvals and schedule items are bound to the render sha256, so a remake must be the same file. Same segment, lossless source (ffv1/flac, 640×360 → 1080×1920, 20 s), FFmpeg 6.1.1 (Ubuntu 24.04 runner) and 9.0.2 (this PC):
+
+| Render args | Result |
+|---|---|
+| before (`-threads cpu_count//2`, CPU's own SIMD) | hash changes with the thread count (this PC: 10/2/1 threads → 3 hashes); AAC differs by SIMD level (AVX2 vs AVX vs SSE2 on this PC); on AVX-512 runners (Xeon 8573C/8370C, EPYC 9V74) the video differed **from one render to the next on one VM** (3 renders → 3 hashes) — the cause of the CI failure of `test_reset_remakes_a_deleted_file_with_the_same_hash` (run 38743242112) |
+| after (`render.py`: x264 `cpu-independent=1` + 4 threads, FFmpeg `-cpuflags` SSE2 on x86-64, `+bitexact`, `-map_metadata -1`) | 12 runners, 5 CPU models (EPYC 7763/9V74/9V45, Xeon 8573C/8370C; AVX2 and AVX-512), 3 renders each + 1 vs 2 filter threads: **one video (md5 5c37d961) and one audio stream** everywhere; equals x264's plain-C output |
+
+Cost on this PC (i7-13700H, 60 s clip): SSE2 FFmpeg ≈ +10% (27.5 s → ~31 s); `cpu-independent` no measurable difference. Different FFmpeg/x264/libass versions still make different bytes (the Agent ships one pinned FFmpeg build, Q-46). Changing the args changes the hash of new renders only; clips already rendered keep their stored files and hashes.
+
 ## API stack (P2.1) — ทดสอบ 2026-10-07
 | Component | Version | ผล |
 |---|---|---|
