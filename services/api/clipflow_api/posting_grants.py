@@ -99,8 +99,10 @@ def account_check(db: Session, workspace_id: uuid.UUID) -> bool:
 def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime, *,
               any_account: bool = False, public_ok: bool = True) -> PostingGrant | None:
     """The grant a post on this account may go out live under, or None (a dry run). `any_account`
-    (Q-48, account check off): any grant of the Workspace, whatever the phone's account.
-    The oldest valid grant with room is used first; the row is locked so two claims count the same room."""
+    (Q-48, account check off): any grant of the Workspace, whatever the phone's account, but the phone's own
+    account's grants first, then "*" (any account), then other accounts' (PO 2026-10-15: with the check off,
+    tx1's post used tx2's older "only you" grant instead of tx1's own public one).
+    Within those, the oldest valid grant with room is used first; the row is locked so two claims count the same room."""
     if not account and not any_account:
         return None
     where = [PostingGrant.workspace_id == workspace_id]
@@ -112,7 +114,9 @@ def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: dat
         *where, PostingGrant.revoked_at.is_(None), PostingGrant.expires_at > at,
         PostingGrant.used_posts < PostingGrant.max_posts).order_by(PostingGrant.created_at)
         .with_for_update()).all()
-    for grant in grants:
+    own = (account or "").lower().lstrip("@")
+    rank = {own: 0, ANY_ACCOUNT: 1} if own else {ANY_ACCOUNT: 1}
+    for grant in sorted(grants, key=lambda g: rank.get(g.account, 2)):  # stable: oldest first within a rank
         if grant.used_posts + _pending(db, grant.id) < grant.max_posts:
             return grant
     return None
