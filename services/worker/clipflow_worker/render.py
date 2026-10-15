@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import platform
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -21,6 +22,20 @@ from clipflow_worker.textlayout import wrap
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
 DURATION_TOLERANCE_S = 0.5
+# Approvals and schedule items are bound to the render's sha256 (PRD section F/H), so a remake of
+# the same segment must be the same file on any PC. x264's output depends on its own thread count,
+# so the encoder always gets this many threads whatever the CPU; filters and decoding are
+# bit-exact for any count and still follow RenderLimits.
+ENCODER_THREADS = 4
+# FFmpeg picks SIMD code by the CPU, and the AAC encoder (float) and some video paths round
+# differently with AVX/AVX2/FMA, so the same clip was different bytes on different CPUs. On x86-64
+# FFmpeg is held to SSE2, which every x86-64 CPU has (forcing a flag the CPU lacks would crash);
+# about 10% slower on a 60 s clip. x264 and libass choose their own code and are bit-exact.
+CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if platform.machine().lower() in ("amd64", "x86_64") else ()
+# No metadata from the source (creation time, location, chapters) and no version strings from the
+# muxer: only the frames and samples decide the bytes.
+BITEXACT_ARGS = ("-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact",
+                 "-flags:v", "+bitexact", "-flags:a", "+bitexact")
 
 
 class RenderError(Exception):
@@ -49,9 +64,10 @@ class Template:
 class RenderLimits:
     """Resource limits for one render on the customer's PC (NF-03, G3-01, E-38).
 
-    The encoder gets at most half of the CPU threads and runs below normal priority on
-    Windows, so posting, the browser and the Agent's heartbeats stay responsive. A render
-    that takes longer than `seconds_per_clip_second` x clip length (plus a floor) is killed.
+    Filters get at most half of the CPU threads (the x264 encoder always ENCODER_THREADS) and
+    the render runs below normal priority on Windows, so posting, the browser and the Agent's
+    heartbeats stay responsive. A render that takes longer than `seconds_per_clip_second` x clip
+    length (plus a floor) is killed.
     """
 
     threads: int = max(1, (os.cpu_count() or 2) // 2)
@@ -155,13 +171,13 @@ def render_clip(
         f"subtitles={ass_path.name},format=yuv420p[v]"
     )
     cmd = [
-        binary("ffmpeg"), "-y", "-v", "error",
+        binary("ffmpeg"), "-y", "-v", "error", *CPU_ARGS,
         "-ss", f"{start:.3f}", "-i", str(source.resolve()), "-t", f"{duration:.3f}",
         "-filter_complex", graph, "-map", "[v]", "-map", "0:a:0?",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
         "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
-        "-threads", str(limits.threads), "-filter_complex_threads", str(limits.threads),
-        "-movflags", "+faststart", out_path.name,
+        "-threads", str(ENCODER_THREADS), "-filter_complex_threads", str(limits.threads),
+        *BITEXACT_ARGS, "-movflags", "+faststart", out_path.name,
     ]
     # Run inside the output folder so the subtitles filter gets a plain relative path
     # (Windows drive-letter colons would otherwise need filtergraph escaping).
