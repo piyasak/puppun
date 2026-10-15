@@ -502,3 +502,53 @@ def test_a_covered_post_button_is_found_before_submitting_and_never_pressed():
     with pytest.raises(UiStop) as stop:
         ui.ready_to_post("ทดสอบ #punpun")
     assert stop.value.code in ("UNKNOWN_SCREEN", "SCREEN_CHANGED") and not phone.presses
+
+
+def test_an_open_videos_tab_is_not_pressed_again():
+    # tx1, 2026-10-16: pressing the already selected tab opened TikTok's sort menu over the grid.
+    phone = ProfileGrid()
+    selected_tab = ProfileGrid.TAB_ROW[0].replace("clickable=", 'selected="true" clickable=')
+    phone.TAB_ROW = (selected_tab, *ProfileGrid.TAB_ROW[1:])
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    ui.open_videos_tab()
+    assert phone.presses == []
+
+
+class PublicGrid(ProfileGrid):
+    """Profile grid with a pinned video first; opening a tile shows that video's caption."""
+
+    CAPTIONS = ["วิดีโอปักหมุดเก่า", "ทดสอบโพสต์สาธารณะ #punpun "]  # tile 1 pinned, tile 2 our post
+
+    def __init__(self, marker):
+        super().__init__()
+        self.marker, self.open = marker, None
+
+    def run(self, args):
+        cmd = args[3] if len(args) > 3 else ""
+        if m := re.match(r"input swipe (\d+) (\d+)", cmd):
+            x, y = int(m.group(1)), int(m.group(2))
+            self.presses.append((x, y))
+            if y == 960:
+                self.open = 0 if x < 240 else 1
+        elif cmd == "input keyevent KEYCODE_BACK":
+            self.open = None
+        if cmd.startswith("cat ") and self.open is not None:
+            text = self.CAPTIONS[self.open] + (self.marker if self.open == 1 else "")
+            return screen(node(text=text, bounds=(24, 1200, 560, 1260)))
+        if cmd.startswith("cat "):
+            selected = ProfileGrid.TAB_ROW[0].replace("clickable=", 'selected="true" clickable=')
+            tiles = [f'<node text="" resource-id="com.ss.android.ugc.trill:id/daw" class="android.widget.FrameLayout" '
+                     f'content-desc="" clickable="true" bounds="[{x},801][{x + 238},1120]" />' for x in (0, 240, 481)]
+            return screen(selected, *ProfileGrid.TAB_ROW[1:], *tiles)
+        return super().run(args)
+
+
+def test_a_pinned_video_first_in_the_grid_is_skipped_by_the_marker():
+    from agent import marker
+
+    mark = marker.hidden("437f6d0c-1234-4abc-8def-0123456789ab")
+    phone = PublicGrid(mark)
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    ui.account = lambda **kw: "jk.mickey"
+    evidence = ui._newest_public_has(mark, "ทดสอบโพสต์สาธารณะ #punpun " + mark)
+    assert evidence["value"] == mark and phone.open == 1

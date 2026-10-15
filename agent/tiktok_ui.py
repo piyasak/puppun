@@ -82,6 +82,7 @@ class Node:
     cls: str
     clickable: bool
     bounds: tuple[int, int, int, int]
+    selected: bool = False
 
     @property
     def label(self) -> str:
@@ -115,7 +116,8 @@ def parse_dump(xml: str) -> list[Node]:
         m = _BOUNDS.match(el.get("bounds", ""))
         if m:
             nodes.append(Node(el.get("text", ""), el.get("content-desc", ""), el.get("resource-id", ""),
-                              el.get("class", ""), el.get("clickable") == "true", tuple(int(v) for v in m.groups())))
+                              el.get("class", ""), el.get("clickable") == "true", tuple(int(v) for v in m.groups()),
+                              el.get("selected") == "true"))
     return nodes
 
 
@@ -456,6 +458,8 @@ class TikTokUi:
         tab = self.find(nodes, "วิดีโอ", "Videos")
         if private is None or tab is None or abs(tab.center[1] - private.center[1]) > 10:
             raise UiStop("UNKNOWN_SCREEN", "the videos tab was not found next to the private tab on Profile")
+        if any(n.selected and (encloses(n, tab) or encloses(tab, n)) for n in nodes):
+            return  # already open: pressing it again opens TikTok's sort menu (tx1, 2026-10-16)
         self.press(tab.label, inner_icon="โพสต์")
 
     def verify_public_post(self, marker: str, caption: str, tries: int = 4, wait_s: float = 20.0) -> dict:
@@ -484,26 +488,32 @@ class TikTokUi:
         # Grid tiles only: the same id is used by an icon in the top bar (tx1, 2026-10-15).
         tiles = sorted((n for n in nodes if n.rid.endswith(":id/daw") and n.clickable and n.bounds[1] >= row.bounds[3]),
                        key=lambda n: (n.bounds[1], n.bounds[0]))
-        pinned = [n for n in nodes if n.label in ("ปักหมุด", "Pinned")]
-        tiles = [t for t in tiles if not any(encloses(t, p) for p in pinned)]
         if not tiles:
             raise UiStop("VERIFY_MARKER", "no public video on Profile yet")
-        x, y = tiles[0].center
-        self.sh(f"input swipe {x} {y} {x} {y} 120")  # newest tile (not pinned)
-        self.sleep(self.settle_s * 2)
-        self.sh("input tap 360 650")  # pause: a playing video cannot be read
-        self.sleep(self.settle_s)
+        # The newest post is the first tile unless videos are pinned above it (tx2, 2026-10-16: a pinned
+        # video was opened and the post became UNKNOWN). TikTok pins at most 3, so the first 4 tiles are
+        # opened in turn (viewing only) until one carries this attempt's marker.
         start = marker_visible(caption)[:12]
-        text_nodes = [n for n in self.read() if n.text and start and n.text.startswith(start)]
-        if not text_nodes:
+        seen_caption = False
+        for tile in tiles[:4]:
+            x, y = tile.center
+            self.sh(f"input swipe {x} {y} {x} {y} 120")
+            self.sleep(self.settle_s * 2)
+            self.sh("input tap 360 650")  # pause: a playing video cannot be read
+            self.sleep(self.settle_s)
+            text_nodes = [n for n in self.read() if n.text and start and n.text.startswith(start)]
+            if text_nodes:
+                seen_caption = True
+                cx, cy = text_nodes[0].center
+                self.sh(f"input swipe {cx} {cy} {cx} {cy} 120")  # expand: the marker is at the end
+                self.sleep(self.settle_s)
+                if marker in " ".join(n.text for n in self.read()):
+                    return {"method": "caption_marker", "value": marker, "account": handle, "visibility": "everyone"}
+            self.sh("input keyevent KEYCODE_BACK")  # back to the grid, next tile
+            self.sleep(self.settle_s)
+        if not seen_caption:
             raise UiStop("VERIFY_UNREADABLE", "caption of the newest public video not found")
-        cx, cy = text_nodes[0].center
-        self.sh(f"input swipe {cx} {cy} {cx} {cy} 120")  # expand: the marker is at the end
-        self.sleep(self.settle_s)
-        texts = " ".join(n.text for n in self.read())
-        if marker not in texts:
-            raise UiStop("VERIFY_MARKER", "the newest public video does not carry this attempt's marker")
-        return {"method": "caption_marker", "value": marker, "account": handle, "visibility": "everyone"}
+        raise UiStop("VERIFY_MARKER", "the newest public videos do not carry this attempt's marker")
 
     def private_count(self, tries: int = 6) -> int:
         """Private videos on Profile (lock tiles), read on the private tab. The grid loads late (QA phone:
