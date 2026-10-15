@@ -47,14 +47,14 @@ class PostingUi:
     def open_post_screen(self, media_id):
         self.calls.append("open")
 
-    def set_only_me(self):
-        self.calls.append("only_me")
+    def set_visibility(self, visibility):
+        self.calls.append(visibility)
 
     def type_caption(self, caption):
         self.calls.append("caption")
         self.caption = caption
 
-    def submit(self, grant, caption):
+    def submit(self, grant, caption, visibility="only_me"):
         assert isinstance(grant, authorization.PostGrant)
         self.posted += 1
         self.calls.append("POST")
@@ -100,7 +100,11 @@ def test_live_post_is_verified_with_evidence(shop, live):
     assert ui.calls == ["account", "open", "only_me", "caption", "POST", "close"]
     item = items(shop, s["series"]["id"])[0]
     assert item["state"] == "VERIFIED_SUCCESS" and item["submitted_at"] and item["verified_at"]
-    assert item["evidence"]["method"] == "caption_marker" and item["evidence"]["value"].startswith("cf")
+    assert item["evidence"]["method"] == "caption_marker" and item["evidence"]["value"].startswith("hidden:")
+    # Q-49: no digits or link added to the caption; the attempt marker is invisible
+    from agent import marker
+    assert marker.visible(ui.caption) == ui.caption.rstrip(marker.EDGE + marker.ZERO + marker.ONE)
+    assert not any(ch.isdigit() for ch in ui.caption[-26:])
     assert json.loads(s["ledger"].read_text(encoding="utf-8"))["Q-TEST"]["allowed"] == 1
 
 

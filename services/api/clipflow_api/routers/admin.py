@@ -321,7 +321,7 @@ class GrantIn(Reason):
     account: str = Field(default="*", max_length=25)  # "*" or empty: any account (Q-48, only with the check off)
     max_posts: int = Field(ge=1, le=1000)
     days: int = Field(ge=1, le=90)  # the grant ends this many days from now
-    visibility: Literal["only_me"] = "only_me"
+    visibility: Literal["only_me", "everyone"] = "only_me"  # Q-49: everyone = public
 
 
 @router.get("/workspaces/{workspace_id}/posting-grants")

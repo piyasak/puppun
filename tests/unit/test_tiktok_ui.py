@@ -92,6 +92,8 @@ class FakeTikTok:
             self.state = "vis_sheet"
         elif self.state == "vis_sheet" and "เฉพาะคุณเท่านั้น" in labels:
             self.visibility, self.state = "เฉพาะคุณเท่านั้นที่ดูโพสต์นี้ได้", "post"
+        elif self.state == "vis_sheet" and "ทุกคน" in labels:
+            self.visibility, self.state = "ทุกคนสามารถดูโพสต์นี้ได้", "post"
         elif any(n.cls.endswith("EditText") for n in hit):
             self.keyboard = True
         elif "โพสต์" in labels:
@@ -435,3 +437,18 @@ def test_with_the_account_check_on_a_phone_without_an_account_never_posts():
     with pytest.raises(UiStop) as stop:
         ui_for(FakeTikTok()).check_account(None)
     assert stop.value.code == "ACCOUNT_NOT_SET"
+
+
+
+def test_public_visibility_is_chosen_and_read_back():
+    # Q-49: a public grant picks "ทุกคน"; "only you" is never taken for public or the other way round.
+    from agent.tiktok_ui import shows
+
+    assert shows("ทุกคนสามารถดูโพสต์นี้ได้", "everyone") and not shows("ทุกคนสามารถดูโพสต์นี้ได้", "only_me")
+    assert shows("เฉพาะคุณเท่านั้นที่ดูโพสต์นี้ได้", "only_me")
+    assert not shows("เฉพาะคุณเท่านั้นที่ดูโพสต์นี้ได้", "everyone")
+    phone = FakeTikTok()
+    phone.state, phone.visibility = "post", "เฉพาะคุณเท่านั้นที่ดูโพสต์นี้ได้"
+    ui = ui_for(phone)
+    ui.set_visibility("everyone")
+    assert phone.visibility == "ทุกคนสามารถดูโพสต์นี้ได้"

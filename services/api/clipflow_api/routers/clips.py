@@ -221,6 +221,7 @@ def patch_metadata(clip_id: uuid.UUID, body: MetadataPatch, request: Request, au
 def approve_clip(clip_id: uuid.UUID, body: ApproveIn, request: Request, auth: WebAuth = Depends(web_auth),
                  db: Session = Depends(get_db)):
     clip, job = _owned(db, auth, clip_id, lock=True)
+    clips.check_no_link(clips.current_metadata(db, clip).caption, "caption")  # text written before Q-49
     clips.approve(clip, job, auth.user_id, body.metadata_version)
     schedules.sync_clip_items(db, clip)
     audit.record(db, request, "clip.approve", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,

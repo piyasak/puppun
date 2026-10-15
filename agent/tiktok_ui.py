@@ -49,6 +49,16 @@ CAPTCHA_MARKERS = ("captcha", "ยืนยันว่าคุณไม่ใ�
                    "select 2 objects", "ตรวจสอบความปลอดภัย", "security check")
 VISIBILITY_ROW = ("ดูโพสต์นี้ได้", "can view this post", "can watch this")
 ONLY_ME = ("เฉพาะคุณ", "only you", "only me")
+EVERYONE = ("ทุกคน", "everyone")  # Q-49: public
+VISIBILITY_OPTION = {"only_me": ("เฉพาะคุณเท่านั้น", "Only you", "Only me"), "everyone": ("ทุกคน", "Everyone")}
+
+
+def shows(row_label: str, visibility: str) -> bool:
+    """True when the post screen's visibility row says `visibility`."""
+    label = row_label.lower()
+    if any(m in label for m in ONLY_ME):
+        return visibility == "only_me"
+    return visibility == "everyone" and any(m in label for m in EVERYONE)
 # TikTok closed in the editor (the Agent force-stops it after a rehearsal or a failed attempt) asks this
 # in a floating banner that hides the Profile header from both readers (tx1, 2026-10-13, > 3 minutes).
 RESUME_BANNER = ("แก้ไขวิดีโอที่ยังไม่ได้โพสต์ของคุณต่อหรือไม่",)
@@ -369,20 +379,26 @@ class TikTokUi:
             raise UiStop("UNKNOWN_SCREEN", f"not the post screen; focus {self.focus()}")
 
     def set_only_me(self) -> None:
+        self.set_visibility("only_me")
+
+    def set_visibility(self, visibility: str) -> None:
+        """Who can see the post: "only_me" or "everyone" (Q-49), read back from the post screen."""
+        if visibility not in VISIBILITY_OPTION:
+            raise UiStop("VISIBILITY_NOT_SET", f"unknown visibility {visibility!r}")
         row = visibility_row(self.read())
         if row is None:
             raise UiStop("UNKNOWN_SCREEN", "visibility row not found on the post screen")
-        if any(m in row.label.lower() for m in ONLY_ME):
+        if shows(row.label, visibility):
             return
         self.press(row.label)
-        self.press("เฉพาะคุณเท่านั้น", "Only you", "Only me")
+        self.press(*VISIBILITY_OPTION[visibility])
         nodes = self.read()
         if self.find(nodes, "ปิด", "Close") is not None and visibility_row(nodes) is None:
             self.press("ปิด", "Close")  # the sheet did not close by itself
             nodes = self.read()
         row = visibility_row(nodes)
-        if row is None or not any(m in row.label.lower() for m in ONLY_ME):
-            raise UiStop("VISIBILITY_NOT_SET", "visibility did not change to only you")
+        if row is None or not shows(row.label, visibility):
+            raise UiStop("VISIBILITY_NOT_SET", f"visibility did not change to {visibility}")
 
     def type_caption(self, caption: str) -> None:
         field = next((n for n in self.read() if n.cls.endswith("EditText")), None)
@@ -440,7 +456,7 @@ class TikTokUi:
             last = count
         raise UiStop("PRIVATE_COUNT_UNSTABLE", "the private videos grid did not settle")
 
-    def submit(self, grant, caption: str) -> None:
+    def submit(self, grant, caption: str, visibility: str = "only_me") -> None:
         """Press Post once. Only with a grant from agent.authorization (used and recorded beforehand),
         and only on a post screen whose caption, visibility and button position are what we expect."""
         from agent.authorization import PostGrant
@@ -454,8 +470,8 @@ class TikTokUi:
         row = visibility_row(nodes)
         if field is None or field.text.strip() != caption.strip():
             raise UiStop("CAPTION_MISMATCH", "caption changed before Post")
-        if row is None or not any(m in row.label.lower() for m in ONLY_ME):
-            raise UiStop("VISIBILITY_NOT_SET", "visibility is not only you")
+        if row is None or not shows(row.label, visibility):
+            raise UiStop("VISIBILITY_NOT_SET", f"visibility is not {visibility}")
         buttons = [n for n in nodes if n.label in ("โพสต์", "Post") and n.clickable and n.bounds[1] > 1300]
         if len(buttons) != 1:
             raise UiStop("UNKNOWN_SCREEN", "the Post button is not where it belongs")

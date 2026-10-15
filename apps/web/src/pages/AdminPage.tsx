@@ -73,6 +73,7 @@ export function AdminPage() {
   const [grantAccount, setGrantAccount] = useState('')
   const [grantPosts, setGrantPosts] = useState(10)
   const [grantDays, setGrantDays] = useState(14)
+  const [grantVisibility, setGrantVisibility] = useState<'only_me' | 'everyone'>('only_me')
 
   useEffect(() => {
     api<{ role: string }>('/v1/admin/me').then((r) => setRole(r.role)).catch(() => setRole(''))
@@ -206,11 +207,11 @@ export function AdminPage() {
               onSubmit={(reason) => act('account-check', { enabled: !detail.account_check, reason })} />
           )}
           <h3>สิทธิ์โพสต์จริง</h3>
-          <p className="muted">ไม่มีสิทธิ์ = ทุกโพสต์หยุดก่อนกดโพสต์ (dry run) • ตอนนี้เปิดได้เฉพาะแบบ "เฉพาะฉัน" • ต้องใช้ Agent 0.4.0 ขึ้นไป</p>
+          <p className="muted">ไม่มีสิทธิ์ = ทุกโพสต์หยุดก่อนกดโพสต์ (dry run) • "เฉพาะฉัน" ต้องใช้ Agent 0.4.0 ขึ้นไป • "สาธารณะ" ต้องใช้ Agent ที่รองรับ (ยังไม่ปล่อย) • ข้อความโพสต์ใส่ลิงก์ไม่ได้</p>
           <ul className="rows" data-testid="admin-grants">{grants.map((g) => (
             <li key={g.id} className="row"><div className="row-main">
               <strong>{g.account === '*' ? 'ทุกบัญชี' : `@${g.account}`} • {GRANT_STATUS[g.status]}</strong>
-              <span className="muted">ใช้ {g.used_posts}/{g.max_posts} • ถึง {formatDate(g.expires_at)} • {g.reason}</span>
+              <span className="muted">{g.visibility === 'everyone' ? 'สาธารณะ (ทุกคน)' : 'เฉพาะฉัน'} • ใช้ {g.used_posts}/{g.max_posts} • ถึง {formatDate(g.expires_at)} • {g.reason}</span>
             </div>
             {isAdmin && g.status === 'active' && (
               <ReasonForm label="ยกเลิกสิทธิ์" onSubmit={(reason) => grantAct(`/v1/admin/posting-grants/${g.id}/revoke`, { reason })} />
@@ -219,9 +220,12 @@ export function AdminPage() {
           {grants.length === 0 && <p className="muted">ยังไม่มีสิทธิ์โพสต์จริง</p>}
           {isAdmin && (
             <ReasonForm label="ให้สิทธิ์โพสต์จริง" onSubmit={(reason) => grantAct(`/v1/admin/workspaces/${detail.id}/posting-grants`,
-              { account: grantAccount, max_posts: grantPosts, days: grantDays, visibility: 'only_me', reason })}>
+              { account: grantAccount, max_posts: grantPosts, days: grantDays, visibility: grantVisibility, reason })}>
               <input aria-label="บัญชี TikTok" placeholder={detail.account_check ? '@บัญชี' : '@บัญชี (เว้นว่าง = ทุกบัญชี)'} value={grantAccount} onChange={(e) => setGrantAccount(e.target.value)} />
               <input type="number" aria-label="จำนวนโพสต์สูงสุด" min={1} max={1000} value={grantPosts} onChange={(e) => setGrantPosts(Number(e.target.value))} />
+              <select aria-label="ใครเห็นโพสต์" value={grantVisibility} onChange={(e) => setGrantVisibility(e.target.value as 'only_me' | 'everyone')}>
+                <option value="only_me">เฉพาะฉัน</option><option value="everyone">สาธารณะ (ทุกคน)</option>
+              </select>
               <input type="number" aria-label="ใช้ได้กี่วัน" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(Number(e.target.value))} />
             </ReasonForm>
           )}

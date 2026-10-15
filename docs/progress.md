@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-15) — public posting, no digits/links in captions (Q-49), part 1
+- PO: open real (public) posting; no numbers or links in captions (against TikTok's rules). Chosen: public, remove the "cf…" marker and links, verify with a hidden marker
+- Done (not released): public grants (0023, Admin page "ใครเห็นโพสต์"), `can_post_public` claim flag, link refusal in captions/titles (`CAPTION_HAS_LINK`), invisible marker `agent/marker.py` (evidence `hidden:<hex>`), `set_visibility("everyone")`, Agent refuses a caption with a link. Tests: unit 182, integration 308 (throwaway Postgres on 5433)
+- Not done, needs a phone on this PC: (1) does the punpun keyboard type the zero-width marker and does the screen read it back (ui-rehearsal); (2) does TikTok keep it after posting (one real "only you" post under an existing grant); (3) find the newest public video on Profile (pinned videos first) for verification. Until then the Agent keeps public off and nothing is released
+
 ### Latest slice (2026-10-13) — admin switch for the TikTok account check (Q-48)
 - PO: an admin can turn TikTok ID checking off/on to make posting easier. Chosen: per Workspace, off = no account check at all, grants then cover any account
 - Server: `workspaces.account_check` (0022, default on), admin route + Admin page card (reason, audited); claim/grant/SUBMITTING/scheduling/phone details follow it; grants may be "*" (any account, used only while off); only Agents that send `can_skip_account_check` (0.5.7+) get live posts without the check
