@@ -1,0 +1,15 @@
+# TEMPORARY diagnostic (removed before merge): is a re-render byte-identical on the Linux runner?
+name: diag-render
+on:
+  push:
+    branches: [render-bitexact]
+jobs:
+  repeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg && ffmpeg -version | head -1 && nproc
+      - run: python tools/diag/render_repeat.py "$RUNNER_TEMP/r" 25
