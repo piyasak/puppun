@@ -34,6 +34,7 @@ from xml.etree import ElementTree
 
 from agent import thai_keyboard
 from agent.adb import Adb, AdbError
+from agent.marker import visible as marker_visible
 
 PACKAGE = "com.ss.android.ugc.trill"
 SHARE_ACTIVITY = f"{PACKAGE}/com.ss.android.ugc.aweme.share.SystemShareActivity"
@@ -233,8 +234,11 @@ class TikTokUi:
 
     # --- acting --------------------------------------------------------------------------------
 
-    def press(self, *labels: str) -> None:
-        """Press the element with one of these labels, after checking what is under the point right now."""
+    def press(self, *labels: str, inner_icon: str | None = None) -> None:
+        """Press the element with one of these labels, after checking what is under the point right now.
+
+        `inner_icon`: a non-clickable icon with this label wholly inside the target does not block the press
+        (tx1, 2026-10-15: Profile's "วิดีโอ" tab carries an icon labelled "โพสต์"; used by open_videos_tab only)."""
         node = self.wait_for(*labels)
         x, y = node.center
         current = self.read()
@@ -246,7 +250,9 @@ class TikTokUi:
         # A forbidden control at the point blocks the press, unless it is a larger container that wholly
         # encloses the target (QA phone, 2026-10-11: after a post the feed's "LIVE" view spans the screen
         # behind the tab bar, and the Profile tab sits on top of it).
-        blocking = [n for n in here if forbidden(n) and not (n.area > target.area and encloses(n, target))]
+        blocking = [n for n in here if forbidden(n) and not (n.area > target.area and encloses(n, target))
+                    and not (inner_icon and n.label == inner_icon and not n.clickable and n.area < target.area
+                             and encloses(target, n))]
         if blocking or forbidden(node) or forbidden(target):
             raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: a forbidden control is there")
         self.sh(f"input swipe {x} {y} {x} {y} 120")  # short press: plain taps fell through sheets (P1)
@@ -442,6 +448,62 @@ class TikTokUi:
             self.sleep(self.settle_s)
 
     # --- the authorized post (Q-29) and its verification ---------------------------------------
+
+    def open_videos_tab(self) -> None:
+        """Profile's public videos grid (Q-49). Only the "วิดีโอ" tab in the same row as the private tab."""
+        nodes = self.read()
+        private = self.find(nodes, "วิดีโอส่วนตัว", "Private videos")
+        tab = self.find(nodes, "วิดีโอ", "Videos")
+        if private is None or tab is None or abs(tab.center[1] - private.center[1]) > 10:
+            raise UiStop("UNKNOWN_SCREEN", "the videos tab was not found next to the private tab on Profile")
+        self.press(tab.label, inner_icon="โพสต์")
+
+    def verify_public_post(self, marker: str, caption: str, tries: int = 4, wait_s: float = 20.0) -> dict:
+        """PRD §H for a public post (Q-49): the newest public video on this account's Profile (pinned ones
+        skipped) carries this attempt's invisible marker. While TikTok is still uploading, the newest tile
+        is an older post, so it looks again a few times (Back to Profile, never a force-stop)."""
+        for attempt in range(tries):
+            if attempt:
+                self.sh("input keyevent KEYCODE_BACK")
+                self.sleep(wait_s)
+            try:
+                return self._newest_public_has(marker, caption)
+            except UiStop as exc:
+                if exc.code not in ("VERIFY_MARKER", "VERIFY_UNREADABLE", "ACCOUNT_UNREADABLE") or attempt == tries - 1:
+                    raise
+        raise AssertionError("unreachable")
+
+    def _newest_public_has(self, marker: str, caption: str) -> dict:
+        handle = self.account(require=self.account_check) or None
+        self.open_videos_tab()
+        self.sleep(self.settle_s)
+        nodes = self.read()
+        row = self.find(nodes, "วิดีโอส่วนตัว", "Private videos")
+        if row is None:
+            raise UiStop("VERIFY_UNREADABLE", "Profile's tab row is not on screen")
+        # Grid tiles only: the same id is used by an icon in the top bar (tx1, 2026-10-15).
+        tiles = sorted((n for n in nodes if n.rid.endswith(":id/daw") and n.clickable and n.bounds[1] >= row.bounds[3]),
+                       key=lambda n: (n.bounds[1], n.bounds[0]))
+        pinned = [n for n in nodes if n.label in ("ปักหมุด", "Pinned")]
+        tiles = [t for t in tiles if not any(encloses(t, p) for p in pinned)]
+        if not tiles:
+            raise UiStop("VERIFY_MARKER", "no public video on Profile yet")
+        x, y = tiles[0].center
+        self.sh(f"input swipe {x} {y} {x} {y} 120")  # newest tile (not pinned)
+        self.sleep(self.settle_s * 2)
+        self.sh("input tap 360 650")  # pause: a playing video cannot be read
+        self.sleep(self.settle_s)
+        start = marker_visible(caption)[:12]
+        text_nodes = [n for n in self.read() if n.text and start and n.text.startswith(start)]
+        if not text_nodes:
+            raise UiStop("VERIFY_UNREADABLE", "caption of the newest public video not found")
+        cx, cy = text_nodes[0].center
+        self.sh(f"input swipe {cx} {cy} {cx} {cy} 120")  # expand: the marker is at the end
+        self.sleep(self.settle_s)
+        texts = " ".join(n.text for n in self.read())
+        if marker not in texts:
+            raise UiStop("VERIFY_MARKER", "the newest public video does not carry this attempt's marker")
+        return {"method": "caption_marker", "value": marker, "account": handle, "visibility": "everyone"}
 
     def private_count(self, tries: int = 6) -> int:
         """Private videos on Profile (lock tiles), read on the private tab. The grid loads late (QA phone:

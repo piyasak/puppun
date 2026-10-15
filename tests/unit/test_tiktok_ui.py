@@ -452,3 +452,39 @@ def test_public_visibility_is_chosen_and_read_back():
     ui = ui_for(phone)
     ui.set_visibility("everyone")
     assert phone.visibility == "ทุกคนสามารถดูโพสต์นี้ได้"
+
+
+class ProfileGrid:
+    """tx1, 2026-10-15: Profile's tab row (the videos tab carries an icon labelled "โพสต์") and the grid."""
+
+    TAB_ROW = (node(desc="วิดีโอ", cls="android.widget.RelativeLayout", bounds=(32, 720, 163, 800), clickable=True),
+               node(desc="โพสต์", cls="android.widget.ImageView", bounds=(71, 738, 115, 782)),
+               node(desc="วิดีโอส่วนตัว", cls="android.widget.RelativeLayout", bounds=(294, 720, 425, 800), clickable=True))
+
+    def __init__(self, extra=()):
+        self.presses = []
+        self.extra = extra
+
+    def run(self, args):
+        cmd = args[3] if len(args) > 3 else ""
+        if m := re.match(r"input swipe (\d+) (\d+)", cmd):
+            self.presses.append((int(m.group(1)), int(m.group(2))))
+        if cmd.startswith("cat "):
+            return screen(*self.TAB_ROW, *self.extra)
+        if cmd.startswith("dumpsys window"):
+            return "  mCurrentFocus=Window{1 u0 com.ss.android.ugc.trill/Fake}\n"
+        return ""
+
+
+def test_the_videos_tab_opens_despite_its_post_icon_but_a_real_post_button_never_does():
+    phone = ProfileGrid()
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    ui.open_videos_tab()
+    assert phone.presses == [(97, 760)]
+    clickable_post = node(desc="โพสต์", cls="android.widget.Button", bounds=(71, 738, 115, 782), clickable=True)
+    phone = ProfileGrid()
+    phone.TAB_ROW = (ProfileGrid.TAB_ROW[0], clickable_post, ProfileGrid.TAB_ROW[2])
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    with pytest.raises(UiStop) as stop:  # a pressable Post control is never treated as the tab's icon
+        ui.open_videos_tab()
+    assert stop.value.code == "REFUSED_ELEMENT" and phone.presses == []
