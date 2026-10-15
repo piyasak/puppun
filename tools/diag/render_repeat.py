@@ -7,6 +7,7 @@ from clipflow_worker.segments import Cue  # noqa: E402
 
 out = Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
 n = int(sys.argv[2])
+only = sys.argv[3].split(",") if len(sys.argv) > 3 else None
 src = out / "source.mp4"
 subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25:duration=70",
                 "-f", "lavfi", "-i", "aevalsrc='if(lt(mod(t,10),9),0.5*sin(2*PI*440*t),0)':s=44100:d=70",
@@ -38,6 +39,8 @@ def stream_md5(path, sel):
 
 
 for name, args in variants.items():
+    if only and name not in only:
+        continue
     seen = {}
     for i in range(n):
         f = out / f"{name}_{i}.mp4"

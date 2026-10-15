@@ -4,12 +4,44 @@ on:
   push:
     branches: [render-bitexact]
 jobs:
-  repeat:
+  contended:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg && ffmpeg -version | head -1 && nproc
-      - run: python tools/diag/render_repeat.py "$RUNNER_TEMP/r" 25
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - name: renders while every core is busy
+        run: |
+          for i in 1 2 3 4 5 6; do (timeout 1500 python -c "while True: pass" &) ; done
+          python tools/diag/render_repeat.py "$RUNNER_TEMP/r" 30 old,bitexact
+  integration-loop:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: clipflow
+          POSTGRES_PASSWORD: clipflow_dev
+          POSTGRES_DB: clipflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U clipflow -d clipflow" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: "services/*/pyproject.toml"
+      - run: sudo apt-get update -q && sudo apt-get install -y -q ffmpeg
+      - run: python -m pip install -e services/worker -e "services/api[test]" pytest
+      - name: same-hash tests, 15 times
+        run: |
+          fails=0
+          for i in $(seq 1 15); do
+            python -m pytest -q services/api/tests/test_agent_job_runner_http.py -k "reset_remakes or same_seed" --rootdir . -p no:cacheprovider -o log_cli=false 2>&1 | tail -3 || true
+            python -m pytest -q services/api/tests/test_agent_job_runner_http.py -k "reset_remakes or same_seed" --rootdir . -p no:cacheprovider >/dev/null 2>&1 || fails=$((fails+1))
+          done
+          echo "FAILS=$fails"
