@@ -19,7 +19,7 @@ from yt_dlp.utils import DownloadError
 
 from clipflow_worker.media import binary
 from clipflow_worker.netguard import BlockedAddress, public_only
-from clipflow_worker.render import ClipText, RenderError, RenderLimits, Template, render_clip
+from clipflow_worker.render import ENCODER_THREADS, ClipText, RenderError, RenderLimits, Template, render_clip
 from clipflow_worker.source import (
     SourceError,
     SourceErrorCode,
@@ -153,7 +153,8 @@ def test_render_uses_capped_threads(tmp_path, monkeypatch):
     result = render_clip(src, 0, 2, ClipText("ชื่อ", "จบ"), tmp_path / "c.mp4", Template(), RenderLimits(threads=1))
     assert result.width == 1080 and result.height == 1920
     cmd = seen["cmd"]
-    assert cmd[cmd.index("-threads") + 1] == "1" and cmd[cmd.index("-filter_complex_threads") + 1] == "1"
+    assert cmd[cmd.index("-filter_complex_threads") + 1] == "1"
+    assert cmd[cmd.index("-threads") + 1] == str(ENCODER_THREADS)  # fixed: x264's output depends on it
     assert seen["kw"]["timeout"] == 120.0
 
 
