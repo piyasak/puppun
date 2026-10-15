@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-15) — a retried post stopped the Agent's posting thread (source 0.5.9)
+- PO, Agent 0.5.8 on the tx1/tx2 PC: `Exception in thread clipflow-posts … TransitionError: attempt f240f595-…-1 already exists`. f240f595 had been attempt 1 on that PC (ACCOUNT_UNREADABLE at 19:00); the PO pressed retry, `posts.retry` sets attempts back to 0, so the next claim was attempt 1 again; the journal refused the repeated id and `_loop` only caught ServerError/OSError/AdbError, so posting stopped for every phone on that PC (the heartbeat kept the Agent looking online)
+- Fix: a repeated attempt id gets a suffix (`…-1.r2`; the old record stays); `_loop` logs any unexpected error and keeps going. Unit tests (repeated id, loop survives); posting integration 39 passed
+- Workaround until 0.5.9 is installed: restart the Agent; do not press retry on a post already attempted on the same PC
+
 ### Latest slice (2026-10-15) — with the account check off, a phone uses its own account's grant first
 - Public test on tx1: post e153363c went out "only you" under 6aac753c (patsy4404) instead of the new public grant 27c99a50 (jk.mickey): with Q-48 off any grant applies and the oldest came first. Verified by the hidden marker (`hidden:e15336`)
 - Fix (PO option 2): `posting_grants.for_claim` with the check off ranks the phone's own account first, then "*" (any account), then other accounts; oldest first within each. Integration test covers own → "*" → other
