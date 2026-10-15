@@ -24,8 +24,8 @@ def md5(f, sel):
     return subprocess.run(["ffmpeg", "-v", "error", "-i", str(f), "-map", sel, "-c", "copy", "-f", "md5", "-"],
                           capture_output=True, text=True).stdout.strip()[-8:]
 for name, pkg in (("old", old_pkg), ("new", repo / "services/worker")):
-    for threads in (1, 2):
-        f = out / f"{name}_{threads}" / "clip.mp4"
+    for run, threads in enumerate((1, 2, 2, 2)):
+        f = out / f"{name}_{run}" / "clip.mp4"
         sha = subprocess.run([sys.executable, "-c", code, str(pkg), str(src), str(f), str(threads)],
                              capture_output=True, text=True, check=True).stdout.strip()
         print(f"RESULT {name} threads={threads} sha={sha[:12]} v={md5(f, '0:v')} a={md5(f, '0:a')}", flush=True)
