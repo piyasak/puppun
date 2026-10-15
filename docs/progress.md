@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-15) — a retried post stopped the Agent's posting thread (source 0.5.9)
+- PO, Agent 0.5.8 on the tx1/tx2 PC: `Exception in thread clipflow-posts … TransitionError: attempt f240f595-…-1 already exists`. f240f595 had been attempt 1 on that PC (ACCOUNT_UNREADABLE at 19:00); the PO pressed retry, `posts.retry` sets attempts back to 0, so the next claim was attempt 1 again; the journal refused the repeated id and `_loop` only caught ServerError/OSError/AdbError, so posting stopped for every phone on that PC (the heartbeat kept the Agent looking online)
+- Fix: a repeated attempt id gets a suffix (`…-1.r2`; the old record stays); `_loop` logs any unexpected error and keeps going. Unit tests (repeated id, loop survives); posting integration 39 passed
+- Workaround until 0.5.9 is installed: restart the Agent; do not press retry on a post already attempted on the same PC
+- Agent 0.5.9 published 2026-10-15 from #44's head 5724940 (Python CI green; built before #42 was merged, so 0.5.9 does not carry the render reproducibility fix): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.9, setup SHA-256 73916513…464b, 59.3 MB; no .py/.pyc; exe reports 0.5.9 and carries the fix; simulated fresh PC: FFmpeg installed; bundle test 0.5.8 → 0.5.9 passed; anonymous download HTTP 200, hash matches
+
 ### Latest slice (2026-10-15) — a remake is the same file on any CPU (render sha256)
 - CI master run 38743242112 (b487a55): `test_reset_remakes_a_deleted_file_with_the_same_hash` failed once (remake aaa7a040… vs first render bfe6c199…); green on re-run, 6/6 on this PC. Approvals and schedule items are bound to the render sha256, so a remake with another hash parks the posts
 - Found (CI diagnostics on the branch, since removed; table in `docs/compatibility.md`): ffmpeg/x264 output depended on the CPU, not on timing. Same args on AVX-512 runners (Xeon 8573C/8370C, EPYC 9V74): different video from one render to the next on one VM (3 renders → 3 hashes) = the CI flake; AVX2 runners (EPYC 7763) stable. Also: hash changed with `cpu_count()//2` encoder threads; AAC differed by SIMD level; Intel vs AMD video differed; the source's creation_time/location tags were copied into the clip. Segment choice, planning and CPU load (6 busy processes, 30 renders) were not the cause
@@ -15,7 +21,8 @@ Last updated: 2026-10-07
 ### Latest slice (2026-10-15) — with the account check off, a phone uses its own account's grant first
 - Public test on tx1: post e153363c went out "only you" under 6aac753c (patsy4404) instead of the new public grant 27c99a50 (jk.mickey): with Q-48 off any grant applies and the oldest came first. Verified by the hidden marker (`hidden:e15336`)
 - Fix (PO option 2): `posting_grants.for_claim` with the check off ranks the phone's own account first, then "*" (any account), then other accounts; oldest first within each. Integration test covers own → "*" → other
-- Next: public test post on tx1 after deploy
+- Deployed 2cc8def. **Public test passed**: 3a958ce5 on tx1 (@jk.mickey) under public grant 27c99a50, posted "everyone", VERIFIED_SUCCESS 54 s after Post with `hidden:3a958c` (branch Agent run on the QA PC, PO entered the token). Q-49 works end to end
+- Agent 0.5.8 published 2026-10-15 (master 2cc8def: #39 #40 #41): https://github.com/piyasak/punpun-agent/releases/tag/v0.5.8, setup SHA-256 25dcc4fb…0016, 59.3 MB, server https://punpun.tomatoparadise.online; no .py/.pyc; packaged exe reports 0.5.8 and carries the public-post code; simulated fresh PC: FFmpeg downloaded and installed; bundle test 0.5.7 → 0.5.8 passed; anonymous download HTTP 200, hash matches
 
 ### Latest slice (2026-10-15) — public posting, no digits/links in captions (Q-49), part 1
 - PO: open real (public) posting; no numbers or links in captions (against TikTok's rules). Chosen: public, remove the "cf…" marker and links, verify with a hidden marker

@@ -116,6 +116,9 @@ class PostRunner:
             except (ServerError, OSError, AdbError) as exc:
                 self.log(f"โพสต์: ทำต่อไม่ได้ชั่วคราว ({exc}); ลองใหม่ภายหลัง")
                 outcome = None
+            except Exception as exc:  # noqa: BLE001 - never let one post stop posting for every phone
+                self.log(f"โพสต์: ข้อผิดพลาดที่ไม่คาดไว้ ({type(exc).__name__}: {exc}); ทำงานต่อ")
+                outcome = None
             if outcome is None:
                 self._halt.wait(self.poll_s)  # idle: E-41 (<= 15 s)
 
@@ -167,9 +170,19 @@ class _Post:
         self.r, self.client, self.get_session, self.post = runner, client, get_session, post
         self.adb, self.phone = adb, phone
         self.id = post["id"]
-        self.attempt_id = f"{self.id}-{post['attempt']}"
+        self.attempt_id = self._new_attempt_id(f"{self.id}-{post['attempt']}")
         self.state = post["state"]
         self.remote: str | None = None
+
+    def _new_attempt_id(self, base: str) -> str:
+        """The server's attempt number starts again at 1 after a person presses retry (posts.retry), so this
+        PC's journal may already hold that id (PC of tx1/tx2, 2026-10-15: f240f595-…-1 came back after a
+        retry and stopped the posting thread). A taken id gets a suffix; the old attempt's record stays."""
+        attempt_id, n = base, 1
+        while self.r.journal.current(attempt_id) is not None:
+            n += 1
+            attempt_id = f"{base}.r{n}"
+        return attempt_id
 
     def event(self, kind: str, **payload) -> None:
         body = {"event_id": uuid.uuid4().hex, "type": kind, **payload}
