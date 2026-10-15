@@ -30,12 +30,13 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import re
 import threading
 import time
 import uuid
 from pathlib import Path
 
-from agent import thai_keyboard
+from agent import marker, thai_keyboard
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -47,6 +48,12 @@ from agent.tiktok_ui import TikTokUi, UiStop, media_id
 STOP_CODES = {"LEASE_LOST", "ITEM_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
 FREE_SPACE_EVERY_S = 300.0
 
+
+# Q-49 (PO 2026-10-15): "everyone" (public) is not posted until finding a public post on Profile has been
+# tested on a phone; until then a public grant stops before anything is typed (nothing is used).
+SUPPORTED_VISIBILITY = ("only_me",)
+LINK_RE = re.compile(r"(https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|co|th|io|me|ly|gl|link|shop|app|xyz|info|biz|tv|cc|to)\b)",
+                     re.IGNORECASE)
 
 class PostStopped(Exception):
     """The server says this Agent no longer holds the post."""
@@ -258,9 +265,10 @@ class _Post:
         return ui
 
     def _caption(self, marker: str | None = None) -> str:
+        """The approved text and hashtags, then the attempt's invisible marker (Q-49: no visible digits)."""
         text = self.post["text"]
         parts = [text["caption"], *[t for t in text["hashtags"] if t not in text["caption"]]]
-        return " ".join([*parts, *([marker] if marker else [])]).strip()
+        return " ".join(parts).strip() + (marker or "")
 
     def _live(self) -> bool:
         """An authorized post (Q-42 server grant, or the Q-29 local ledger in the opt-in test).
@@ -268,13 +276,16 @@ class _Post:
         server_grant = self.post.get("grant")
         if self.r.grant_source is None and not server_grant:
             raise PostFailed("POSTING_NOT_AVAILABLE", "no posting grant for this post")
-        if server_grant and server_grant.get("visibility") != "only_me":
-            raise PostFailed("VISIBILITY_NOT_SUPPORTED", "this Agent can only post as \"only you\"")
+        visibility = (server_grant or {}).get("visibility", "only_me")
+        if visibility not in SUPPORTED_VISIBILITY:
+            raise PostFailed("VISIBILITY_NOT_SUPPORTED", f"this Agent cannot post as {visibility!r}")
+        if LINK_RE.search(self.post["text"]["caption"] or ""):  # Q-49: approved before links were refused
+            raise PostFailed("CAPTION_HAS_LINK", "the caption has a link (against TikTok's rules)")
         if not thai_keyboard.installed(self.adb, self.phone.adb_serial):  # before anything is typed or used
             raise UiStop("THAI_KEYBOARD_MISSING", "no Thai keyboard (punpun Thai input) on this phone")
         ui = self._ui()
-        marker = "cf" + self.id.replace("-", "")[:6]  # ties the post to this attempt (PRD §H, Q-21)
-        caption = self._caption(marker)
+        mark = marker.hidden(self.id)  # ties the post to this attempt (PRD §H, Q-21), invisible (Q-49)
+        caption = self._caption(mark)
         crashed = False
         try:
             ui.check_account(self.post["device"]["expected_account"])
@@ -283,7 +294,7 @@ class _Post:
             if found is None:
                 raise PostFailed("GALLERY_NOT_FOUND", "no MediaStore id for the clip")
             ui.open_post_screen(found)
-            ui.set_only_me()
+            ui.set_visibility(visibility)
             ui.type_caption(caption)
             # The session must be alive before a grant is spent: a grant used and then refused by the server
             # is lost (QA run 2026-10-08: the session expired during the TikTok steps).
@@ -303,20 +314,21 @@ class _Post:
             if self.r.grant_source is None:
                 grant = PostGrant(f"server:{server_grant['id']}", 0)
             self.r.journal.advance(self.attempt_id, State.SUBMITTING, f"grant {grant.decision} #{grant.number}")
-            ui.submit(grant, caption)
+            ui.submit(grant, caption, visibility)
             if self.r.crash_after_submit:
                 crashed = True
                 return True
             self.step(State.VERIFYING, "VERIFYING")
             try:
-                evidence = ui.verify_private_post(marker, before)
+                evidence = ui.verify_private_post(mark, before)
             except UiStop as exc:  # after Post a failure is not knowable: UNKNOWN, never retried
                 self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {exc.detail}")
                 self.event("UNKNOWN", code=exc.code, detail=exc.detail[:300])
                 return False
+            evidence["value"] = f"hidden:{marker.code(self.id)}"  # readable stand-in for the invisible marker
             self.r.journal.advance(self.attempt_id, State.VERIFIED_SUCCESS, json.dumps(evidence))
             self.event("VERIFIED_SUCCESS", evidence=evidence)
-            self.r.log(f"โพสต์ {self.id[:8]}: โพสต์และยืนยันผลแล้ว ({marker})")
+            self.r.log(f"โพสต์ {self.id[:8]}: โพสต์และยืนยันผลแล้ว (รหัสซ่อน {marker.code(self.id)})")
             return False
         finally:
             if not crashed:

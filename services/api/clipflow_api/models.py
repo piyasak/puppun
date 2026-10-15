@@ -554,13 +554,13 @@ class PostingGrant(Base):
     __table_args__ = (
         CheckConstraint("max_posts BETWEEN 1 AND 1000", name="ck_posting_grants_max"),
         CheckConstraint("used_posts >= 0 AND used_posts <= max_posts", name="ck_posting_grants_used"),
-        CheckConstraint("visibility IN ('only_me')", name="ck_posting_grants_visibility"),
+        CheckConstraint("visibility IN ('only_me', 'everyone')", name="ck_posting_grants_visibility"),
     )
 
     id: Mapped[uuid.UUID] = _uuid()
     workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
     account: Mapped[str] = mapped_column(String(64))  # TikTok handle, lower case, no "@"
-    visibility: Mapped[str] = mapped_column(String(16))  # only_me (public needs a PO decision + a tested step)
+    visibility: Mapped[str] = mapped_column(String(16))  # only_me | everyone (public, Q-49)
     max_posts: Mapped[int] = mapped_column(Integer)
     used_posts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

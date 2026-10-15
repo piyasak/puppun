@@ -27,10 +27,27 @@ from .models import Clip, ClipMetadata, Job
 
 HASHTAG_RE = re.compile(r"^#?[0-9A-Za-z_฀-๿]{1,50}$")
 MAX_HASHTAGS = 30
+# Q-49 (PO 2026-10-15): no links in a TikTok caption (against TikTok's rules): web addresses and bare domains.
+LINK_RE = re.compile(r"(https?://|www\.|\b[a-z0-9-]+\.(?:com|net|org|co|th|io|me|ly|gl|link|shop|app|xyz|info|biz|tv|cc|to)\b)",
+                     re.IGNORECASE)
 
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def has_link(text: str | None) -> bool:
+    return bool(text and LINK_RE.search(text))
+
+
+def strip_links(text: str) -> str:
+    """For text the server writes itself (a source title as the first caption): links are dropped."""
+    return re.sub(r"\s{2,}", " ", LINK_RE.sub("", re.sub(r"\S*(https?://|www\.)\S*", "", text))).strip()
+
+
+def check_no_link(text: str | None, field: str) -> None:
+    if has_link(text):
+        raise ApiError(422, "CAPTION_HAS_LINK", "ข้อความโพสต์ใส่ลิงก์ไม่ได้ (ผิดกฎ TikTok)", {"field": field})
 
 
 def normalize_hashtags(tags: list[str]) -> list[str]:
@@ -60,7 +77,7 @@ def current_metadata(db: Session, clip: Clip) -> ClipMetadata:
 
 def first_metadata(clip: Clip, caption: str | None, hashtags: list[str] | None) -> ClipMetadata:
     return ClipMetadata(workspace_id=clip.workspace_id, clip_id=clip.id, version=1,
-                        caption=(caption or clip.title or "")[:2200], hashtags=normalize_hashtags(hashtags or []))
+                        caption=strip_links(caption or clip.title or "")[:2200], hashtags=normalize_hashtags(hashtags or []))
 
 
 def _auto_approve(clip: Clip) -> None:
@@ -141,6 +158,7 @@ def edit_metadata(db: Session, job: Job, clip: Clip, user_id: uuid.UUID, expecte
     if expected_version != clip.metadata_version:
         raise ApiError(409, "VERSION_CONFLICT", "ข้อความถูกแก้ไขไปแล้ว กรุณาโหลดใหม่",
                        {"current_version": clip.metadata_version})
+    check_no_link(caption, "caption")
     cur = current_metadata(db, clip)
     new = ClipMetadata(
         workspace_id=clip.workspace_id, clip_id=clip.id, version=clip.metadata_version + 1,

@@ -57,6 +57,9 @@ def create(db: Session, *, workspace_id, user_id, environment_id, idempotency_ke
            auto_clips: bool = False, delete_after_post: bool = False, caption_title: str | None = None,
            caption_hashtags: list[str] | None = None) -> tuple[Job, bool]:
     """Create a job, or return the existing one for a repeated idempotency key. Returns (job, created)."""
+    from .clips import check_no_link
+
+    check_no_link(caption_title, "title")
     existing = db.scalars(select(Job).where(Job.workspace_id == workspace_id,
                                             Job.idempotency_key == idempotency_key)).first()
     if existing is not None:

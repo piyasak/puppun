@@ -268,3 +268,27 @@ def test_with_the_check_off_a_phone_without_an_account_can_be_scheduled(shop, ap
     assert shop.create(job_id, device=phone, **FULL_DAY).status_code == 201
     listed = next(d for d in shop.acc.get("/v1/devices").json()["items"] if d["id"] == phone)
     assert "expected_account" not in listed["missing_details"]
+
+
+# --- Q-49: public grants and captions without links ------------------------------------------------------
+
+def test_a_public_grant_goes_only_to_an_agent_that_can_post_publicly(shop, app, admin):
+    g = grant(admin, shop, visibility="everyone")
+    assert g["visibility"] == "everyone"
+    due(app, shop)
+    old = claim(shop)  # an Agent before 0.5.8 never gets a public post
+    assert old["posting_mode"] == "dry_run"
+    requeue(app, old)
+    post = shop.w.post("/v1/agent/posts/claim", json={"ready_serials": [shop.serial], "can_post_live": True,
+                                                       "can_post_public": True}).json()["post"]
+    assert post["posting_mode"] == "live" and post["grant"] == {"id": g["id"], "visibility": "everyone"}
+
+
+def test_links_are_refused_in_captions_and_titles(shop, app):
+    _, clip_ids = shop.job(clips=1, approve=0)
+    clip = clip_ids[0]
+    for text in ("ดูต่อที่ https://example.com/x", "สั่งได้ที่ www.example.co.th", "ร้าน example.shop ลด 50%"):
+        resp = shop.acc.patch(f"/v1/clips/{clip}/metadata", json={"caption": text, "expected_version": 1})
+        assert resp.status_code == 422 and resp.json()["code"] == "CAPTION_HAS_LINK", text
+    ok = shop.acc.patch(f"/v1/clips/{clip}/metadata", json={"caption": "ตอนที่ 3/10 ราคา 1.50 บาท", "expected_version": 1})
+    assert ok.status_code == 200, ok.text  # numbers alone are fine

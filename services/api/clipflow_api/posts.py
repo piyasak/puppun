@@ -117,7 +117,8 @@ def _busy(db: Session, device_id: uuid.UUID) -> bool:
 
 
 def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_live: bool = False,
-          can_skip_account_check: bool = False, server_mode: str = "dry_run") -> ScheduleItem | None:
+          can_skip_account_check: bool = False, can_post_public: bool = False,
+          server_mode: str = "dry_run") -> ScheduleItem | None:
     at = now()
     expire_leases(db, ctx.environment_id, at)
     apply_offline_policy(db, ctx.environment_id, at)
@@ -159,7 +160,8 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
         elif can_post_live:
             # Q-48: with the Workspace's account check off, an Agent that can post without it uses any grant.
             any_account = can_skip_account_check and not posting_grants.account_check(db, item.workspace_id)
-            grant = posting_grants.for_claim(db, item.workspace_id, phone.expected_account, at, any_account=any_account)
+            grant = posting_grants.for_claim(db, item.workspace_id, phone.expected_account, at, any_account=any_account,
+                                             public_ok=can_post_public)
             if grant is not None:
                 item.posting_mode, item.grant_id = "live", grant.id
         item.attempts += 1

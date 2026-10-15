@@ -29,7 +29,8 @@ from .errors import ApiError
 from .models import PostingGrant, ScheduleItem, Workspace
 
 HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._]{2,24}$")
-VISIBILITIES = ("only_me",)
+# Q-49 (PO 2026-10-15): "everyone" (public) too, only to Agents that say they can post publicly (0.5.8+).
+VISIBILITIES = ("only_me", "everyone")
 # Handed out live but not yet at SUBMITTING: these may still use the grant.
 PENDING_LIVE = ("CLAIMED", "TRANSFERRING", "PREPARING")
 
@@ -69,7 +70,7 @@ def out(grant: PostingGrant, at: datetime) -> dict:
 def create(db: Session, workspace_id: uuid.UUID, *, account: str, max_posts: int, expires_at: datetime,
            visibility: str, reason: str, actor: uuid.UUID, at: datetime) -> PostingGrant:
     if visibility not in VISIBILITIES:
-        raise ApiError(422, "VISIBILITY_NOT_AVAILABLE", "ตอนนี้เปิดได้เฉพาะโพสต์แบบ \"เฉพาะฉัน\"")
+        raise ApiError(422, "VISIBILITY_NOT_AVAILABLE", "เปิดได้เฉพาะโพสต์แบบ \"เฉพาะฉัน\" หรือ \"ทุกคน\"")
     if expires_at <= at:
         raise ApiError(422, "VALIDATION_ERROR", "วันหมดอายุต้องอยู่ในอนาคต", {"field": "expires_at"})
     grant = PostingGrant(workspace_id=workspace_id, account=normalize_account(account), visibility=visibility,
@@ -96,13 +97,15 @@ def account_check(db: Session, workspace_id: uuid.UUID) -> bool:
 
 
 def for_claim(db: Session, workspace_id: uuid.UUID, account: str | None, at: datetime, *,
-              any_account: bool = False) -> PostingGrant | None:
+              any_account: bool = False, public_ok: bool = True) -> PostingGrant | None:
     """The grant a post on this account may go out live under, or None (a dry run). `any_account`
     (Q-48, account check off): any grant of the Workspace, whatever the phone's account.
     The oldest valid grant with room is used first; the row is locked so two claims count the same room."""
     if not account and not any_account:
         return None
     where = [PostingGrant.workspace_id == workspace_id]
+    if not public_ok:  # an Agent that cannot post publicly never gets a public grant
+        where.append(PostingGrant.visibility == "only_me")
     if not any_account:
         where.append(PostingGrant.account == account.lower())
     grants = db.scalars(select(PostingGrant).where(
