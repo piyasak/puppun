@@ -137,6 +137,15 @@ class ServerClient:
     def post_event(self, session: Session, post_id: str, event: dict) -> dict:
         return self._post(f"/v1/agent/posts/{post_id}/events", event, bearer=session.token)
 
+    def ui_profile(self, session: Session) -> dict | None:
+        """Q-50: the latest TikTok UI profile {"version", "body"}, or None when the server has none yet."""
+        try:
+            return self._send("GET", "/v1/agent/ui-profile", None, "application/json", session.token)
+        except ServerError as exc:
+            if exc.status == 404:
+                return None
+            raise
+
     def post_state(self, session: Session, post_id: str) -> dict:
         """Where one of this Environment's posts stands: state, reason, attempt."""
         return self._send("GET", f"/v1/agent/posts/{post_id}", None, "application/json", session.token)

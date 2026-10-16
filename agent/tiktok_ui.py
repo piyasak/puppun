@@ -35,6 +35,7 @@ from xml.etree import ElementTree
 from agent import thai_keyboard
 from agent.adb import Adb, AdbError
 from agent.marker import visible as marker_visible
+from agent.ui_profile import BUILT_IN, UiProfile
 
 PACKAGE = "com.ss.android.ugc.trill"
 SHARE_ACTIVITY = f"{PACKAGE}/com.ss.android.ugc.aweme.share.SystemShareActivity"
@@ -48,22 +49,17 @@ FORBIDDEN_FRAGMENTS = ("story", "สตอรี่", "shop", "ร้านค�
 LOGIN_MARKERS = ("เข้าสู่ระบบ", "log in", "ลงทะเบียน", "sign up", "ใช้โทรศัพท์หรืออีเมล", "use phone or email")
 CAPTCHA_MARKERS = ("captcha", "ยืนยันว่าคุณไม่ใช่", "verify you", "ลากชิ้นส่วน", "drag the slider", "เลือก 2 วัตถุ",
                    "select 2 objects", "ตรวจสอบความปลอดภัย", "security check")
-VISIBILITY_ROW = ("ดูโพสต์นี้ได้", "can view this post", "can watch this")
-ONLY_ME = ("เฉพาะคุณ", "only you", "only me")
-EVERYONE = ("ทุกคน", "everyone")  # Q-49: public
-VISIBILITY_OPTION = {"only_me": ("เฉพาะคุณเท่านั้น", "Only you", "Only me"), "everyone": ("ทุกคน", "Everyone")}
 
 
-def shows(row_label: str, visibility: str) -> bool:
+def shows(row_label: str, visibility: str, profile: UiProfile = BUILT_IN) -> bool:
     """True when the post screen's visibility row says `visibility`."""
     label = row_label.lower()
-    if any(m in label for m in ONLY_ME):
+    if any(m.lower() in label for m in profile.labels("only_me_words")):
         return visibility == "only_me"
-    return visibility == "everyone" and any(m in label for m in EVERYONE)
-# TikTok closed in the editor (the Agent force-stops it after a rehearsal or a failed attempt) asks this
-# in a floating banner that hides the Profile header from both readers (tx1, 2026-10-13, > 3 minutes).
-RESUME_BANNER = ("แก้ไขวิดีโอที่ยังไม่ได้โพสต์ของคุณต่อหรือไม่",)
-RESUME_CANCEL = ("ยกเลิก",)  # PO 2026-10-13: press ยกเลิก on that banner (the unposted edit may be dropped)
+    return visibility == "everyone" and any(m.lower() in label for m in profile.labels("everyone_words"))
+# TikTok's words for tabs, banners, visibility, grid tiles, and the waits/retries live in the UI profile
+# (agent/ui_profile.py, Q-50). The "continue editing?" banner (tx1, 2026-10-13) is closed with its cancel
+# button, PO 2026-10-13. What keeps posting safe stays here: the never-press words and the markers below.
 
 
 class UiStop(Exception):
@@ -121,20 +117,25 @@ def parse_dump(xml: str) -> list[Node]:
     return nodes
 
 
-def forbidden(node: Node) -> bool:
+def forbidden(node: Node, profile: UiProfile = BUILT_IN) -> bool:
+    """Never pressed. A UI profile can only add words to these lists (Q-50), never take any away."""
+    exact = FORBIDDEN_EXACT | {w.lower() for w in profile.labels("forbidden_exact_extra")}
+    fragments = FORBIDDEN_FRAGMENTS + tuple(w.lower() for w in profile.labels("forbidden_fragments_extra"))
     for value in (node.text, node.desc):
         v = value.strip().lower()
-        if v and (v in FORBIDDEN_EXACT or any(f in v for f in FORBIDDEN_FRAGMENTS)):
+        if v and (v in exact or any(f in v for f in fragments)):
             return True
     return False
 
 
-def classify(nodes: list[Node]) -> str | None:
-    """LOGIN_REQUIRED / CAPTCHA when such a screen is showing, else None."""
+def classify(nodes: list[Node], profile: UiProfile = BUILT_IN) -> str | None:
+    """LOGIN_REQUIRED / CAPTCHA when such a screen is showing, else None (a profile only adds markers)."""
     labels = [n.label.lower() for n in nodes if n.label]
-    if any(m in label for label in labels for m in CAPTCHA_MARKERS):
+    captcha = CAPTCHA_MARKERS + tuple(w.lower() for w in profile.labels("captcha_markers_extra"))
+    login = LOGIN_MARKERS + tuple(w.lower() for w in profile.labels("login_markers_extra"))
+    if any(m in label for label in labels for m in captcha):
         return "CAPTCHA"
-    if any(m in label for label in labels for m in LOGIN_MARKERS) and account_handle(nodes) is None:
+    if any(m in label for label in labels for m in login) and account_handle(nodes) is None:
         return "LOGIN_REQUIRED"
     return None
 
@@ -158,14 +159,19 @@ def encloses(outer: Node, inner: Node) -> bool:
     return ox1 <= ix1 and oy1 <= iy1 and ix2 <= ox2 and iy2 <= oy2
 
 
-def visibility_row(nodes: list[Node]) -> Node | None:
-    return next((n for n in nodes if any(m in n.label.lower() for m in VISIBILITY_ROW)), None)
+def visibility_row(nodes: list[Node], profile: UiProfile = BUILT_IN) -> Node | None:
+    words = [m.lower() for m in profile.labels("visibility_row")]
+    return next((n for n in nodes if any(m in n.label.lower() for m in words)), None)
 
 
 class TikTokUi:
-    def __init__(self, adb: Adb, serial: str, sleep=time.sleep, settle_s: float = 2.0, wait_s: float = 15.0,
-                 reader=None):
-        """`reader` (agent.screen_reader.U2Reader, see for_phone) reads the screens `uiautomator dump` cannot."""
+    def __init__(self, adb: Adb, serial: str, sleep=time.sleep, settle_s: float | None = None,
+                 wait_s: float | None = None, reader=None, profile: UiProfile = BUILT_IN):
+        """`reader` (agent.screen_reader.U2Reader, see for_phone) reads the screens `uiautomator dump` cannot.
+        `profile` (Q-50): TikTok's words, ids, waits and retries; explicit settle_s / wait_s win (tests)."""
+        self.p = profile
+        settle_s = float(profile.settle_s) if settle_s is None else settle_s
+        wait_s = float(profile.wait_s) if wait_s is None else wait_s
         self.adb, self.serial, self.sleep, self.settle_s, self.wait_s = adb, serial, sleep, settle_s, wait_s
         self.reader, self.reader_on = reader, False
         # Q-48: False when an admin turned the Workspace's account check off: the account is neither
@@ -173,11 +179,11 @@ class TikTokUi:
         self.account_check = True
 
     @classmethod
-    def for_phone(cls, adb: Adb, serial: str) -> TikTokUi:
+    def for_phone(cls, adb: Adb, serial: str, profile: UiProfile = BUILT_IN) -> TikTokUi:
         """The Agent's TikTokUi: with the second screen reader for screens that never stop moving."""
         from agent.screen_reader import U2Reader
 
-        return cls(adb, serial, reader=U2Reader(adb, serial))
+        return cls(adb, serial, reader=U2Reader(adb, serial), profile=profile)
 
     def sh(self, command: str) -> str:
         return self.adb.shell(self.serial, command)
@@ -215,7 +221,7 @@ class TikTokUi:
             except (ReaderError, AdbError):
                 nodes = []  # read as "nothing on screen": the callers look again or stop, never guess
         if check:
-            stop = classify(nodes)
+            stop = classify(nodes, self.p)
             if stop:
                 raise UiStop(stop, "TikTok shows a login or verification screen; a person must handle it")
         return nodes
@@ -236,7 +242,7 @@ class TikTokUi:
 
     # --- acting --------------------------------------------------------------------------------
 
-    def press(self, *labels: str, inner_icon: str | None = None) -> None:
+    def press(self, *labels: str, inner_icon: tuple[str, ...] = ()) -> None:
         """Press the element with one of these labels, after checking what is under the point right now.
 
         `inner_icon`: a non-clickable icon with this label wholly inside the target does not block the press
@@ -252,10 +258,10 @@ class TikTokUi:
         # A forbidden control at the point blocks the press, unless it is a larger container that wholly
         # encloses the target (QA phone, 2026-10-11: after a post the feed's "LIVE" view spans the screen
         # behind the tab bar, and the Profile tab sits on top of it).
-        blocking = [n for n in here if forbidden(n) and not (n.area > target.area and encloses(n, target))
-                    and not (inner_icon and n.label == inner_icon and not n.clickable and n.area < target.area
+        blocking = [n for n in here if forbidden(n, self.p) and not (n.area > target.area and encloses(n, target))
+                    and not (n.label in inner_icon and not n.clickable and n.area < target.area
                              and encloses(target, n))]
-        if blocking or forbidden(node) or forbidden(target):
+        if blocking or forbidden(node, self.p) or forbidden(target, self.p):
             raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: a forbidden control is there")
         self.sh(f"input swipe {x} {y} {x} {y} 120")  # short press: plain taps fell through sheets (P1)
         self.sleep(self.settle_s)
@@ -267,7 +273,7 @@ class TikTokUi:
         self.sh(f"monkey -p {PACKAGE} -c android.intent.category.LAUNCHER 1")
         self.sleep(self.settle_s * 3)
 
-    def account(self, tries: int = 6, *, require: bool = True) -> str:
+    def account(self, tries: int | None = None, *, require: bool = True) -> str:
         """Open TikTok on Profile and read the @handle. TikTok can take a while to start or show a
         popup first, so it looks again a few times; it never guesses an account.
 
@@ -276,6 +282,7 @@ class TikTokUi:
         longer in front (the last reading was the home screen), so TikTok is opened again whenever the
         screen is not TikTok's."""
         self.open_app()
+        tries = int(self.p.account_tries) if tries is None else tries
         size = re.search(r"(\d+)x(\d+)", self.sh("wm size"))
         w, h = (int(size.group(1)), int(size.group(2))) if size else (720, 1600)
         covered = 0
@@ -286,7 +293,8 @@ class TikTokUi:
             handle = account_handle(nodes)
             if handle is not None:
                 return handle
-            on_profile = bool(self.find(nodes, "กำลังติดตาม", "Following") and self.find(nodes, "ผู้ติดตาม", "Followers"))
+            on_profile = bool(self.find(nodes, *self.p.labels("following"))
+                              and self.find(nodes, *self.p.labels("followers")))
             if on_profile and not require:
                 return ""  # Q-48, account check off: being on Profile is enough
             if on_profile:
@@ -298,19 +306,19 @@ class TikTokUi:
                 covered += 1
                 if self.dismiss_resume_banner():
                     continue
-                if covered >= 2 and self.find(nodes, "โปรไฟล์", "Profile") is not None:
+                if covered >= 2 and self.find(nodes, *self.p.labels("profile_tab")) is not None:
                     try:
-                        self.press("โปรไฟล์", "Profile")
+                        self.press(*self.p.labels("profile_tab"))
                         continue
                     except UiStop as exc:  # refused or moved: nothing was pressed
                         if exc.code not in ("SCREEN_CHANGED", "UNKNOWN_SCREEN", "REFUSED_ELEMENT"):
                             raise
                 self.sleep(self.settle_s * 3)
                 continue
-            tab = self.find(nodes, "โปรไฟล์", "Profile")
+            tab = self.find(nodes, *self.p.labels("profile_tab"))
             if tab is not None:
                 try:
-                    self.press("โปรไฟล์", "Profile")
+                    self.press(*self.p.labels("profile_tab"))
                 except UiStop as exc:  # the screen moved under us (popup, feed loading): look again
                     if exc.code not in ("SCREEN_CHANGED", "UNKNOWN_SCREEN"):
                         raise
@@ -332,12 +340,13 @@ class TikTokUi:
         from agent.screen_reader import ReaderError
 
         def banner(nodes: list[Node]) -> tuple[Node, Node] | None:
-            question = next((n for n in nodes if n.label in RESUME_BANNER), None)
+            question = next((n for n in nodes if n.label in self.p.labels("resume_banner")), None)
             if question is None:
                 return None
             boxes = [n for n in nodes if not n.label and encloses(n, question) and n.area < question.area * 6]
             for box in sorted(boxes, key=lambda n: n.area):
-                buttons = [n for n in nodes if n.label in RESUME_CANCEL and n.clickable and encloses(box, n)]
+                buttons = [n for n in nodes if n.label in self.p.labels("resume_cancel") and n.clickable
+                           and encloses(box, n)]
                 if len(buttons) == 1:
                     return box, buttons[0]
             return None
@@ -353,7 +362,8 @@ class TikTokUi:
         box, cancel = found
         x, y = cancel.center
         inside = [n for n in under(nodes, x, y) if encloses(box, n)]
-        if any(n.label and n.label not in RESUME_CANCEL for n in inside) or any(forbidden(n) for n in inside):
+        if (any(n.label and n.label not in self.p.labels("resume_cancel") for n in inside)
+                or any(forbidden(n, self.p) for n in inside)):
             raise UiStop("REFUSED_ELEMENT", f"refused to press at {x},{y}: not only ยกเลิก on the banner")
         self.sh(f"input swipe {x} {y} {x} {y} 120")
         self.sleep(self.settle_s)
@@ -380,8 +390,8 @@ class TikTokUi:
         self.sh("am start -a android.intent.action.SEND -t video/mp4 "
                 f"--eu android.intent.extra.STREAM content://media/external/video/media/{media_id} -f 1 -n {SHARE_ACTIVITY}")
         self.sleep(self.settle_s * 2)
-        self.press("วิดีโอ", "Video")
-        self.press("ถัดไป", "Next")
+        self.press(*self.p.labels("share_video"))
+        self.press(*self.p.labels("next_button"))
         nodes = self.read()
         if visibility_row(nodes) is None or not any(n.cls.endswith("EditText") for n in nodes):
             raise UiStop("UNKNOWN_SCREEN", f"not the post screen; focus {self.focus()}")
@@ -391,21 +401,22 @@ class TikTokUi:
 
     def set_visibility(self, visibility: str) -> None:
         """Who can see the post: "only_me" or "everyone" (Q-49), read back from the post screen."""
-        if visibility not in VISIBILITY_OPTION:
+        options = {"only_me": self.p.labels("only_me_option"), "everyone": self.p.labels("everyone_option")}
+        if visibility not in options:
             raise UiStop("VISIBILITY_NOT_SET", f"unknown visibility {visibility!r}")
-        row = visibility_row(self.read())
+        row = visibility_row(self.read(), self.p)
         if row is None:
             raise UiStop("UNKNOWN_SCREEN", "visibility row not found on the post screen")
-        if shows(row.label, visibility):
+        if shows(row.label, visibility, self.p):
             return
         self.press(row.label)
-        self.press(*VISIBILITY_OPTION[visibility])
+        self.press(*options[visibility])
         nodes = self.read()
-        if self.find(nodes, "ปิด", "Close") is not None and visibility_row(nodes) is None:
-            self.press("ปิด", "Close")  # the sheet did not close by itself
+        if self.find(nodes, *self.p.labels("close_button")) is not None and visibility_row(nodes, self.p) is None:
+            self.press(*self.p.labels("close_button"))  # the sheet did not close by itself
             nodes = self.read()
-        row = visibility_row(nodes)
-        if row is None or not shows(row.label, visibility):
+        row = visibility_row(nodes, self.p)
+        if row is None or not shows(row.label, visibility, self.p):
             raise UiStop("VISIBILITY_NOT_SET", f"visibility did not change to {visibility}")
 
     def type_caption(self, caption: str) -> None:
@@ -454,18 +465,21 @@ class TikTokUi:
     def open_videos_tab(self) -> None:
         """Profile's public videos grid (Q-49). Only the "วิดีโอ" tab in the same row as the private tab."""
         nodes = self.read()
-        private = self.find(nodes, "วิดีโอส่วนตัว", "Private videos")
-        tab = self.find(nodes, "วิดีโอ", "Videos")
+        private = self.find(nodes, *self.p.labels("private_tab"))
+        tab = self.find(nodes, *self.p.labels("videos_tab"))
         if private is None or tab is None or abs(tab.center[1] - private.center[1]) > 10:
             raise UiStop("UNKNOWN_SCREEN", "the videos tab was not found next to the private tab on Profile")
         if any(n.selected and (encloses(n, tab) or encloses(tab, n)) for n in nodes):
             return  # already open: pressing it again opens TikTok's sort menu (tx1, 2026-10-16)
-        self.press(tab.label, inner_icon="โพสต์")
+        self.press(tab.label, inner_icon=self.p.labels("videos_tab_icon"))
 
-    def verify_public_post(self, marker: str, caption: str, tries: int = 4, wait_s: float = 20.0) -> dict:
+    def verify_public_post(self, marker: str, caption: str, tries: int | None = None,
+                           wait_s: float | None = None) -> dict:
         """PRD §H for a public post (Q-49): the newest public video on this account's Profile (pinned ones
         skipped) carries this attempt's invisible marker. While TikTok is still uploading, the newest tile
         is an older post, so it looks again a few times (Back to Profile, never a force-stop)."""
+        tries = int(self.p.verify_tries) if tries is None else tries
+        wait_s = float(self.p.verify_wait_s) if wait_s is None else wait_s
         for attempt in range(tries):
             if attempt:
                 self.sh("input keyevent KEYCODE_BACK")
@@ -482,12 +496,14 @@ class TikTokUi:
         self.open_videos_tab()
         self.sleep(self.settle_s)
         nodes = self.read()
-        row = self.find(nodes, "วิดีโอส่วนตัว", "Private videos")
+        row = self.find(nodes, *self.p.labels("private_tab"))
         if row is None:
             raise UiStop("VERIFY_UNREADABLE", "Profile's tab row is not on screen")
         # Grid tiles only: the same id is used by an icon in the top bar (tx1, 2026-10-15).
-        tiles = sorted((n for n in nodes if n.rid.endswith(":id/daw") and n.clickable and n.bounds[1] >= row.bounds[3]),
-                       key=lambda n: (n.bounds[1], n.bounds[0]))
+        tiles = sorted((n for n in nodes if n.rid.endswith(self.p.grid_tile_id) and n.clickable
+                        and n.bounds[1] >= row.bounds[3]), key=lambda n: (n.bounds[1], n.bounds[0]))
+        pinned = [n for n in nodes if n.label in self.p.labels("pinned")]
+        tiles = [t for t in tiles if not any(encloses(t, x) for x in pinned)] or tiles
         if not tiles:
             raise UiStop("VERIFY_MARKER", "no public video on Profile yet")
         # The newest post is the first tile unless videos are pinned above it (tx2, 2026-10-16: a pinned
@@ -495,7 +511,7 @@ class TikTokUi:
         # opened in turn (viewing only) until one carries this attempt's marker.
         start = marker_visible(caption)[:12]
         seen_caption = False
-        for tile in tiles[:4]:
+        for tile in tiles[:int(self.p.public_tiles_to_scan)]:
             x, y = tile.center
             self.sh(f"input swipe {x} {y} {x} {y} 120")
             self.sleep(self.settle_s * 2)
@@ -518,11 +534,11 @@ class TikTokUi:
     def private_count(self, tries: int = 6) -> int:
         """Private videos on Profile (lock tiles), read on the private tab. The grid loads late (QA phone:
         0 on the first reading, 1 on the next), so the count is taken only when two readings agree."""
-        self.press("วิดีโอส่วนตัว", "Private videos", "Private")
+        self.press(*self.p.labels("private_tab"))
         last = None
         for _ in range(tries):
             self.sleep(self.settle_s)
-            count = sum(1 for n in self.read() if n.desc in ("ล็อก", "Private") and n.bounds[1] > 850)
+            count = sum(1 for n in self.read() if n.desc in self.p.labels("lock_desc") and n.bounds[1] > 850)
             if count == last:
                 return count
             last = count
@@ -546,10 +562,10 @@ class TikTokUi:
             raise UiStop("KEYBOARD_SHOWN", "the keyboard is up; Post would be at another place")
         nodes = self.read(exact=True)
         field = next((n for n in nodes if n.cls.endswith("EditText")), None)
-        row = visibility_row(nodes)
+        row = visibility_row(nodes, self.p)
         if field is None or field.text.strip() != caption.strip():
             raise UiStop("CAPTION_MISMATCH", "caption changed before Post")
-        if row is None or not shows(row.label, visibility):
+        if row is None or not shows(row.label, visibility, self.p):
             raise UiStop("VISIBILITY_NOT_SET", f"visibility is not {visibility}")
         buttons = [n for n in nodes if n.label in ("โพสต์", "Post") and n.clickable and n.bounds[1] > 1300]
         if len(buttons) != 1:
@@ -559,7 +575,8 @@ class TikTokUi:
             raise UiStop("SCREEN_CHANGED", "something else is under the Post button")
         return x, y
 
-    def verify_private_post(self, marker: str, before: int, tries: int = 4, wait_s: float = 20.0) -> dict:
+    def verify_private_post(self, marker: str, before: int, tries: int | None = None,
+                            wait_s: float | None = None) -> dict:
         """PRD §H: the post is on this account's private tab and its caption carries the attempt marker.
 
         The marker (unique per post) is the proof. The tile count is not: Profile shows only the tiles
@@ -567,6 +584,8 @@ class TikTokUi:
         post became UNKNOWN). A count that went down still stops. While TikTok is still uploading, the
         newest tile is the previous post, so it looks again a few times (Back to Profile, never a
         force-stop, which would end the upload)."""
+        tries = int(self.p.verify_tries) if tries is None else tries
+        wait_s = float(self.p.verify_wait_s) if wait_s is None else wait_s
         for attempt in range(tries):
             if attempt:
                 self.sh("input keyevent KEYCODE_BACK")  # from the opened video back to Profile
@@ -585,7 +604,7 @@ class TikTokUi:
         after = self.private_count()
         if after < before:
             raise UiStop("VERIFY_COUNT", f"private videos {before} -> {after}, fewer than before")
-        locks = sorted((n for n in self.read() if n.desc == "ล็อก" and n.bounds[1] > 850),
+        locks = sorted((n for n in self.read() if n.desc in self.p.labels("lock_desc") and n.bounds[1] > 850),
                        key=lambda n: (n.bounds[1], n.bounds[0]))
         if not locks:
             raise UiStop("VERIFY_MARKER", "no private video on Profile yet")
@@ -595,7 +614,8 @@ class TikTokUi:
         self.sh("input tap 360 650")  # pause: a playing video cannot be read
         self.sleep(self.settle_s)
         nodes = self.read()
-        caption = next((n for n in nodes if "ส่วนตัว" in n.text or "private" in n.text.lower()), None)
+        words = [w.lower() for w in self.p.labels("private_caption_words")]
+        caption = next((n for n in nodes if any(w in n.text.lower() for w in words)), None)
         if caption is None:
             raise UiStop("VERIFY_UNREADABLE", "caption of the newest private video not found")
         cx, cy = caption.center
