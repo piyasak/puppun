@@ -7,6 +7,7 @@ Last updated: 2026-10-07
 ### Latest slice (2026-10-16) — public verification: sort menu and pinned videos (source 0.6.1)
 - Agent 0.6.0 on the tx1/tx2 PC: posts with hashtags now pass the post screen and are pressed (the hashtag list fix works). Public verification then failed (VERIFY_UNREADABLE): tx2 5b3b367d opened a pinned video (PO found it published), tx1 f240f595: the videos tab was pressed while already open and TikTok opened its sort menu (PO)
 - Fix: `Node.selected` from the dump; an already selected videos tab is not pressed; the first 4 grid tiles are opened in turn (viewing only) until one carries the attempt's marker (TikTok pins at most 3). Unit tests (selected tab, pinned first); test-unit 189
+- Agent 0.6.1 published 2026-10-16 (master 0445a65): https://github.com/piyasak/punpun-agent/releases/tag/v0.6.1, setup SHA-256 578d7b50…a8d2, 59.3 MB; no .py/.pyc; exe reports 0.6.1 and carries the new public verify; simulated fresh PC: FFmpeg installed; bundle test 0.6.0 → 0.6.1 passed; anonymous download HTTP 200, hash matches
 
 ### Latest slice (2026-10-16) — hashtag suggestions over Post; stuck at SUBMITTING; journal blocking updates (source 0.6.0)
 - PO: UNKNOWN_SCREEN, the hashtag suggestion list shows over the action buttons. Cause: Q-49's invisible marker was glued to the last hashtag, so TikTok kept suggesting hashtags over Post (the old "cf…" marker came after a space). Posts with hashtags on 0.5.8/0.5.9 hit it; tx1 tests passed only because their captions had no hashtag
