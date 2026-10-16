@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -664,3 +665,87 @@ class Diagnostic(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+# --- Telegram notifications (Q-52, PO 2026-10-16) ------------------------------------------------------
+
+class TelegramChat(Base):
+    """A Telegram chat (private or group) the Workspace owner linked with a one-time code."""
+
+    __tablename__ = "telegram_chats"
+    __table_args__ = (UniqueConstraint("workspace_id", "chat_id", name="uq_telegram_chats_workspace_chat"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    title: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(16))  # private | group | supergroup | channel
+    linked_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TelegramLinkCode(Base):
+    """One-time code for t.me/<bot>?start=<code>; stored as SHA-256, valid 15 minutes."""
+
+    __tablename__ = "telegram_link_codes"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class NotifyRule(Base):
+    """Which chat hears what about which phone (device_id NULL = every phone of the Workspace)."""
+
+    __tablename__ = "notify_rules"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    chat_ref: Mapped[uuid.UUID] = mapped_column(ForeignKey("telegram_chats.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    posting: Mapped[bool] = mapped_column(Boolean, default=True)
+    problems: Mapped[bool] = mapped_column(Boolean, default=True)
+    health: Mapped[bool] = mapped_column(Boolean, default=True)
+    summary: Mapped[bool] = mapped_column(Boolean, default=True)
+    summary_hour: Mapped[int] = mapped_column(Integer, default=21)  # Asia/Bangkok
+    created_at: Mapped[datetime] = _created()
+
+
+class Notification(Base):
+    """Outbox: one message for one chat, sent by the notify loop (retries, at most once per dedupe_key)."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (UniqueConstraint("chat_ref", "dedupe_key", name="uq_notifications_chat_dedupe"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    chat_ref: Mapped[uuid.UUID] = mapped_column(ForeignKey("telegram_chats.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16))  # posting | problems | health | summary | test
+    dedupe_key: Mapped[str] = mapped_column(String(120))
+    text: Mapped[str] = mapped_column(String(4000))
+    batch: Mapped[bool] = mapped_column(Boolean, default=False)  # successful posts: sent together hourly
+    created_at: Mapped[datetime] = _created()
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(300))
+
+
+class AccountStat(Base):
+    """What the Agent read on a phone's TikTok Profile (read-only): followers, likes, newest videos' views."""
+
+    __tablename__ = "account_stats"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    account: Mapped[str | None] = mapped_column(String(64))
+    followers: Mapped[int | None] = mapped_column(BigInteger)
+    following: Mapped[int | None] = mapped_column(BigInteger)
+    likes: Mapped[int | None] = mapped_column(BigInteger)
+    video_views: Mapped[list] = mapped_column(JSONB, default=list)  # newest first, as shown on the grid
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

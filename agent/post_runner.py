@@ -36,7 +36,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent import diagnostics, marker, thai_keyboard, ui_profile
+from agent import account_stats, diagnostics, marker, thai_keyboard, ui_profile
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -183,7 +183,8 @@ class PostRunner:
                 outcome = None
             if outcome is None:
                 try:  # idle: a screen check asked for on the web runs now, never during a post
-                    self.run_diagnostic_once(client, get_session)
+                    if not self.run_diagnostic_once(client, get_session):
+                        self.read_stats_once(client, get_session)  # Q-52: Profile numbers, ~twice a day
                 except Exception as exc:  # noqa: BLE001 - diagnostics must never stop posting
                     self.log(f"ตรวจหน้าจอ: ทำไม่ได้ ({type(exc).__name__}: {exc})")
                 self._halt.wait(self.poll_s)  # idle: E-41 (<= 15 s)
@@ -234,6 +235,21 @@ class PostRunner:
             diagnostics.run_requested(client, get_session(), adb, phone.adb_serial, request, self.profile, self.log,
                                       self.ui_factory)
         return True
+
+    def read_stats_once(self, client: ServerClient, get_session) -> bool:
+        """Q-52: when idle, read one phone's Profile numbers if its last reading is old enough."""
+        adb = self.adb_factory()
+        clock = account_stats.StatsClock(self.data_dir / "stats_clock.json")
+        for phone in discover(adb):
+            if phone.state != "device" or not phone.hw_serial or not clock.due(phone.hw_serial):
+                continue
+            clock.mark(phone.hw_serial)  # once per period, even when the reading fails
+            lock = self.screens.locked(phone.adb_serial) if self.screens else contextlib.nullcontext()
+            with lock:
+                ui = (self.ui_factory or (lambda a, s: TikTokUi.for_phone(a, s, self.profile)))(adb, phone.adb_serial)
+                account_stats.read_and_send(client, get_session(), ui, phone.hw_serial, self.log)
+            return True
+        return False
 
     def run_once(self, client: ServerClient, get_session) -> str | None:
         """Claim and carry out one post. Returns its final state, "stopped", or None if nothing was due."""

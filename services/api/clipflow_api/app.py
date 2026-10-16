@@ -37,6 +37,7 @@ from .routers import (
     environments,
     jobs,
     library,
+    notifications,
     pairing,
     posts,
     schedules,
@@ -127,6 +128,9 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(diagnostics.agent_router)
     app.include_router(diagnostics.web_router)
     app.include_router(diagnostics.admin_router)
+    app.include_router(notifications.web_router)
+    app.include_router(notifications.hook_router)
+    app.include_router(notifications.agent_router)
 
     # Which release answers: BUILD_ID from the image build, else the commit Render deployed.
     build = os.environ.get("BUILD_ID") or os.environ.get("RENDER_GIT_COMMIT", "")[:7] or "dev"
@@ -137,6 +141,9 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
 
     if settings.web_dist:
         _serve_web(app, Path(settings.web_dist))
+    from . import notify
+
+    notify.start_loop(app)  # Q-52: only with a bot token; tests build Settings without one
     return app
 
 

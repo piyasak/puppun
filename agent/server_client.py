@@ -164,6 +164,10 @@ class ServerClient:
     def diagnostic_done(self, session: Session, diag_id: str, note: str | None = None, error: str | None = None) -> dict:
         return self._post(f"/v1/agent/diagnostics/{diag_id}/done", {"note": note, "error": error}, bearer=session.token)
 
+    def account_stats(self, session: Session, serial: str, numbers: dict) -> dict:
+        """Q-52: followers / following / likes / newest videos' views read on a phone's Profile."""
+        return self._post("/v1/agent/account-stats", {"serial": serial, **numbers}, bearer=session.token)
+
     def post_state(self, session: Session, post_id: str) -> dict:
         """Where one of this Environment's posts stands: state, reason, attempt."""
         return self._send("GET", f"/v1/agent/posts/{post_id}", None, "application/json", session.token)
