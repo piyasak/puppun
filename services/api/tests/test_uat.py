@@ -24,7 +24,8 @@ from clipflow_api.models import Clip, ScheduleItem
 # --- T01: A's ids through every route, called by B ------------------------------------------------
 
 PARAM = {"environment_id": "env", "token_id": "token", "agent_id": "agent", "device_id": "device",
-         "job_id": "job", "clip_id": "clip", "series_id": "series", "item_id": "item", "payment_id": "payment"}
+         "job_id": "job", "clip_id": "clip", "series_id": "series", "item_id": "item", "payment_id": "payment",
+         "diag_id": "diag"}
 # Bodies that pass validation, so the ownership check is what answers.
 BODY = {
     ("patch", "/v1/environments/{environment_id}"): {"name": "taken"},
@@ -38,10 +39,13 @@ BODY = {
     ("post", "/v1/schedule-items/{item_id}/retry"): {"expected_state_version": 1},
     ("post", "/v1/schedules/{series_id}/resume/preview"): {"expected_version": 1},
     ("post", "/v1/schedules/{series_id}/resume"): {"expected_version": 1},
+    ("post", "/v1/devices/{device_id}/diagnostics"): {"check": "profile"},
 }
 AGENT_ROUTES = [("post", "/v1/agent/jobs/{job_id}/events", {"event_id": "e1" * 8, "type": "completed"}),
                 ("post", "/v1/agent/posts/{item_id}/events", {"event_id": "e1" * 8, "type": "TRANSFERRING"}),
-                ("put", "/v1/agent/jobs/{job_id}/clips/{index}/file", None)]
+                ("put", "/v1/agent/jobs/{job_id}/clips/{index}/file", None),
+                ("put", "/v1/agent/diagnostics/{diag_id}/files/0/stopped.png", None),
+                ("post", "/v1/agent/diagnostics/{diag_id}/done", {"note": "taken"})]
 
 
 def _id_routes(app):
@@ -67,7 +71,9 @@ def test_t01_another_tenant_gets_what_a_missing_id_gets_on_every_route(shop, onb
     pay = a.acc.post("/v1/billing/checkout", json={"plan_code": "pro", "idempotency_key": uuid.uuid4().hex}).json()
     ids = {"env": a.env["id"], "token": a.token_id, "agent": a.acc.get("/v1/agents").json()["items"][0]["id"],
            "device": a.devices[0], "job": series["job_id"], "clip": series["items"][0]["clip_id"],
-           "series": series["id"], "item": series["items"][0]["id"], "payment": pay["id"]}
+           "series": series["id"], "item": series["items"][0]["id"], "payment": pay["id"],
+           "diag": a.w.client.post("/v1/agent/diagnostics", json={"serial": a.serial, "code": "T01"},
+                                   headers={"Authorization": f"Bearer {a.w.session}"}).json()["id"]}
     before = _snapshot(a.acc, ids)
     b = Shop(onboard(), client, real_clip)
 
@@ -82,7 +88,7 @@ def test_t01_another_tenant_gets_what_a_missing_id_gets_on_every_route(shop, onb
         assert got.json().get("code") == ref.json().get("code"), (method, path)
         checked += 1
     for method, path, body in AGENT_ROUTES:
-        theirs = path.format(job_id=ids["job"], item_id=ids["item"], index=1)
+        theirs = path.format(job_id=ids["job"], item_id=ids["item"], index=1, diag_id=ids["diag"])
         kw = {"json": body} if body else {"content": b"x"}
         got = getattr(b.w.client, method)(theirs, headers={"Authorization": f"Bearer {b.w.session}"}, **kw)
         assert got.status_code == 404, (method, path, got.text)

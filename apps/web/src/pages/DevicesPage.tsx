@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { DeviceDiagnostics } from '../components/DeviceDiagnostics'
 import { Shell } from '../components/Shell'
 import { PostingGrants } from '../components/PostingGrants'
 import { Alert, Field } from '../components/ui'
@@ -165,6 +166,7 @@ export function DevicesPage() {
                         <button type="button" className="btn btn-danger-outline" onClick={() => setTarget(d)}>ยกเลิกการผูก</button>
                       </div>
                     )}
+                    {d.readiness !== 'unbound' && <DeviceDiagnostics deviceId={d.id} />}
                   </>
                 )}
               </li>

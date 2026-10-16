@@ -36,7 +36,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent import marker, thai_keyboard, ui_profile
+from agent import diagnostics, marker, thai_keyboard, ui_profile
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -182,6 +182,10 @@ class PostRunner:
                 self.log(f"โพสต์: ข้อผิดพลาดที่ไม่คาดไว้ ({type(exc).__name__}: {exc}); ทำงานต่อ")
                 outcome = None
             if outcome is None:
+                try:  # idle: a screen check asked for on the web runs now, never during a post
+                    self.run_diagnostic_once(client, get_session)
+                except Exception as exc:  # noqa: BLE001 - diagnostics must never stop posting
+                    self.log(f"ตรวจหน้าจอ: ทำไม่ได้ ({type(exc).__name__}: {exc})")
                 self._halt.wait(self.poll_s)  # idle: E-41 (<= 15 s)
 
     def delete_posted_clips(self, client: ServerClient, get_session) -> list[str]:
@@ -211,6 +215,25 @@ class PostRunner:
             client.clip_file_deleted(session, item["clip_id"], found=video is not None)
             reported.append(item["clip_id"])
         return reported
+
+    def run_diagnostic_once(self, client: ServerClient, get_session) -> bool:
+        """A screen check asked for on the web (PO 2026-10-16), when no post is running. True if one ran."""
+        adb = self.adb_factory()
+        phones = {normalize_serial(p.hw_serial): p for p in discover(adb) if p.state == "device" and p.hw_serial}
+        if not phones:
+            return False
+        request = client.diagnostic_requested(get_session(), [p.hw_serial for p in phones.values()])
+        if request is None:
+            return False
+        phone = phones.get(normalize_serial(request["serial"]))
+        if phone is None:
+            client.diagnostic_done(get_session(), request["id"], error="PHONE_NOT_CONNECTED")
+            return True
+        lock = self.screens.locked(phone.adb_serial) if self.screens else contextlib.nullcontext()
+        with lock:
+            diagnostics.run_requested(client, get_session(), adb, phone.adb_serial, request, self.profile, self.log,
+                                      self.ui_factory)
+        return True
 
     def run_once(self, client: ServerClient, get_session) -> str | None:
         """Claim and carry out one post. Returns its final state, "stopped", or None if nothing was due."""
@@ -323,6 +346,9 @@ class _Post:
             ui.set_only_me()
             ui.type_caption(caption)
             self.r.log(f"โพสต์ {self.id[:8]}: ซ้อมใน TikTok ผ่าน — บัญชีตรง ข้อความตรง หยุดก่อนกดโพสต์")
+        except UiStop as exc:
+            self._capture(ui, exc.code)
+            raise
         finally:
             ui.close()
 
@@ -332,6 +358,11 @@ class _Post:
         verdict = check_phone(report.model, report.android_release, report.tiktok_package, report.tiktok_version)
         if not verdict.supported:
             raise UiStop("UNSUPPORTED_DEVICE", verdict.reason)
+
+    def _capture(self, ui, code: str) -> None:
+        """PO 2026-10-16: the screen when a post stopped on TikTok, for the web (never raises)."""
+        diagnostics.capture_failure(self.client, self.get_session(), ui, self.post["device"]["serial"], self.id,
+                                    code, self.r.log)
 
     def _ui(self):
         if self.r.ui_factory:
@@ -397,6 +428,7 @@ class _Post:
             try:
                 ui.submit(grant, caption, visibility)
             except UiStop as exc:  # after SUBMITTING the server accepts only UNKNOWN; Post was not pressed
+                self._capture(ui, exc.code)
                 detail = f"stopped before pressing Post: {exc.detail}"
                 self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {detail}")
                 self.event("UNKNOWN", code=exc.code, detail=detail[:300])
@@ -409,6 +441,7 @@ class _Post:
                 evidence = (ui.verify_private_post(mark, before) if visibility == "only_me"
                             else ui.verify_public_post(mark, caption))
             except UiStop as exc:  # after Post a failure is not knowable: UNKNOWN, never retried
+                self._capture(ui, exc.code)
                 self.r.journal.advance(self.attempt_id, State.UNKNOWN, f"{exc.code}: {exc.detail}")
                 self.event("UNKNOWN", code=exc.code, detail=exc.detail[:300])
                 return False
@@ -417,6 +450,9 @@ class _Post:
             self.event("VERIFIED_SUCCESS", evidence=evidence)
             self.r.log(f"โพสต์ {self.id[:8]}: โพสต์และยืนยันผลแล้ว (รหัสซ่อน {marker.code(self.id)})")
             return False
+        except UiStop as exc:  # stopped on a TikTok screen before Submit: send what the phone showed
+            self._capture(ui, exc.code)
+            raise
         finally:
             if not crashed:
                 ui.close()

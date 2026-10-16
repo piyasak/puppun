@@ -33,6 +33,10 @@ class Sweep:
 
 def sweep(db: Session, storage, at: datetime, *, dry_run: bool = False, limit: int = 500) -> Sweep:
     result = Sweep()
+    if not dry_run:
+        from . import diagnostics
+
+        diagnostics.purge(db, storage, at)  # screen captures: KEEP_DAYS, whatever the plan
     candidates = db.execute(
         select(Clip, Job).join(Job, Job.id == Clip.job_id)
         .where(Clip.storage_key.is_not(None), Clip.uploaded_at.is_not(None))

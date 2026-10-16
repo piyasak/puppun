@@ -33,6 +33,7 @@ from .routers import (
     billing,
     clips,
     devices,
+    diagnostics,
     environments,
     jobs,
     library,
@@ -123,6 +124,9 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(admin.router)
     app.include_router(ui_profile.admin_router)
     app.include_router(ui_profile.agent_router)
+    app.include_router(diagnostics.agent_router)
+    app.include_router(diagnostics.web_router)
+    app.include_router(diagnostics.admin_router)
 
     # Which release answers: BUILD_ID from the image build, else the commit Render deployed.
     build = os.environ.get("BUILD_ID") or os.environ.get("RENDER_GIT_COMMIT", "")[:7] or "dev"

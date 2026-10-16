@@ -174,6 +174,7 @@ class TikTokUi:
         wait_s = float(profile.wait_s) if wait_s is None else wait_s
         self.adb, self.serial, self.sleep, self.settle_s, self.wait_s = adb, serial, sleep, settle_s, wait_s
         self.reader, self.reader_on = reader, False
+        self.last_xml = ""  # the latest screen reading as XML, for diagnostics (agent/diagnostics.py)
         # Q-48: False when an admin turned the Workspace's account check off: the account is neither
         # compared nor put in the evidence; Profile is still opened (the private tab and the marker are there).
         self.account_check = True
@@ -209,7 +210,8 @@ class TikTokUi:
             self.sh(f"rm -f {DUMP}")
             try:
                 self.sh(f"uiautomator dump {DUMP} >/dev/null")
-                nodes = parse_dump(self.sh(f"cat {DUMP}"))
+                self.last_xml = self.sh(f"cat {DUMP}")
+                nodes = parse_dump(self.last_xml)
             except AdbError:
                 nodes = []
         if not nodes and not exact and self.reader is not None:
@@ -217,7 +219,8 @@ class TikTokUi:
 
             try:
                 self.reader_on = True
-                nodes = parse_dump(self.reader.dump())
+                self.last_xml = self.reader.dump()
+                nodes = parse_dump(self.last_xml)
             except (ReaderError, AdbError):
                 nodes = []  # read as "nothing on screen": the callers look again or stop, never guess
         if check:
