@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — a public post's check outlived the 5-minute lease (server)
+- PO, Agent 0.7.0: "fb8f276c: หยุดตามที่ Server แจ้ง (LEASE_LOST)". fb8f276c (tx1, public grant 27c99a50): SUBMITTING 14:36:17, VERIFYING 14:36:21, and the lease (5 min, renewed only by events) turned it UNKNOWN (AGENT_LOST_AFTER_SUBMIT) at 14:42:36 while the Agent was still opening videos to find the marker; its result then got LEASE_LOST
+- Fix (server): a post in VERIFYING keeps its lease for 20 min (`posts.VERIFY_LEASE_S`); other steps keep 5 min, and a lost Agent still turns the post UNKNOWN. Integration test; test-integration all passed
+- The PO resolves fb8f276c after checking tx1's public videos (it was most likely published)
+
 ### Latest slice (2026-10-16) — TikTok UI steps as an Admin-edited profile (Q-50, source 0.7.0)
 - PO: every TikTok change needed a new Agent; keep the steps in a JSON config instead. Chosen: edited on the Admin page, built after 0.6.1
 - `agent/ui_profile.py` (SPEC + DEFAULTS + validate; the server copy `clipflow_api/ui_profile.py` is checked identical by a test): TikTok's words for Profile/Following/Followers, private and videos tabs (and the tab's "โพสต์" icon), share "Video", Next, Close, visibility row/words/options, the "continue editing?" banner and its cancel, lock icon, private caption words, pinned, the grid tile id, settle/wait seconds, account/verify tries, verify wait, tiles to scan; extra never-press words and login/CAPTCHA markers (add only). Not settable: Post (label and the single press under a grant), the never-press list itself, the exact caption check, the marker, unsure = UNKNOWN
