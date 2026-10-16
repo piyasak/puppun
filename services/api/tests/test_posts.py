@@ -188,3 +188,24 @@ def test_released_phone_and_other_environments_get_nothing(shop, app, onboard, c
     assert ev(stranger.w, series["items"][0]["id"], "TRANSFERRING").status_code == 404
     shop.acc.post(f"/v1/devices/{shop.devices[0]}/unbind")
     assert claim(shop.w, [shop.serial]) is None
+
+
+def test_verifying_keeps_its_lease_long_enough_for_a_public_check(shop, app, live_client):
+    # tx1, 2026-10-16: fb8f276c's check took over 5 min and the 5-min lease turned it UNKNOWN meanwhile.
+    from clipflow_api import posts as post_rules
+    from clipflow_api.models import ScheduleItem
+
+    def lease_left(item_id):
+        with app.state.db.sessionmaker() as s:
+            expires = s.get(ScheduleItem, uuid.UUID(item_id)).lease_expires_at
+        return (expires - datetime.now(expires.tzinfo)).total_seconds()
+
+    series = schedule(shop, clips=1)
+    lw = live(shop, live_client)
+    set_times(app, series["id"], [-1])
+    post = claim(lw, [shop.serial])
+    for kind in ("TRANSFERRING", "PREPARING", "SUBMITTING"):
+        assert ev(lw, post["id"], kind).status_code == 200
+    assert lease_left(post["id"]) <= post_rules.LEASE_S
+    assert ev(lw, post["id"], "VERIFYING").status_code == 200
+    assert lease_left(post["id"]) > post_rules.LEASE_S * 3  # 20 min, not 5
