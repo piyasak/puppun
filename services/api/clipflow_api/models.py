@@ -641,3 +641,26 @@ class UiProfile(Base):
     reason: Mapped[str] = mapped_column(String(500))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = _created()
+
+
+class Diagnostic(Base):
+    """Screenshots and screen readings of one phone, from the Agent (PO 2026-10-16), kept KEEP_DAYS.
+    kind: failure (a post stopped on a TikTok screen) | on_request (a person asked for `check`)."""
+
+    __tablename__ = "diagnostics"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("schedule_items.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(16))
+    check: Mapped[str | None] = mapped_column(String(40))
+    code: Mapped[str | None] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(16))  # requested | running | done | failed
+    note: Mapped[str | None] = mapped_column(String(300))
+    files: Mapped[list] = mapped_column(JSONB, default=list)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _created()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

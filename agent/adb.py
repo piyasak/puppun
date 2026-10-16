@@ -239,6 +239,9 @@ class Adb:
     def install(self, serial: str, apk: Path) -> str:
         return self._run(["-s", serial, "install", "-r", str(apk)])
 
+    def pull(self, serial: str, remote: str, local: Path) -> None:
+        self._run(["-s", serial, "pull", remote, str(local)])
+
     def push(self, serial: str, local: Path, remote: str) -> None:
         self._run(["-s", serial, "push", str(local), remote])
 

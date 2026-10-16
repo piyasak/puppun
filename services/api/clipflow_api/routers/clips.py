@@ -281,5 +281,6 @@ def local_media(key: str, exp: int, sig: str, request: Request):
     path = storage.verify(key, exp, sig)
     if path is None:
         raise not_found()
-    media_type = "image/jpeg" if key.endswith(".jpg") else "video/mp4"  # Q-33 stills
+    media_type = {".jpg": "image/jpeg", ".png": "image/png", ".xml": "text/plain; charset=utf-8"}.get(
+        Path(key).suffix, "video/mp4")  # Q-33 stills, diagnostics (screenshots, screen readings)
     return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=60"})

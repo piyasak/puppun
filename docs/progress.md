@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — phone screen diagnostics (Q-51, source 0.8.0)
+- PO: public posts on tx1 (TikTok Shop account) keep ending UNKNOWN; nobody can see that phone's screen from here. Asked to design a debug feature; chosen: auto capture on failure + on-demand checks, owner + admins, 7 days
+- Agent (`agent/diagnostics.py`): a post stopped on a TikTok screen sends a screenshot + screen reading tied to the post (before TikTok is closed; never raises); when idle it runs a check asked on the web (profile, newest public video, newest private video), read-only, one capture per step, TikTok closed after
+- Server: `diagnostics` (0025), Agent upload/claim/done, web request/list/view (links 10 min, audited), staff list/view (audited), PNG signature checked, 16 files max, purge after 7 days; local media serves .png/.xml
+- Web: Phones page "ตรวจหน้าจอ" per phone: pick a check, see status, open screenshots and the XML of each step
+- Tests: test-unit 198; integration test_diagnostics (owner-only, staff view, 7-day purge with files) + full suite; web tsc clean. Next: tx1 "newest public video" check after 0.8.0 is installed
+
 ### Latest slice (2026-10-16) — TikTok UI steps as an Admin-edited profile (Q-50, source 0.7.0)
 - PO: every TikTok change needed a new Agent; keep the steps in a JSON config instead. Chosen: edited on the Admin page, built after 0.6.1
 - `agent/ui_profile.py` (SPEC + DEFAULTS + validate; the server copy `clipflow_api/ui_profile.py` is checked identical by a test): TikTok's words for Profile/Following/Followers, private and videos tabs (and the tab's "โพสต์" icon), share "Video", Next, Close, visibility row/words/options, the "continue editing?" banner and its cancel, lock icon, private caption words, pinned, the grid tile id, settle/wait seconds, account/verify tries, verify wait, tiles to scan; extra never-press words and login/CAPTCHA markers (add only). Not settable: Post (label and the single press under a grant), the never-press list itself, the exact caption check, the marker, unsure = UNKNOWN

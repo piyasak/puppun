@@ -146,6 +146,24 @@ class ServerClient:
                 return None
             raise
 
+    # --- screen diagnostics (PO 2026-10-16) ---------------------------------------------------------------
+
+    def diagnostic_failure(self, session: Session, serial: str, post_id: str | None, code: str) -> str:
+        return self._post("/v1/agent/diagnostics", {"serial": serial, "item_id": post_id, "code": code[:40]},
+                          bearer=session.token)["id"]
+
+    def diagnostic_requested(self, session: Session, ready_serials: list[str]) -> dict | None:
+        return self._post("/v1/agent/diagnostics/requested", {"ready_serials": ready_serials},
+                          bearer=session.token)["diagnostic"]
+
+    def diagnostic_file(self, session: Session, diag_id: str, step: int, name: str, ext: str, data: bytes) -> dict:
+        kind = "image/png" if ext == "png" else "text/plain"
+        return self._send("PUT", f"/v1/agent/diagnostics/{diag_id}/files/{step}/{name}.{ext}", data, kind,
+                          session.token, {}, timeout_s=60.0)
+
+    def diagnostic_done(self, session: Session, diag_id: str, note: str | None = None, error: str | None = None) -> dict:
+        return self._post(f"/v1/agent/diagnostics/{diag_id}/done", {"note": note, "error": error}, bearer=session.token)
+
     def post_state(self, session: Session, post_id: str) -> dict:
         """Where one of this Environment's posts stands: state, reason, attempt."""
         return self._send("GET", f"/v1/agent/posts/{post_id}", None, "application/json", session.token)
