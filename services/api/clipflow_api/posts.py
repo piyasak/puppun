@@ -35,6 +35,9 @@ from .errors import ApiError
 from .models import Clip, ClipMetadata, Device, PostingGrant, ScheduleItem, ScheduleItemEvent, ScheduleSeries
 
 LEASE_S = 300
+# Verifying sends no event until it ends: a public post's check opens several videos and retries with waits
+# (tx1, 2026-10-16: fb8f276c verified after > 5 min and the lease had already turned it UNKNOWN).
+VERIFY_LEASE_S = 1200
 MAX_ATTEMPTS = 3
 LATENESS = timedelta(minutes=60)  # later than this, a post is "missed": offline policy, not catch-up
 BEFORE_SUBMIT = ("CLAIMED", "TRANSFERRING", "PREPARING")
@@ -300,7 +303,7 @@ def apply_event(db: Session, ctx: AgentContext, item_id: uuid.UUID, event: dict,
     db.add(ScheduleItemEvent(workspace_id=item.workspace_id, item_id=item.id, event_id=event_id, type=kind,
                              detail=(str(event.get("detail") or "")[:300] or None)))
     if item.state in IN_FLIGHT:
-        item.lease_expires_at = at + timedelta(seconds=LEASE_S)
+        item.lease_expires_at = at + timedelta(seconds=VERIFY_LEASE_S if item.state == "VERIFYING" else LEASE_S)
     if item.state in FINAL:
         _maybe_complete(db, item.series_id, at)
     return item, False, refusal
