@@ -67,9 +67,8 @@ export function NotificationsPage() {
   const ruleFor = (chat: string, device: string | null) => data?.rules.find((r) => r.chat_ref === chat && r.device_id === device)
 
   return (
-    <Shell>
-      <section className="card" aria-labelledby="notify-title">
-        <h1 id="notify-title">การแจ้งเตือน Telegram</h1>
+    <Shell title="การแจ้งเตือน Telegram">
+      <section className="card">
         <p className="muted">
           โพสต์สำเร็จส่งรวมทุกชั่วโมง • โพสต์ที่ต้องให้คนดูส่งทันที • สถานะระบบ (Agent ออฟไลน์ โทรศัพท์ไม่พร้อม สิทธิ์โพสต์ใกล้หมด)
           • สรุปรายวันพร้อมยอดผู้ติดตามและยอดดู
