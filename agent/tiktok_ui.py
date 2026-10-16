@@ -528,11 +528,38 @@ class TikTokUi:
                 self.sleep(self.settle_s)
                 if marker in " ".join(n.text for n in self.read()):
                     return {"method": "caption_marker", "value": marker, "account": handle, "visibility": "everyone"}
+            if self._marker_in_comments(marker):
+                return {"method": "caption_marker", "value": marker, "account": handle, "visibility": "everyone",
+                        "where": "comments"}
             self.sh("input keyevent KEYCODE_BACK")  # back to the grid, next tile
             self.sleep(self.settle_s)
         if not seen_caption:
             raise UiStop("VERIFY_UNREADABLE", "caption of the newest public video not found")
         raise UiStop("VERIFY_MARKER", "the newest public videos do not carry this attempt's marker")
+
+    def _marker_in_comments(self, marker: str) -> bool:
+        """tx1, 2026-10-16 (TikTok Shop account): its own public video shows the caption only in a card for the
+        first seconds, cut short and not readable to the screen reader; the comments sheet carries the whole
+        caption, marker included. The sheet is only opened and closed: with no comments TikTok puts the cursor
+        in the comment box and shows the keyboard by itself, so it is read at once, nothing is typed or pressed
+        in it, and BACK closes the keyboard and then the sheet."""
+        nodes = self.read()
+        words = self.p.labels("comments_button")
+        button = next((n for n in nodes if n.clickable and any(n.label.startswith(w) for w in words)), None)
+        if button is None:
+            return False
+        x, y = button.center
+        if any(forbidden(n, self.p) for n in under(nodes, x, y)):
+            return False
+        self.sh(f"input swipe {x} {y} {x} {y} 120")
+        self.sleep(self.settle_s)
+        found = marker in " ".join(n.text for n in self.read())
+        if self.keyboard_shown():
+            self.sh("input keyevent KEYCODE_BACK")  # the keyboard
+            self.sleep(self.settle_s)
+        self.sh("input keyevent KEYCODE_BACK")  # the comments sheet
+        self.sleep(self.settle_s)
+        return found
 
     def private_count(self, tries: int = 6) -> int:
         """Private videos on Profile (lock tiles), read on the private tab. The grid loads late (QA phone:
