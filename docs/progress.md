@@ -10,6 +10,10 @@ Last updated: 2026-10-07
 - Server: `diagnostics` (0025), Agent upload/claim/done, web request/list/view (links 10 min, audited), staff list/view (audited), PNG signature checked, 16 files max, purge after 7 days; local media serves .png/.xml
 - Web: Phones page "ตรวจหน้าจอ" per phone: pick a check, see status, open screenshots and the XML of each step
 - Tests: test-unit 198; integration test_diagnostics (owner-only, staff view, 7-day purge with files) + full suite; web tsc clean. Next: tx1 "newest public video" check after 0.8.0 is installed
+### Latest slice (2026-10-16) — a public post's check outlived the 5-minute lease (server)
+- PO, Agent 0.7.0: "fb8f276c: หยุดตามที่ Server แจ้ง (LEASE_LOST)". fb8f276c (tx1, public grant 27c99a50): SUBMITTING 14:36:17, VERIFYING 14:36:21, and the lease (5 min, renewed only by events) turned it UNKNOWN (AGENT_LOST_AFTER_SUBMIT) at 14:42:36 while the Agent was still opening videos to find the marker; its result then got LEASE_LOST
+- Fix (server): a post in VERIFYING keeps its lease for 20 min (`posts.VERIFY_LEASE_S`); other steps keep 5 min, and a lost Agent still turns the post UNKNOWN. Integration test; test-integration all passed
+- The PO resolves fb8f276c after checking tx1's public videos (it was most likely published)
 
 ### Latest slice (2026-10-16) — TikTok UI steps as an Admin-edited profile (Q-50, source 0.7.0)
 - PO: every TikTok change needed a new Agent; keep the steps in a JSON config instead. Chosen: edited on the Admin page, built after 0.6.1
