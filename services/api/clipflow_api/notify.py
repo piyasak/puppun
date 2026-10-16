@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
-from . import telegram
+from . import telegram, telegram_actions
 from .models import (
     AccountStat,
     AgentInstallation,
@@ -70,7 +70,7 @@ def _rules(db: Session, workspace_id: uuid.UUID, device_id: uuid.UUID | None, ki
 
 
 def enqueue(db: Session, workspace_id: uuid.UUID, device_id: uuid.UUID | None, kind: str, body: str, key: str,
-            *, batch: bool = False) -> int:
+            *, batch: bool = False, item: ScheduleItem | None = None) -> int:
     """One outbox row per chat whose rules want `kind` for this phone; repeated keys are ignored."""
     chats = {r.chat_ref for r in _rules(db, workspace_id, device_id, kind)}
     added = 0
@@ -79,8 +79,13 @@ def enqueue(db: Session, workspace_id: uuid.UUID, device_id: uuid.UUID | None, k
             Notification.chat_ref == chat_ref, Notification.dedupe_key == key))
         if exists:
             continue
-        db.add(Notification(workspace_id=workspace_id, chat_ref=chat_ref, kind=kind, dedupe_key=key[:120],
-                            text=body[:4000], batch=batch))
+        note = Notification(workspace_id=workspace_id, chat_ref=chat_ref, kind=kind, dedupe_key=key[:120],
+                            text=body[:4000], batch=batch)
+        db.add(note)
+        rows = telegram_actions.buttons_for(item) if item is not None and not batch else []
+        if rows:  # phase 1.5: act from the chat
+            db.flush()
+            telegram_actions.attach(db, note, item, rows)
         added += 1
     return added
 
@@ -112,7 +117,7 @@ def on_post_event(db: Session, item: ScheduleItem, settings=None) -> None:
                         f"⚠️ {phone_label(device)}: {PROBLEM_WORDS[item.state]}\n"
                         f"เหตุผล: {item.reason or '-'}\nโพสต์: {_caption(db, item)}\n"
                         f"ดูและแก้ที่เว็บ: {_web(settings, '/schedules')}",
-                        f"problem:{item.id}:{item.state_version}")
+                        f"problem:{item.id}:{item.state_version}", item=item)
     except Exception:  # noqa: BLE001
         log.exception("notify: post event %s", item.id)
 
@@ -211,9 +216,10 @@ def summaries(db: Session, at: datetime) -> None:
 
 # --- sending ----------------------------------------------------------------------------------------------
 
-def _deliver(db: Session, token: str, chat: TelegramChat, rows: list[Notification], body: str, at: datetime) -> None:
+def _deliver(db: Session, token: str, chat: TelegramChat, rows: list[Notification], body: str, at: datetime,
+             buttons: list | None = None) -> None:
     try:
-        telegram.send(token, chat.chat_id, body)
+        telegram.send(token, chat.chat_id, body, telegram_actions.keyboard(buttons) if buttons else None)
         for r in rows:
             r.sent_at, r.attempts = at, r.attempts + 1
     except telegram.TelegramError as exc:
@@ -239,7 +245,7 @@ def send_pending(db: Session, token: str, at: datetime) -> None:
             continue
         singles = [r for r in rows if not r.batch]
         for r in singles:
-            _deliver(db, token, chat, [r], r.text, at)
+            _deliver(db, token, chat, [r], r.text, at, r.buttons)
         batched = [r for r in rows if r.batch]
         if batched and min(r.created_at for r in batched) <= at - BATCH_EVERY:
             body = f"✅ โพสต์สำเร็จ {len(batched)} รายการ\n" + "\n".join(r.text.removeprefix("✅ ") for r in batched)

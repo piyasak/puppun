@@ -17,7 +17,7 @@ from .. import devices as device_rules
 from ..agent_sessions import AgentContext
 from ..deps import WebAuth, get_db, web_auth
 from ..errors import ApiError
-from ..models import AccountStat, Device, Notification, NotifyRule, TelegramChat
+from ..models import AccountStat, Device, Notification, NotifyRule, TelegramChat, TelegramUser
 from .agent import agent_context
 
 web_router = APIRouter(prefix="/v1/notifications")
@@ -47,11 +47,16 @@ def overview(request: Request, auth: WebAuth = Depends(web_auth), db: Session = 
     rules = db.scalars(select(NotifyRule).where(NotifyRule.workspace_id == auth.workspace_id)
                        .order_by(NotifyRule.created_at)).all()
     phones = db.scalars(select(Device).where(Device.workspace_id == auth.workspace_id, Device.unbound_at.is_(None))).all()
+    people = db.scalars(select(TelegramUser).where(TelegramUser.workspace_id == auth.workspace_id,
+                                                   TelegramUser.unlinked_at.is_(None)).order_by(TelegramUser.created_at)).all()
     return {"configured": bool(settings.telegram_bot_token and settings.telegram_bot_username),
             "bot_username": settings.telegram_bot_username or None,
             "chats": [{"id": str(c.id), "title": c.title, "kind": c.kind, "created_at": c.created_at.isoformat()} for c in chats],
             "rules": [_rule_out(r) for r in rules if r.chat_ref in {c.id for c in chats}],
-            "phones": [{"id": str(d.id), "label": notify.phone_label(d)} for d in phones]}
+            "phones": [{"id": str(d.id), "label": notify.phone_label(d)} for d in phones],
+            # Phase 1.5: people who can press buttons (their own Telegram, linked in a private chat)
+            "people": [{"id": str(p.id), "name": p.name, "me": p.user_id == auth.user_id,
+                        "created_at": p.created_at.isoformat()} for p in people]}
 
 
 @web_router.post("/telegram/link", status_code=201)
@@ -71,6 +76,21 @@ def unlink(chat_ref: uuid.UUID, request: Request, auth: WebAuth = Depends(web_au
     chat.unlinked_at = datetime.now(UTC)
     audit.record(db, request, "telegram.unlink", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
                  target_id=chat.id)
+    db.commit()
+    return {"unlinked": True}
+
+
+@web_router.delete("/telegram/people/{person_id}")
+def unlink_person(person_id: uuid.UUID, request: Request, auth: WebAuth = Depends(web_auth),
+                  db: Session = Depends(get_db)):
+    """That Telegram account can no longer press buttons (messages still arrive in linked chats)."""
+    person = db.scalars(select(TelegramUser).where(TelegramUser.id == person_id, TelegramUser.workspace_id == auth.workspace_id,
+                                                   TelegramUser.unlinked_at.is_(None))).first()
+    if person is None:
+        raise ApiError(404, "NOT_FOUND", "ไม่พบบัญชี Telegram นี้")
+    person.unlinked_at = datetime.now(UTC)
+    audit.record(db, request, "telegram.person_unlink", workspace_id=auth.workspace_id, actor_user_id=auth.user_id,
+                 target_id=person.id)
     db.commit()
     return {"unlinked": True}
 
@@ -156,11 +176,11 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         update = await request.json()
     except ValueError:
         return {"ok": True}
-    reply = telegram.handle_update(db, update if isinstance(update, dict) else {})
+    calls = telegram.handle_update(db, update if isinstance(update, dict) else {})
     db.commit()
-    if reply and settings.telegram_bot_token:
+    for method, payload in calls if settings.telegram_bot_token else []:
         with contextlib.suppress(telegram.TelegramError):
-            telegram.send(settings.telegram_bot_token, *reply)
+            telegram.call(settings.telegram_bot_token, method, payload)
     return {"ok": True}
 
 

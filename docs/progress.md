@@ -4,6 +4,14 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-17) — Telegram buttons, phase 1.5 (Q-52b, server only)
+- PO: phase 1 (#56) merged and deployed (staging at migration 0026, no chat linked yet: the bot settings on Render are the PO's step); "ต่อ" -> phase 1.5
+- Buttons on problem messages: NEEDS_ACTION -> retry (retryable reasons only) / cancel / screen check; UNKNOWN -> found published / not published / screen check (newest public or private video by the post's grant)
+- Only people who linked their own Telegram in a private chat and are still Workspace members can press; confirm step on every press; same functions and state_version as the web; once, 24 h, the chat it was sent to; audited `telegram.<action>`; settling UNKNOWN needs the presser's evidence as a reply (at least 5 characters of their own)
+- Server: `telegram_actions.py`, webhook takes `callback_query`, replies are Bot API call lists; migration 0027 (`telegram_users`, `telegram_actions`, `notifications.buttons`); web: "คนที่กดปุ่มใน Telegram ได้" with remove; `DELETE /v1/notifications/telegram/people/{id}` (in the T01 sweep)
+- Tests: integration test_telegram_buttons (private vs group link, stranger/wrong chat/expired/removed person refused, confirm + back, retry once then other buttons refuse, UNKNOWN evidence by the presser only, screen check request, cross-tenant 404). Bot API mocked only: nothing sent to real Telegram
+- PO next: bot settings on Render (phase 1 steps), merge, deploy (0027; setWebhook now asks for button presses too), link a private chat, press a button on a test problem
+
 ### Latest slice (2026-10-16) — Telegram notifications, phase 1 (Q-52, source 0.9.0)
 - PO: notifications to Telegram for posting, errors and a summary with followers / views, set up per account; phase 1 = posting + needs-a-person, health, daily summary; problems at once, successes hourly; owner sets it up. Buttons that act from Telegram: phase 1.5
 - Server: `telegram.py` (Bot API, one-time link codes, webhook updates), `notify.py` (outbox, post events, health, daily summary, sender loop under a pg advisory lock), `routers/notifications.py` (web settings, `/v1/telegram/webhook` with the secret header, `/v1/agent/account-stats`); migration 0026 (`telegram_chats`, `telegram_link_codes`, `notify_rules`, `notifications`, `account_stats`, all with workspace_id)

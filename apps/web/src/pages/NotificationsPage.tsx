@@ -1,6 +1,7 @@
 /** Telegram notifications (Q-52, PO 2026-10-16): link a chat with a one-time code, choose per phone what each
  * chat hears (posting batched hourly, problems at once, system health, a daily summary), send a test, and see
- * the account numbers the Agent read on Profile. Buttons that act from Telegram come in phase 1.5. */
+ * the account numbers the Agent read on Profile. Phase 1.5: people who linked their own Telegram (a private
+ * chat with the bot) can press buttons on problem messages; each press is confirmed and audited. */
 import { useCallback, useEffect, useState } from 'react'
 import { Shell } from '../components/Shell'
 import { Alert } from '../components/ui'
@@ -12,7 +13,11 @@ type Rule = {
   id: string; chat_ref: string; device_id: string | null
   posting: boolean; problems: boolean; health: boolean; summary: boolean; summary_hour: number
 }
-type Overview = { configured: boolean; bot_username: string | null; chats: Chat[]; rules: Rule[]; phones: { id: string; label: string }[] }
+type Person = { id: string; name: string; me: boolean; created_at: string }
+type Overview = {
+  configured: boolean; bot_username: string | null; chats: Chat[]; rules: Rule[]
+  phones: { id: string; label: string }[]; people: Person[]
+}
 type Stat = {
   device_id: string; label: string
   stat: null | {
@@ -88,6 +93,32 @@ export function NotificationsPage() {
           </div>
         )}
       </section>
+
+      {data?.configured && (
+        <section className="card" aria-labelledby="people-title">
+          <h2 id="people-title">คนที่กดปุ่มใน Telegram ได้</h2>
+          <p className="muted">
+            ข้อความที่ต้องให้คนดูมีปุ่ม ลองใหม่ / ยกเลิกโพสต์ / ตรวจหน้าจอ / พบโพสต์แล้ว / ไม่ได้โพสต์ ทุกปุ่มต้องกดยืนยันอีกครั้ง
+            และถูกบันทึกในประวัติ การยืนยันผลโพสต์ต้องพิมพ์หลักฐานตอบกลับบอท กดได้เฉพาะคนที่เปิดลิงก์ เชื่อม Telegram
+            ในแชตส่วนตัวกับบอท (ลิงก์ในกลุ่มเชื่อมแค่กลุ่ม ไม่เชื่อมตัวคน)
+          </p>
+          <ul className="rows">
+            {data.people.length === 0 && <li className="row muted">ยังไม่มี</li>}
+            {data.people.map((p) => (
+              <li key={p.id} className="row" data-testid="telegram-person">
+                <div className="row-main">
+                  <strong>{p.name}</strong>
+                  <span className="muted">{p.me ? 'บัญชีของคุณ • ' : ''}เชื่อมเมื่อ {formatDate(p.created_at)}</span>
+                </div>
+                <button type="button" className="btn btn-danger-outline btn-small"
+                  onClick={() => void call(() => api(`/v1/notifications/telegram/people/${p.id}`, { method: 'DELETE' }), 'ยกเลิกสิทธิ์กดปุ่มแล้ว')}>
+                  ยกเลิกสิทธิ์กดปุ่ม
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {data?.chats.map((chat) => (
         <section key={chat.id} className="card" data-testid="telegram-chat">
