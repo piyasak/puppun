@@ -39,6 +39,7 @@ from .routers import (
     pairing,
     posts,
     schedules,
+    ui_profile,
 )
 from .storage import LocalStorage, S3Storage, Storage
 
@@ -120,6 +121,8 @@ def create_app(settings: Settings | None = None, *, resolve_key: KeyResolver | N
     app.include_router(posts.agent_router)
     app.include_router(billing.router)
     app.include_router(admin.router)
+    app.include_router(ui_profile.admin_router)
+    app.include_router(ui_profile.agent_router)
 
     # Which release answers: BUILD_ID from the image build, else the commit Render deployed.
     build = os.environ.get("BUILD_ID") or os.environ.get("RENDER_GIT_COMMIT", "")[:7] or "dev"

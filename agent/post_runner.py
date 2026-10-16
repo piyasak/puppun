@@ -36,7 +36,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent import marker, thai_keyboard
+from agent import marker, thai_keyboard, ui_profile
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -47,6 +47,7 @@ from agent.tiktok_ui import TikTokUi, UiStop, media_id
 
 STOP_CODES = {"LEASE_LOST", "ITEM_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
 FREE_SPACE_EVERY_S = 300.0
+PROFILE_EVERY_S = 3600.0  # Q-50: the UI profile is fetched on start and hourly
 
 
 # Q-49 (PO 2026-10-15): "everyone" = public; verified on Profile's videos grid (TikTokUi.verify_public_post).
@@ -89,6 +90,7 @@ class PostRunner:
         self.crash_after_submit = crash_after_submit  # fault injection for G5-04: stop dead after Post
         self.retries, self.retry_wait_s = retries, retry_wait_s
         self.journal = AttemptJournal(self.data_dir / "attempts.jsonl")
+        self.profile = ui_profile.load_cached(self.data_dir)  # Q-50: last good one, else built in
         self._halt = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -124,6 +126,24 @@ class PostRunner:
             self.log(f"บันทึกโพสต์ค้าง {len(settled)} รายการ: เซิร์ฟเวอร์มีผลแล้ว ปิดรายการในเครื่องนี้")
         return settled
 
+    def refresh_profile(self, client: ServerClient, get_session) -> None:
+        """Q-50: the server's latest UI profile, if it validates here too; otherwise the one in use stays."""
+        try:
+            answer = client.ui_profile(get_session())
+        except (ServerError, OSError) as exc:
+            self.log(f"ค่าหน้าจอ TikTok: โหลดจากเซิร์ฟเวอร์ไม่ได้ ({exc}); ใช้ชุดเดิม (เวอร์ชัน {self.profile.version})")
+            return
+        if answer is None or answer.get("version") == self.profile.version:
+            return
+        try:
+            profile = ui_profile.from_server(answer)
+        except ui_profile.ProfileError as exc:
+            self.log(f"ค่าหน้าจอ TikTok เวอร์ชัน {answer.get('version')} ใช้ไม่ได้ ({exc}); ใช้ชุดเดิม")
+            return
+        ui_profile.save_cached(self.data_dir, answer)
+        self.profile = profile
+        self.log(f"ค่าหน้าจอ TikTok: ใช้เวอร์ชัน {profile.version}")
+
     def start(self, client: ServerClient, get_session) -> None:
         self._thread = threading.Thread(target=self._loop, args=(client, get_session), daemon=True,
                                         name="clipflow-posts")
@@ -139,8 +159,14 @@ class PostRunner:
             self.settle_journal(client, get_session)
         except Exception as exc:  # noqa: BLE001 - a journal check must never keep posting from starting
             self.log(f"ตรวจบันทึกโพสต์ค้าง: ทำไม่ได้ ({type(exc).__name__}: {exc}); โพสต์ต่อ")
-        next_free = 0.0
+        next_free = next_profile = 0.0
         while not self._halt.is_set():
+            if time.monotonic() >= next_profile:
+                next_profile = time.monotonic() + PROFILE_EVERY_S
+                try:
+                    self.refresh_profile(client, get_session)
+                except Exception as exc:  # noqa: BLE001 - the profile must never keep posting from running
+                    self.log(f"ค่าหน้าจอ TikTok: ตรวจไม่ได้ ({type(exc).__name__}); ใช้ชุดเดิม")
             if time.monotonic() >= next_free:
                 next_free = time.monotonic() + FREE_SPACE_EVERY_S
                 try:
@@ -308,7 +334,10 @@ class _Post:
             raise UiStop("UNSUPPORTED_DEVICE", verdict.reason)
 
     def _ui(self):
-        ui = (self.r.ui_factory or TikTokUi.for_phone)(self.adb, self.phone.adb_serial)
+        if self.r.ui_factory:
+            ui = self.r.ui_factory(self.adb, self.phone.adb_serial)
+        else:
+            ui = TikTokUi.for_phone(self.adb, self.phone.adb_serial, self.r.profile)
         ui.account_check = self.post["device"].get("account_check", True) is not False  # Q-48; older servers: on
         return ui
 

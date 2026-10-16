@@ -628,3 +628,16 @@ class PaymentEvent(Base):
     payload_sha256: Mapped[str] = mapped_column(String(64))
     occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     received_at: Mapped[datetime] = _created()
+
+
+class UiProfile(Base):
+    """A version of the TikTok UI profile (Q-50). Never changed after it is saved; the newest is in use."""
+
+    __tablename__ = "ui_profiles"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    body: Mapped[dict] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(String(500))
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created()

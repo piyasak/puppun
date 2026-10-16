@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — TikTok UI steps as an Admin-edited profile (Q-50, source 0.7.0)
+- PO: every TikTok change needed a new Agent; keep the steps in a JSON config instead. Chosen: edited on the Admin page, built after 0.6.1
+- `agent/ui_profile.py` (SPEC + DEFAULTS + validate; the server copy `clipflow_api/ui_profile.py` is checked identical by a test): TikTok's words for Profile/Following/Followers, private and videos tabs (and the tab's "โพสต์" icon), share "Video", Next, Close, visibility row/words/options, the "continue editing?" banner and its cancel, lock icon, private caption words, pinned, the grid tile id, settle/wait seconds, account/verify tries, verify wait, tiles to scan; extra never-press words and login/CAPTCHA markers (add only). Not settable: Post (label and the single press under a grant), the never-press list itself, the exact caption check, the marker, unsure = UNKNOWN
+- Server: table `ui_profiles` (0024, append-only versions), `GET/POST /v1/admin/ui-profile` (support reads, admin saves with a reason, audited `admin.ui_profile.save`, refused whole when invalid), `GET /v1/agent/ui-profile` (latest, 404 = built in). Admin page "ค่าหน้าจอ TikTok": JSON of the settings that differ, built-in values, history
+- Agent: `PostRunner.refresh_profile` on start and hourly; a profile that does not validate here is not used (logged); the last good one is kept in the data folder (`ui_profile.json`); TikTokUi reads every word/id/wait from it
+- Tests: test-unit 196 (rules identical, limits, add-only never-press words, a renamed tab works from a profile, cache, runner keeps the old one); API integration (versions, audit, support read-only, invalid refused); web tsc clean
+
 ### Latest slice (2026-10-16) — public verification: sort menu and pinned videos (source 0.6.1)
 - Agent 0.6.0 on the tx1/tx2 PC: posts with hashtags now pass the post screen and are pressed (the hashtag list fix works). Public verification then failed (VERIFY_UNREADABLE): tx2 5b3b367d opened a pinned video (PO found it published), tx1 f240f595: the videos tab was pressed while already open and TikTok opened its sort menu (PO)
 - Fix: `Node.selected` from the dump; an already selected videos tab is not pressed; the first 4 grid tiles are opened in turn (viewing only) until one carries the attempt's marker (TikTok pins at most 3). Unit tests (selected tab, pinned first); test-unit 189

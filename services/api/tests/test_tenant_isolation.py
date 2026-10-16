@@ -56,7 +56,8 @@ def test_every_customer_table_carries_a_non_null_workspace_id():
     """PRD §F: tenant-owned rows have workspace_id. Global tables are listed explicitly."""
     # payment_events is the provider's log: an event can arrive before (or without) a known payment,
     # so it is global and reaches a Workspace only through payments (E-45).
-    global_tables = {"workspaces", "users", "plans", "payment_events"}
+    # ui_profiles (Q-50): one TikTok UI profile for every Agent, edited by platform admins only
+    global_tables = {"workspaces", "users", "plans", "payment_events", "ui_profiles"}
     nullable_by_design = {AuditEvent.__tablename__}  # system events may have no workspace
     for table in Base.metadata.sorted_tables:
         if table.name in global_tables:
