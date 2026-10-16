@@ -10,6 +10,7 @@ Last updated: 2026-10-07
 - Fix: `TikTokUi._marker_in_comments` after the video page: press the comments button (UI profile `comments_button`), read at once, then BACK for the keyboard TikTok opens by itself on a video with no comments, and BACK for the sheet; nothing typed or pressed in the sheet
 - tx1 real checks (Agent code, read-only): fb8f276c VERIFIED via comments in 57 s, keyboard closed; a made-up marker is not matched (VERIFY_UNREADABLE after one round of 4 videos, 125 s). Unit test (marker read, BACK ×2, nothing typed); test-unit 199
 - The 20-minute VERIFYING lease (#51) covers the worst case (~10 min)
+- Agent 0.8.1 published 2026-10-16 (master 026a3af): https://github.com/piyasak/punpun-agent/releases/tag/v0.8.1, setup SHA-256 45bd9209…6576, 59.4 MB; no .py/.pyc; exe reports 0.8.1 and carries the comments check; simulated fresh PC: FFmpeg installed; bundle test 0.8.0 → 0.8.1 passed; anonymous download HTTP 200, hash matches
 
 ### Latest slice (2026-10-16) — phone screen diagnostics (Q-51, source 0.8.0)
 - PO: public posts on tx1 (TikTok Shop account) keep ending UNKNOWN; nobody can see that phone's screen from here. Asked to design a debug feature; chosen: auto capture on failure + on-demand checks, owner + admins, 7 days
