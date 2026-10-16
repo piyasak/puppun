@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.8.0"  # 0.7.0 + phone screen diagnostics (Q-51)
+SOURCE_VERSION = "0.8.1"  # 0.8.0 + public verify reads the caption in the comments sheet (tx1)
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"

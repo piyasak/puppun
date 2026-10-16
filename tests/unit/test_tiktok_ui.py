@@ -552,3 +552,46 @@ def test_a_pinned_video_first_in_the_grid_is_skipped_by_the_marker():
     ui.account = lambda **kw: "jk.mickey"
     evidence = ui._newest_public_has(mark, "ทดสอบโพสต์สาธารณะ #punpun " + mark)
     assert evidence["value"] == mark and phone.open == 1
+
+
+class CommentsPhone:
+    """tx1, 2026-10-16: the video page has no readable caption; the comments sheet has it, and with no
+    comments TikTok shows the keyboard by itself."""
+
+    def __init__(self, caption):
+        self.caption, self.sheet, self.keyboard, self.keys, self.typed = caption, False, False, [], []
+
+    def run(self, args):
+        cmd = args[3] if len(args) > 3 else ""
+        if cmd.startswith("input swipe"):
+            self.sheet = self.keyboard = True
+        elif cmd == "input keyevent KEYCODE_BACK":
+            self.keys.append("BACK")
+            if self.keyboard:
+                self.keyboard = False
+            else:
+                self.sheet = False
+        elif cmd.startswith(("input text", "am broadcast")):
+            self.typed.append(cmd)
+        elif cmd.startswith("dumpsys input_method"):
+            return f"mInputShown={'true' if self.keyboard else 'false'}\n"
+        elif cmd.startswith("cat "):
+            if self.sheet:
+                return screen(node(text=self.caption, bounds=(112, 691, 680, 775)),
+                              node(text="เพิ่มความคิดเห็น...", cls="android.widget.EditText", bounds=(116, 744, 696, 834)))
+            return screen(node(desc="อ่านหรือเพิ่มความคิดเห็น 0 ความคิดเห็น", cls="android.widget.Button",
+                               bounds=(592, 880, 720, 1000), clickable=True))
+        return ""
+
+
+def test_the_marker_is_read_in_the_comments_sheet_and_nothing_is_typed():
+    from agent import marker
+
+    mark = marker.hidden("fb8f276c-966e-46be-a4a5-c38d40061aa2")
+    phone = CommentsPhone("ทดสอบ — ตอนที่ 33/33 #หมอ " + mark)
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    assert ui._marker_in_comments(mark)
+    assert phone.keys == ["BACK", "BACK"] and not phone.sheet and not phone.keyboard and phone.typed == []
+    phone = CommentsPhone("ทดสอบ " + marker.hidden("37c09143-2082-4deb-8e33-3218687e6a91"))
+    ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
+    assert not ui._marker_in_comments(mark) and not phone.sheet  # another post's caption: not this one

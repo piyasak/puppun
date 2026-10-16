@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — tx1 public posts: the caption is read in the comments sheet (source 0.8.1)
+- Diagnostics check 3c962ee4 (tx1, newest public video, Agent 0.8.0) + the PO's screenshot: on tx1 (TikTok Shop account) its own public video shows the caption only in a card for the first seconds, cut short ("…จากหมอธรรมดา..."), and the card's text is not in the screen reading at all (XML: no caption, depth 26 of 50, so not a reader limit); tx2 shows a normal readable caption (7/7 verified)
+- tx1 on the QA PC, read-only probes: waiting (gone after ~5 s), tapping the card (pauses, does not expand) — no; the comments sheet shows the whole caption (332 characters) with the invisible marker: fb8f276c's marker found, 37c09143's and f240f595's not
+- Fix: `TikTokUi._marker_in_comments` after the video page: press the comments button (UI profile `comments_button`), read at once, then BACK for the keyboard TikTok opens by itself on a video with no comments, and BACK for the sheet; nothing typed or pressed in the sheet
+- tx1 real checks (Agent code, read-only): fb8f276c VERIFIED via comments in 57 s, keyboard closed; a made-up marker is not matched (VERIFY_UNREADABLE after one round of 4 videos, 125 s). Unit test (marker read, BACK ×2, nothing typed); test-unit 199
+- The 20-minute VERIFYING lease (#51) covers the worst case (~10 min)
+
 ### Latest slice (2026-10-16) — phone screen diagnostics (Q-51, source 0.8.0)
 - PO: public posts on tx1 (TikTok Shop account) keep ending UNKNOWN; nobody can see that phone's screen from here. Asked to design a debug feature; chosen: auto capture on failure + on-demand checks, owner + admins, 7 days
 - Agent (`agent/diagnostics.py`): a post stopped on a TikTok screen sends a screenshot + screen reading tied to the post (before TikTok is closed; never raises); when idle it runs a check asked on the web (profile, newest public video, newest private video), read-only, one capture per step, TikTok closed after
