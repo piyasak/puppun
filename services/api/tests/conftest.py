@@ -198,3 +198,19 @@ def live_server_url(live_app):
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(timeout=5)
+
+
+# Telegram (Q-52): the app with a bot configured; Bot API calls are recorded, never sent.
+TELEGRAM_SECRET = "hook-secret-for-tests"
+
+
+@pytest.fixture
+def bot(app, monkeypatch):
+    from clipflow_api import telegram
+
+    sent: list[tuple[str, dict]] = []
+    monkeypatch.setattr(app.state, "settings", app.state.settings.model_copy(update={
+        "telegram_bot_token": "123:test", "telegram_bot_username": "punpun_test_bot",
+        "telegram_webhook_secret": TELEGRAM_SECRET, "notify_loop": False}))
+    monkeypatch.setattr(telegram, "call", lambda token, method, payload, timeout=10.0: sent.append((method, payload)) or {})
+    return sent

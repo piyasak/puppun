@@ -19,13 +19,14 @@ from test_billing import move_cycle
 from clipflow_api import retention
 from clipflow_api.app import create_app
 from clipflow_api.config import Settings
-from clipflow_api.models import Clip, NotifyRule, ScheduleItem, TelegramChat
+from clipflow_api.models import Clip, NotifyRule, ScheduleItem, TelegramChat, TelegramUser
 
 # --- T01: A's ids through every route, called by B ------------------------------------------------
 
 PARAM = {"environment_id": "env", "token_id": "token", "agent_id": "agent", "device_id": "device",
          "job_id": "job", "clip_id": "clip", "series_id": "series", "item_id": "item", "payment_id": "payment",
-         "diag_id": "diag", "chat_ref": "chat", "rule_id": "rule"}
+         "diag_id": "diag", "chat_ref": "chat", "rule_id": "rule",
+         "person_id": "person"}
 # Bodies that pass validation, so the ownership check is what answers.
 BODY = {
     ("patch", "/v1/environments/{environment_id}"): {"name": "taken"},
@@ -80,9 +81,11 @@ def test_t01_another_tenant_gets_what_a_missing_id_gets_on_every_route(shop, onb
         db.add(chat)
         db.flush()
         rule = NotifyRule(workspace_id=chat.workspace_id, chat_ref=chat.id)
-        db.add(rule)
+        person = TelegramUser(workspace_id=chat.workspace_id, user_id=a.acc.user_id, telegram_user_id=chat.chat_id,
+                              name="A")
+        db.add_all([rule, person])
         db.commit()
-        ids |= {"chat": str(chat.id), "rule": str(rule.id)}
+        ids |= {"chat": str(chat.id), "rule": str(rule.id), "person": str(person.id)}
     before = _snapshot(a.acc, ids)
     b = Shop(onboard(), client, real_clip)
 

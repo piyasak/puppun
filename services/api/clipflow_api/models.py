@@ -733,6 +733,8 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(String(300))
+    # Phase 1.5: buttons under the message, rows of [label, action token] (TelegramAction.token)
+    buttons: Mapped[list | None] = mapped_column(JSONB)
 
 
 class AccountStat(Base):
@@ -749,3 +751,47 @@ class AccountStat(Base):
     likes: Mapped[int | None] = mapped_column(BigInteger)
     video_views: Mapped[list] = mapped_column(JSONB, default=list)  # newest first, as shown on the grid
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class TelegramUser(Base):
+    """A person's own Telegram account tied to their punpun user (phase 1.5): only they can press buttons.
+
+    Made when that person opens a link code in a private chat with the bot; a group chat links the chat only."""
+
+    __tablename__ = "telegram_users"
+    __table_args__ = (UniqueConstraint("workspace_id", "telegram_user_id", name="uq_telegram_users_workspace_tg"),)
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = _created()
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TelegramAction(Base):
+    """One button on one sent message (phase 1.5): what it does to which post, at which state_version.
+
+    Pressing asks to confirm; confirming runs the same rules as the web (state_version, evidence) and is
+    audited. Resolving an UNKNOWN post needs the presser to reply with evidence. Expires after 24 hours."""
+
+    __tablename__ = "telegram_actions"
+
+    id: Mapped[uuid.UUID] = _uuid()
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    notification_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("notifications.id", ondelete="CASCADE"), index=True)
+    chat_ref: Mapped[uuid.UUID] = mapped_column(ForeignKey("telegram_chats.id", ondelete="CASCADE"))
+    token: Mapped[str] = mapped_column(String(24), unique=True)
+    action: Mapped[str] = mapped_column(String(32))  # retry | cancel | check | found_published | confirmed_not_published
+    label: Mapped[str] = mapped_column(String(64))
+    item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("schedule_items.id", ondelete="CASCADE"))
+    device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    state_version: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Waiting for the evidence reply (resolve): who must answer the bot's question
+    prompt_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    result: Mapped[str | None] = mapped_column(String(300))

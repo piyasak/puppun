@@ -5,25 +5,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from api_test_shop import schedule
+from conftest import TELEGRAM_SECRET as SECRET  # the "bot" fixture is in conftest
 from sqlalchemy import select
 
 from clipflow_api import notify, telegram
 from clipflow_api.models import AccountStat, Device, Notification, NotifyRule, ScheduleItem, TelegramChat
-
-SECRET = "hook-secret-for-tests"
-
-
-@pytest.fixture
-def bot(app, monkeypatch):
-    """The app with a bot configured; Bot API calls are recorded, never sent."""
-    sent: list[tuple[str, dict]] = []
-    monkeypatch.setattr(app.state, "settings", app.state.settings.model_copy(update={
-        "telegram_bot_token": "123:test", "telegram_bot_username": "punpun_test_bot",
-        "telegram_webhook_secret": SECRET, "notify_loop": False}))
-    monkeypatch.setattr(telegram, "call", lambda token, method, payload, timeout=10.0: sent.append((method, payload)) or {})
-    return sent
 
 
 def hook(client, update, secret=SECRET):
@@ -31,7 +18,8 @@ def hook(client, update, secret=SECRET):
 
 
 def start(chat_id, text, kind="private"):
-    return {"update_id": 1, "message": {"text": text, "chat": {"id": chat_id, "type": kind, "first_name": "PO"}}}
+    return {"update_id": 1, "message": {"text": text, "from": {"id": chat_id, "first_name": "PO"},
+                                        "chat": {"id": chat_id, "type": kind, "first_name": "PO"}}}
 
 
 def link(shop, client, chat_id):
@@ -120,15 +108,18 @@ def test_post_events_queue_problems_at_once_and_successes_hourly(shop, client, b
         assert sorted((r.kind, r.batch) for r in rows) == [("posting", True), ("problems", False)]
 
         bot.clear()
+        mine = lambda: [p for _, p in bot if p.get("chat_id") == chat_id]  # noqa: E731 - other tests share the outbox
         notify.send_pending(db, "123:test", at)
         db.commit()
-        assert [p["chat_id"] for _, p in bot] == [chat_id] and bot[0][1]["text"].startswith("⚠️")
+        assert len(mine()) == 1 and mine()[0]["text"].startswith("⚠️")
+        assert mine()[0]["reply_markup"]["inline_keyboard"]  # phase 1.5: problems carry buttons
         # The success waits for the hour, then goes as one message.
         notify.send_pending(db, "123:test", at + timedelta(minutes=10))
-        assert len(bot) == 1
+        assert len(mine()) == 1
         notify.send_pending(db, "123:test", at + notify.BATCH_EVERY + timedelta(minutes=1))
         db.commit()
-        assert len(bot) == 2 and bot[1][1]["text"].startswith("✅ โพสต์สำเร็จ 1 รายการ")
+        assert len(mine()) == 2 and mine()[1]["text"].startswith("✅ โพสต์สำเร็จ 1 รายการ")
+        assert "reply_markup" not in mine()[1]
         assert all(r.sent_at for r in db.scalars(select(Notification).where(Notification.workspace_id == ws)).all())
 
 

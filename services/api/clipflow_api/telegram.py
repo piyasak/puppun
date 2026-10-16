@@ -4,7 +4,8 @@ One punpun bot; its token is a server setting (TELEGRAM_BOT_TOKEN) and is never 
 logs or messages. A Workspace owner links a chat (private or group) from the web: the server makes a
 one-time code (stored as SHA-256, 15 minutes), the owner opens t.me/<bot>?start=<code> and presses Start,
 Telegram sends us "/start <code>" (webhook, checked with TELEGRAM_WEBHOOK_SECRET) and the chat is linked.
-Phase 1 only sends; buttons that act (resolve, retry) are phase 1.5.
+Opened in a private chat, the code also links that person's own Telegram account to the punpun user who
+made it: only linked people can press buttons (phase 1.5, telegram_actions.py).
 """
 
 from __future__ import annotations
@@ -20,7 +21,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import NotifyRule, TelegramChat, TelegramLinkCode
+from . import telegram_actions
+from .models import NotifyRule, TelegramChat, TelegramLinkCode, TelegramUser
 
 API = "https://api.telegram.org"
 CODE_TTL = timedelta(minutes=15)
@@ -59,12 +61,16 @@ def call(token: str, method: str, payload: dict, timeout: float = 10.0) -> dict:
     return answer.get("result") or {}
 
 
-def send(token: str, chat_id: int, text: str) -> None:
-    call(token, "sendMessage", {"chat_id": chat_id, "text": text[:4000], "disable_web_page_preview": True})
+def send(token: str, chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+    payload = {"chat_id": chat_id, "text": text[:4000], "disable_web_page_preview": True}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    call(token, "sendMessage", payload)
 
 
 def set_webhook(token: str, url: str, secret: str) -> None:
-    call(token, "setWebhook", {"url": url, "secret_token": secret, "allowed_updates": ["message", "my_chat_member"]})
+    call(token, "setWebhook", {"url": url, "secret_token": secret,
+                               "allowed_updates": ["message", "my_chat_member", "callback_query"]})
 
 
 def _hash(code: str) -> str:
@@ -87,8 +93,19 @@ def _chat_title(chat: dict) -> str:
     return (title or chat.get("username") or str(chat.get("id")))[:200]
 
 
-def handle_update(db: Session, update: dict) -> tuple[int, str] | None:
-    """Apply one update. Returns (chat_id, reply) when the bot should answer, else None."""
+def _person_name(user: dict) -> str:
+    name = " ".join(x for x in (user.get("first_name"), user.get("last_name")) if x)
+    return (name or user.get("username") or str(user.get("id")))[:200]
+
+
+def _say(chat_id: int, text: str) -> list[tuple[str, dict]]:
+    return [("sendMessage", {"chat_id": chat_id, "text": text})]
+
+
+def handle_update(db: Session, update: dict) -> list[tuple[str, dict]]:
+    """Apply one update. Returns the Bot API calls to make after the commit (answers, edits, replies)."""
+    if update.get("callback_query"):
+        return telegram_actions.on_press(db, update["callback_query"])
     member = update.get("my_chat_member")
     if member:  # the bot was removed from a group / blocked: stop sending there
         status = (member.get("new_chat_member") or {}).get("status")
@@ -96,20 +113,22 @@ def handle_update(db: Session, update: dict) -> tuple[int, str] | None:
             for chat in db.scalars(select(TelegramChat).where(TelegramChat.chat_id == member["chat"]["id"],
                                                               TelegramChat.unlinked_at.is_(None))).all():
                 chat.unlinked_at = now()
-        return None
+        return []
     message = update.get("message") or {}
     text = (message.get("text") or "").strip()
     chat = message.get("chat") or {}
+    if message.get("reply_to_message"):
+        return telegram_actions.on_reply(db, message)
     if not text.startswith("/start") or "id" not in chat:
-        return None
+        return []
     parts = text.split(maxsplit=1)
     code = parts[1].strip() if len(parts) > 1 else ""
     if not code:
-        return chat["id"], "สวัสดี นี่คือบอทแจ้งเตือนของ punpun\nเชื่อมแชตนี้จากเว็บ: หน้า การแจ้งเตือน > เชื่อม Telegram"
+        return _say(chat["id"], "สวัสดี นี่คือบอทแจ้งเตือนของ punpun\nเชื่อมแชตนี้จากเว็บ: หน้า การแจ้งเตือน > เชื่อม Telegram")
     row = db.scalars(select(TelegramLinkCode).where(TelegramLinkCode.code_hash == _hash(code))
                      .with_for_update()).first()
     if row is None or row.used_at is not None or row.expires_at <= now():
-        return chat["id"], "รหัสเชื่อมต่อไม่ถูกต้องหรือหมดอายุ ขอรหัสใหม่จากหน้า การแจ้งเตือน บนเว็บ"
+        return _say(chat["id"], "รหัสเชื่อมต่อไม่ถูกต้องหรือหมดอายุ ขอรหัสใหม่จากหน้า การแจ้งเตือน บนเว็บ")
     row.used_at = now()
     linked = db.scalars(select(TelegramChat).where(TelegramChat.workspace_id == row.workspace_id,
                                                    TelegramChat.chat_id == chat["id"])).first()
@@ -122,5 +141,17 @@ def handle_update(db: Session, update: dict) -> tuple[int, str] | None:
         linked.unlinked_at, linked.title = None, _chat_title(chat)
     if not db.scalars(select(NotifyRule).where(NotifyRule.chat_ref == linked.id)).first():
         db.add(NotifyRule(workspace_id=row.workspace_id, chat_ref=linked.id, device_id=None))  # every phone
-    return chat["id"], ("เชื่อมแชตนี้กับ punpun แล้ว ✅\nจะได้รับแจ้งเตือนการโพสต์ ปัญหาที่ต้องให้คนดู สถานะระบบ "
-                        "และสรุปรายวัน ปรับได้ที่หน้า การแจ้งเตือน บนเว็บ")
+    reply = ("เชื่อมแชตนี้กับ punpun แล้ว ✅\nจะได้รับแจ้งเตือนการโพสต์ ปัญหาที่ต้องให้คนดู สถานะระบบ "
+             "และสรุปรายวัน ปรับได้ที่หน้า การแจ้งเตือน บนเว็บ")
+    sender = message.get("from") or {}
+    if chat.get("type") == "private" and sender.get("id") == chat["id"] and row.created_by is not None:
+        # The person's own account: from now on they can press buttons in this Workspace's chats.
+        person = db.scalars(select(TelegramUser).where(TelegramUser.workspace_id == row.workspace_id,
+                                                       TelegramUser.telegram_user_id == sender["id"])).first()
+        if person is None:
+            db.add(TelegramUser(workspace_id=row.workspace_id, user_id=row.created_by, telegram_user_id=sender["id"],
+                                name=_person_name(sender)))
+        else:
+            person.user_id, person.unlinked_at, person.name = row.created_by, None, _person_name(sender)
+        reply += "\nTelegram ของคุณเชื่อมกับบัญชี punpun แล้ว: กดปุ่มในข้อความแจ้งเตือนได้ (ต้องกดยืนยันทุกครั้ง)"
+    return _say(chat["id"], reply)
