@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from .. import posts
+from .. import notify, posts
 from ..agent_sessions import AgentContext
 from ..deps import get_db
 from .agent import agent_context
@@ -57,6 +57,8 @@ def state(item_id: uuid.UUID, ctx: AgentContext = Depends(agent_context), db: Se
 def event(item_id: uuid.UUID, body: EventIn, request: Request, ctx: AgentContext = Depends(agent_context),
           db: Session = Depends(get_db)):
     item, duplicate, refusal = posts.apply_event(db, ctx, item_id, body.model_dump(), request.app.state.posting_mode)
+    if not duplicate:
+        notify.on_post_event(db, item, request.app.state.settings)  # Q-52 (never raises)
     db.commit()
     if refusal:
         raise refusal

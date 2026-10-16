@@ -8,6 +8,7 @@ import { EnvironmentsPage } from './pages/EnvironmentsPage'
 import { TokensPage } from './pages/TokensPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { DevicesPage } from './pages/DevicesPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { CreateJobPage } from './pages/CreateJobPage'
 import { JobsPage } from './pages/JobsPage'
 import { JobDetailPage } from './pages/JobDetailPage'
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/agent-tokens" element={<RequireSession><TokensPage /></RequireSession>} />
           <Route path="/agents" element={<RequireSession><AgentsPage /></RequireSession>} />
           <Route path="/devices" element={<RequireSession><DevicesPage /></RequireSession>} />
+          <Route path="/notifications" element={<RequireSession><NotificationsPage /></RequireSession>} />
           <Route path="/create" element={<RequireSession><CreateJobPage /></RequireSession>} />
           <Route path="/jobs" element={<RequireSession><JobsPage /></RequireSession>} />
           <Route path="/jobs/:id" element={<RequireSession><JobDetailPage /></RequireSession>} />

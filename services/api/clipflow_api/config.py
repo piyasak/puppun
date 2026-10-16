@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     public_api_base: str = "http://127.0.0.1:8000"  # how browsers reach this API (local-storage previews)
     media_signing_key: str = ""  # HMAC key for local preview links; random per process when empty
     preview_ttl_s: int = 300
+    # Telegram notifications (Q-52). The bot token stays on the server (never sent to Agents or browsers);
+    # without it nothing is sent. The webhook secret is checked on every update Telegram sends us.
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    telegram_webhook_secret: str = ""
+    notify_loop: bool = True  # the background sender; off in tests (they call notify.tick directly)
     max_clip_bytes: int = 512 * 1024 * 1024
     # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is
     # "production". The secret signs/verifies sandbox webhooks; random per process when empty.

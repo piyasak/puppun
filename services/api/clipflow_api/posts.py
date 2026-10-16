@@ -29,7 +29,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from . import devices as device_rules
-from . import posting_grants, schedules, slots
+from . import notify, posting_grants, schedules, slots
 from .agent_sessions import AgentContext
 from .errors import ApiError
 from .models import Clip, ClipMetadata, Device, PostingGrant, ScheduleItem, ScheduleItemEvent, ScheduleSeries
@@ -87,6 +87,7 @@ def expire_leases(db: Session, environment_id: uuid.UUID, at: datetime) -> None:
             _move(item, "NEEDS_ACTION", "AGENT_LOST", at)
         else:
             _move(item, "SCHEDULED", "REDELIVERY", at)
+        notify.on_post_event(db, item)  # Q-52: a person is needed (never raises)
 
 
 def apply_offline_policy(db: Session, environment_id: uuid.UUID, at: datetime) -> None:

@@ -19,13 +19,13 @@ from test_billing import move_cycle
 from clipflow_api import retention
 from clipflow_api.app import create_app
 from clipflow_api.config import Settings
-from clipflow_api.models import Clip, ScheduleItem
+from clipflow_api.models import Clip, NotifyRule, ScheduleItem, TelegramChat
 
 # --- T01: A's ids through every route, called by B ------------------------------------------------
 
 PARAM = {"environment_id": "env", "token_id": "token", "agent_id": "agent", "device_id": "device",
          "job_id": "job", "clip_id": "clip", "series_id": "series", "item_id": "item", "payment_id": "payment",
-         "diag_id": "diag"}
+         "diag_id": "diag", "chat_ref": "chat", "rule_id": "rule"}
 # Bodies that pass validation, so the ownership check is what answers.
 BODY = {
     ("patch", "/v1/environments/{environment_id}"): {"name": "taken"},
@@ -74,6 +74,15 @@ def test_t01_another_tenant_gets_what_a_missing_id_gets_on_every_route(shop, onb
            "series": series["id"], "item": series["items"][0]["id"], "payment": pay["id"],
            "diag": a.w.client.post("/v1/agent/diagnostics", json={"serial": a.serial, "code": "T01"},
                                    headers={"Authorization": f"Bearer {a.w.session}"}).json()["id"]}
+    with app.state.db.sessionmaker() as db:  # a linked Telegram chat and its rule (linking needs the bot)
+        chat = TelegramChat(workspace_id=uuid.UUID(a.acc.body["workspace"]["id"]), chat_id=uuid.uuid4().int % 10**9,
+                            title="A", kind="private")
+        db.add(chat)
+        db.flush()
+        rule = NotifyRule(workspace_id=chat.workspace_id, chat_ref=chat.id)
+        db.add(rule)
+        db.commit()
+        ids |= {"chat": str(chat.id), "rule": str(rule.id)}
     before = _snapshot(a.acc, ids)
     b = Shop(onboard(), client, real_clip)
 
@@ -82,8 +91,10 @@ def test_t01_another_tenant_gets_what_a_missing_id_gets_on_every_route(shop, onb
         body = BODY.get((method, path), {})
         theirs = path.format(**{n: ids[PARAM[n]] for n in names})
         missing = path.format(**{n: str(uuid.uuid4()) for n in names})
-        got = getattr(b.acc.client, method)(theirs, headers=b.acc.headers(), **({"json": body} if method != "get" else {}))
-        ref = getattr(b.acc.client, method)(missing, headers=b.acc.headers(), **({"json": body} if method != "get" else {}))
+        got = b.acc.client.request(method.upper(), theirs, headers=b.acc.headers(),
+                                  **({"json": body} if method not in ("get", "delete") else {}))
+        ref = b.acc.client.request(method.upper(), missing, headers=b.acc.headers(),
+                                  **({"json": body} if method not in ("get", "delete") else {}))
         assert got.status_code in (404, 422) and got.status_code == ref.status_code, (method, path, got.text)
         assert got.json().get("code") == ref.json().get("code"), (method, path)
         checked += 1

@@ -4,6 +4,14 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-16) — Telegram notifications, phase 1 (Q-52, source 0.9.0)
+- PO: notifications to Telegram for posting, errors and a summary with followers / views, set up per account; phase 1 = posting + needs-a-person, health, daily summary; problems at once, successes hourly; owner sets it up. Buttons that act from Telegram: phase 1.5
+- Server: `telegram.py` (Bot API, one-time link codes, webhook updates), `notify.py` (outbox, post events, health, daily summary, sender loop under a pg advisory lock), `routers/notifications.py` (web settings, `/v1/telegram/webhook` with the secret header, `/v1/agent/account-stats`); migration 0026 (`telegram_chats`, `telegram_link_codes`, `notify_rules`, `notifications`, `account_stats`, all with workspace_id)
+- Agent (`agent/account_stats.py`): when a phone is free, about every 12 h, reads Profile (followers, following, likes, newest videos' views), read-only, TikTok closed after; UI profile key `likes_label`
+- Web: page "การแจ้งเตือน" (link a chat, rules per phone, summary hour, test message, unlink, latest account numbers)
+- Tests: test-unit 270 (account numbers on synthetic screens, clock); integration test_notifications (link once, secret, rules + cross-tenant 404, problems at once / successes after the hour, blocked chat, bot removed from a group, account numbers + summary); T01 sweep covers the new id routes (first DELETE routes in the sweep). Mock Bot API only: no message has been sent to real Telegram (needs the bot token on Render)
+- PO next: create the bot with @BotFather, set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` / `TELEGRAM_WEBHOOK_SECRET` on Render, merge, deploy (migration 0026), link a chat from the web; Agent 0.9.0 release on request
+
 ### Latest slice (2026-10-16) — tx1 public posts: the caption is read in the comments sheet (source 0.8.1)
 - Diagnostics check 3c962ee4 (tx1, newest public video, Agent 0.8.0) + the PO's screenshot: on tx1 (TikTok Shop account) its own public video shows the caption only in a card for the first seconds, cut short ("…จากหมอธรรมดา..."), and the card's text is not in the screen reading at all (XML: no caption, depth 26 of 50, so not a reader limit); tx2 shows a normal readable caption (7/7 verified)
 - tx1 on the QA PC, read-only probes: waiting (gone after ~5 s), tapping the card (pauses, does not expand) — no; the comments sheet shows the whole caption (332 characters) with the invisible marker: fb8f276c's marker found, 37c09143's and f240f595's not

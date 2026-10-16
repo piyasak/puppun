@@ -13,6 +13,7 @@ const NAV = [
   { to: '/agent-tokens', label: 'Agent Token' },
   { to: '/agents', label: 'Agent' },
   { to: '/devices', label: 'โทรศัพท์' },
+  { to: '/notifications', label: 'การแจ้งเตือน' },
   { to: '/billing', label: 'แพ็กเกจ' },
 ]
 
