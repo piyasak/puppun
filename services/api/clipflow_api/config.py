@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_bot_username: str = ""
     telegram_webhook_secret: str = ""
+    # Where Telegram sends updates; empty = the first https one of PUBLIC_API_BASE, WEB_ORIGIN (same origin on staging)
+    telegram_webhook_base: str = ""
     notify_loop: bool = True  # the background sender; off in tests (they call notify.tick directly)
     max_clip_bytes: int = 512 * 1024 * 1024
     # Billing (P6, E-45). Only the sandbox provider exists until D06; it is refused when app_env is

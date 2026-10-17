@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-17) — Telegram link never completed on staging (webhook address)
+- PO: after "เชื่อม Telegram" the page showed nothing and offered the button again. Staging (0027): 4 link codes made 08:51–09:07, none used, no chat: Telegram's `/start` never reached the server
+- Cause: the webhook was registered once at start with `PUBLIC_API_BASE`, which staging does not set (default `http://127.0.0.1:8000`); Telegram only calls https, so setWebhook failed (logged only)
+- Fix: `telegram.webhook_url` uses the first https of `TELEGRAM_WEBHOOK_BASE` / `PUBLIC_API_BASE` / `WEB_ORIGIN`; `ensure_webhook` registers on start (secret may have changed) and checks `getWebhookInfo` every 10 min; the page shows Telegram's error and, after a link is made, waits for Start and says when it is linked. Runbook lists the Telegram variables
+- Tests: test_notifications webhook test (address choice, register once, Telegram's recent error shown, old one not). Not yet verified against real Telegram: needs the deploy
+
 ### Latest slice (2026-10-17) — Telegram buttons, phase 1.5 (Q-52b, server only)
 - PO: phase 1 (#56) merged and deployed (staging at migration 0026, no chat linked yet: the bot settings on Render are the PO's step); "ต่อ" -> phase 1.5
 - Buttons on problem messages: NEEDS_ACTION -> retry (retryable reasons only) / cancel / screen check; UNKNOWN -> found published / not published / screen check (newest public or private video by the post's grant)

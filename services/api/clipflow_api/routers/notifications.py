@@ -50,6 +50,8 @@ def overview(request: Request, auth: WebAuth = Depends(web_auth), db: Session = 
     people = db.scalars(select(TelegramUser).where(TelegramUser.workspace_id == auth.workspace_id,
                                                    TelegramUser.unlinked_at.is_(None)).order_by(TelegramUser.created_at)).all()
     return {"configured": bool(settings.telegram_bot_token and settings.telegram_bot_username),
+            # Whether Telegram can reach us (checked every 10 minutes by the notify loop); None before the first check
+            "webhook": getattr(request.app.state, "telegram_webhook", None),
             "bot_username": settings.telegram_bot_username or None,
             "chats": [{"id": str(c.id), "title": c.title, "kind": c.kind, "created_at": c.created_at.isoformat()} for c in chats],
             "rules": [_rule_out(r) for r in rules if r.chat_ref in {c.id for c in chats}],

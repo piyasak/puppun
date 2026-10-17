@@ -45,6 +45,7 @@ AGENT_OFFLINE = timedelta(minutes=10)
 MAX_ATTEMPTS = 5
 LOOP_S = 30
 LOCK_KEY = 5202610  # pg advisory lock: one sender
+WEBHOOK_CHECK_S = 600
 PROBLEM_WORDS = {
     "UNKNOWN": "ไม่แน่ใจว่าโพสต์ขึ้นหรือไม่ ต้องให้คนตรวจในโทรศัพท์",
     "NEEDS_ACTION": "หยุดก่อนโพสต์ ต้องให้คนดู",
@@ -268,14 +269,13 @@ def start_loop(app) -> None:
         return
 
     def run() -> None:
-        if settings.telegram_webhook_secret:
-            try:
-                telegram.set_webhook(settings.telegram_bot_token,
-                                     settings.public_api_base.rstrip("/") + "/v1/telegram/webhook",
-                                     settings.telegram_webhook_secret)
-            except telegram.TelegramError as exc:
-                log.warning("telegram setWebhook: %s", exc)
+        checked = 0.0
         while True:
+            if time.monotonic() - checked >= WEBHOOK_CHECK_S:  # registered on start, then checked every 10 min
+                app.state.telegram_webhook = telegram.ensure_webhook(settings, force=checked == 0.0)
+                if app.state.telegram_webhook["error"]:
+                    log.warning("telegram webhook: %s", app.state.telegram_webhook["error"])
+                checked = time.monotonic()
             try:
                 with app.state.db.sessionmaker() as db:
                     if db.scalar(text("select pg_try_advisory_xact_lock(:k)"), {"k": LOCK_KEY}):
