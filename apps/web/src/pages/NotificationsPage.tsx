@@ -17,6 +17,7 @@ type Person = { id: string; name: string; me: boolean; created_at: string }
 type Overview = {
   configured: boolean; bot_username: string | null; chats: Chat[]; rules: Rule[]
   phones: { id: string; label: string }[]; people: Person[]
+  webhook: null | { ok: boolean; error: string | null; pending: number; checked_at: string }
 }
 type Stat = {
   device_id: string; label: string
@@ -35,7 +36,7 @@ const num = (v: number | null | undefined) => (v === null || v === undefined ? '
 export function NotificationsPage() {
   const [data, setData] = useState<Overview | null>(null)
   const [stats, setStats] = useState<Stat[]>([])
-  const [link, setLink] = useState<{ link: string; expires_at: string } | null>(null)
+  const [link, setLink] = useState<{ link: string; expires_at: string; chats: number; people: number } | null>(null)
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
 
@@ -48,6 +49,27 @@ export function NotificationsPage() {
     }
   }, [])
   useEffect(() => { void load() }, [load])
+
+  // After a link is made: look every 3 s until Telegram's Start arrives (a new chat or person), or the code expires.
+  useEffect(() => {
+    if (!link) return
+    const timer = window.setInterval(async () => {
+      try {
+        const now = await api<Overview>('/v1/notifications')
+        setData(now)
+        if (now.chats.length > link.chats || now.people.length > link.people) {
+          setLink(null)
+          setDone('เชื่อม Telegram แล้ว ✅')
+        } else if (new Date(link.expires_at).getTime() < Date.now()) {
+          setLink(null)
+          setError('ลิงก์หมดอายุก่อนกด Start ใน Telegram กดเชื่อม Telegram ใหม่')
+        }
+      } catch {
+        // keep waiting; the next look may work
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [link])
 
   async function call(fn: () => Promise<unknown>, ok: string) {
     setError('')
@@ -66,7 +88,8 @@ export function NotificationsPage() {
   }
 
   async function makeLink() {
-    setLink(await api<{ link: string; expires_at: string }>('/v1/notifications/telegram/link', { method: 'POST' }))
+    const made = await api<{ link: string; expires_at: string }>('/v1/notifications/telegram/link', { method: 'POST' })
+    setLink({ ...made, chats: data?.chats.length ?? 0, people: data?.people.length ?? 0 })
   }
 
   const ruleFor = (chat: string, device: string | null) => data?.rules.find((r) => r.chat_ref === chat && r.device_id === device)
@@ -81,13 +104,23 @@ export function NotificationsPage() {
         {error && <Alert kind="error">{error}</Alert>}
         {done && <Alert kind="success">{done}</Alert>}
         {data && !data.configured && <Alert kind="info">ระบบยังไม่ได้ตั้งค่าบอท Telegram (ผู้ดูแลระบบต้องใส่ค่าบอทที่เซิร์ฟเวอร์ก่อน)</Alert>}
+        {data?.configured && data.webhook && !data.webhook.ok && (
+          <Alert kind="error">
+            Telegram ยังส่งข้อความมาที่ระบบไม่ได้ จึงเชื่อมแชตไม่สำเร็จ: {data.webhook.error ?? 'ไม่ทราบสาเหตุ'}
+            {' '}(ตรวจล่าสุด {formatDate(data.webhook.checked_at)} ผู้ดูแลระบบต้องแก้ค่าที่เซิร์ฟเวอร์)
+          </Alert>
+        )}
         {data?.configured && (
           <div className="admin-action">
-            <button type="button" className="btn btn-primary" onClick={() => void call(makeLink, 'สร้างลิงก์เชื่อมต่อแล้ว')}>เชื่อม Telegram</button>
+            <button type="button" className="btn btn-primary" onClick={() => void call(makeLink, 'สร้างลิงก์เชื่อมต่อแล้ว')}>
+              {data.chats.length ? 'เชื่อม Telegram เพิ่ม' : 'เชื่อม Telegram'}
+            </button>
+            {!link && data.chats.length > 0 && <span className="muted">เชื่อมแล้ว {data.chats.length} แชต (ดูด้านล่าง)</span>}
             {link && (
               <span>
                 เปิด <a href={link.link} target="_blank" rel="noreferrer">{link.link}</a> แล้วกด Start ในแชตที่ต้องการ
                 (สำหรับกลุ่ม: เพิ่มบอทในกลุ่มก่อน แล้วเปิดลิงก์นี้) • ใช้ได้ถึง {formatDate(link.expires_at)}
+                <br /><span className="muted" role="status">⏳ รอการกด Start ใน Telegram… หน้านี้จะแสดงเมื่อเชื่อมสำเร็จ</span>
               </span>
             )}
           </div>

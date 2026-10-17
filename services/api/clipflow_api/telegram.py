@@ -73,6 +73,39 @@ def set_webhook(token: str, url: str, secret: str) -> None:
                                "allowed_updates": ["message", "my_chat_member", "callback_query"]})
 
 
+def webhook_url(settings) -> str | None:
+    """Telegram only calls https addresses: the explicit base, else PUBLIC_API_BASE or WEB_ORIGIN when https."""
+    for base in (settings.telegram_webhook_base, settings.public_api_base, settings.web_origin):
+        if base and base.startswith("https://"):
+            return base.rstrip("/") + "/v1/telegram/webhook"
+    return None
+
+
+def ensure_webhook(settings, *, force: bool = False, at: datetime | None = None) -> dict:
+    """Register the webhook if Telegram has another address (always when `force`: the secret may have changed),
+    then report what Telegram says, for the web page. Never raises."""
+    at = at or now()
+    status = {"ok": False, "error": None, "pending": 0, "checked_at": at.isoformat()}
+    if not settings.telegram_webhook_secret:
+        return status | {"error": "ยังไม่ได้ตั้ง TELEGRAM_WEBHOOK_SECRET ที่เซิร์ฟเวอร์"}
+    url = webhook_url(settings)
+    if url is None:
+        return status | {"error": "เซิร์ฟเวอร์ไม่มีที่อยู่ https (ตั้ง WEB_ORIGIN หรือ TELEGRAM_WEBHOOK_BASE)"}
+    token = settings.telegram_bot_token
+    try:
+        info = call(token, "getWebhookInfo", {})
+        if force or info.get("url") != url:
+            set_webhook(token, url, settings.telegram_webhook_secret)
+            info = call(token, "getWebhookInfo", {})
+    except TelegramError as exc:
+        return status | {"error": f"Telegram ตอบว่า: {exc}"}
+    recent = info.get("last_error_date") and info["last_error_date"] > at.timestamp() - 600
+    error = str(info.get("last_error_message") or "")[:200] if recent else None
+    return status | {"ok": info.get("url") == url and not error, "pending": int(info.get("pending_update_count") or 0),
+                     "error": f"Telegram ส่งข้อความมาที่เซิร์ฟเวอร์ไม่สำเร็จ: {error}" if error else
+                     (None if info.get("url") == url else "Telegram ยังไม่ได้รับที่อยู่ webhook")}
+
+
 def _hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 

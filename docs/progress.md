@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-17) — Telegram link never completed on staging (webhook address)
+- PO: after "เชื่อม Telegram" the page showed nothing and offered the button again. Staging (0027): 4 link codes made 08:51–09:07, none used, no chat: Telegram's `/start` never reached the server
+- Cause: the webhook was registered once at start with `PUBLIC_API_BASE`, which staging does not set (default `http://127.0.0.1:8000`); Telegram only calls https, so setWebhook failed (logged only)
+- Fix: `telegram.webhook_url` uses the first https of `TELEGRAM_WEBHOOK_BASE` / `PUBLIC_API_BASE` / `WEB_ORIGIN`; `ensure_webhook` registers on start (secret may have changed) and checks `getWebhookInfo` every 10 min; the page shows Telegram's error and, after a link is made, waits for Start and says when it is linked. Runbook lists the Telegram variables
+- Tests: test_notifications webhook test (address choice, register once, Telegram's recent error shown, old one not). Not yet verified against real Telegram: needs the deploy
+
 ### Latest slice (2026-10-17) — Telegram buttons, phase 1.5 (Q-52b, server only)
 - PO: phase 1 (#56) merged and deployed (staging at migration 0026, no chat linked yet: the bot settings on Render are the PO's step); "ต่อ" -> phase 1.5
 - Buttons on problem messages: NEEDS_ACTION -> retry (retryable reasons only) / cancel / screen check; UNKNOWN -> found published / not published / screen check (newest public or private video by the post's grant)
@@ -19,6 +25,7 @@ Last updated: 2026-10-07
 - Web: page "การแจ้งเตือน" (link a chat, rules per phone, summary hour, test message, unlink, latest account numbers)
 - Tests: test-unit 270 (account numbers on synthetic screens, clock); integration test_notifications (link once, secret, rules + cross-tenant 404, problems at once / successes after the hour, blocked chat, bot removed from a group, account numbers + summary); T01 sweep covers the new id routes (first DELETE routes in the sweep). Mock Bot API only: no message has been sent to real Telegram (needs the bot token on Render)
 - PO next: create the bot with @BotFather, set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_USERNAME` / `TELEGRAM_WEBHOOK_SECRET` on Render, merge, deploy (migration 0026), link a chat from the web; Agent 0.9.0 release on request
+- Agent 0.9.0 published 2026-10-17 (master 60b36be): https://github.com/piyasak/punpun-agent/releases/tag/v0.9.0, setup SHA-256 61399ad8…71b7, 59.4 MB; no .py/.pyc; exe reports 0.9.0 and carries the account numbers; simulated fresh PC: FFmpeg installed; bundle test 0.8.1 → 0.9.0 passed; anonymous download HTTP 200, hash matches
 
 ### Latest slice (2026-10-16) — tx1 public posts: the caption is read in the comments sheet (source 0.8.1)
 - Diagnostics check 3c962ee4 (tx1, newest public video, Agent 0.8.0) + the PO's screenshot: on tx1 (TikTok Shop account) its own public video shows the caption only in a card for the first seconds, cut short ("…จากหมอธรรมดา..."), and the card's text is not in the screen reading at all (XML: no caption, depth 26 of 50, so not a reader limit); tx2 shows a normal readable caption (7/7 verified)

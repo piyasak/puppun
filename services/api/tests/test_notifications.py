@@ -177,3 +177,40 @@ def test_account_numbers_from_the_agent_and_the_daily_summary(shop, client, bot,
         rows = db.scalars(select(Notification).where(Notification.workspace_id == device.workspace_id,
                                                      Notification.kind == "summary")).all()
         assert len(rows) == 1 and rows[0].text.startswith("📊")
+
+
+def test_the_webhook_goes_to_the_https_address_and_its_errors_are_shown(app, monkeypatch):
+    settings = app.state.settings.model_copy(update={
+        "telegram_bot_token": "123:test", "telegram_webhook_secret": SECRET,
+        "public_api_base": "http://127.0.0.1:8000", "web_origin": "https://punpun.example"})
+    hook_url = "https://punpun.example/v1/telegram/webhook"
+    assert telegram.webhook_url(settings) == hook_url  # staging: API and web on one https origin
+    assert telegram.webhook_url(settings.model_copy(update={"web_origin": "http://localhost:5173"})) is None
+    assert telegram.webhook_url(settings.model_copy(update={"telegram_webhook_base": "https://api.example/"})) == \
+        "https://api.example/v1/telegram/webhook"
+
+    info = {"url": "", "pending_update_count": 2}
+    made: list[tuple[str, dict]] = []
+
+    def fake(token, method, payload, timeout=10.0):
+        made.append((method, payload))
+        if method == "setWebhook":
+            info["url"] = payload["url"]
+        return dict(info)
+
+    monkeypatch.setattr(telegram, "call", fake)
+    at = datetime.now(UTC)
+    got = telegram.ensure_webhook(settings, at=at)
+    assert got["ok"] and got["pending"] == 2
+    assert [p for m, p in made if m == "setWebhook"] == [{"url": hook_url, "secret_token": SECRET,
+                                                         "allowed_updates": ["message", "my_chat_member", "callback_query"]}]
+    made.clear()
+    assert telegram.ensure_webhook(settings, at=at)["ok"] and not [m for m, _ in made if m == "setWebhook"]
+    telegram.ensure_webhook(settings, force=True, at=at)  # on start: registered again (the secret may have changed)
+    assert [m for m, _ in made].count("setWebhook") == 1
+
+    info |= {"last_error_date": int(at.timestamp()) - 60, "last_error_message": "Wrong response from the webhook: 404"}
+    bad = telegram.ensure_webhook(settings, at=at)
+    assert not bad["ok"] and "404" in bad["error"]
+    assert telegram.ensure_webhook(settings, at=at + timedelta(minutes=20))["ok"]  # an old error is not shown
+    assert "SECRET" in telegram.ensure_webhook(settings.model_copy(update={"telegram_webhook_secret": ""}))["error"]
