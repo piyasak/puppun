@@ -209,6 +209,21 @@ class RunResult:
     environment: dict | None
 
 
+# Waits between tries while the server cannot be reached (network down, timeouts, a 5xx while it restarts).
+RETRY_WAITS_S = (5, 10, 20, 30, 60)
+
+
+def temporary(exc: Exception) -> bool:
+    """A network problem or the server failing for a moment: try again, never stop the Agent for it."""
+    if isinstance(exc, ServerError):
+        return exc.status >= 500 or exc.status == 429
+    return isinstance(exc, OSError)
+
+
+def _wait_s(failures: int) -> float:
+    return RETRY_WAITS_S[min(failures, len(RETRY_WAITS_S)) - 1]
+
+
 def run_connection(client: ServerClient, username: str, agent_token: str, installation_id: str,
                    duration_s: float | None, sleep=time.sleep, clock=time.monotonic, log=print,
                    on_session=None, periodic_s: float = 60.0, worker=None) -> RunResult:
@@ -218,37 +233,68 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
     re-authenticating automatically would steal the session back from the newer process.
     An expired session (e.g. the PC slept) signs in again once.
 
+    The network or the server failing for a while (timeouts, 5xx, 429) never stops the Agent: it says so and
+    tries again with growing waits (RETRY_WAITS_S), signing in again if the session expired meanwhile. Before
+    0.9.1 one read timeout ended the session and closed the Agent mid-job (staging, 2026-10-19).
+
     `on_session(client, session)` runs right after sign-in and then every `periodic_s` seconds
     (the phone check, Q-25).
 
     `worker` (the job runner, P3.3) works in its own thread and always uses the current session;
     the heartbeat stays on this thread so a long render never lets the session expire.
     """
-    session = client.authenticate(username, agent_token, installation_id)
+    started = clock()
+
+    def in_time() -> bool:
+        return duration_s is None or clock() - started < duration_s
+
+    failures = 0
+    while True:  # the first sign-in: wait for the network / server instead of closing
+        try:
+            session = client.authenticate(username, agent_token, installation_id)
+            break
+        except (ServerError, OSError) as exc:
+            if not temporary(exc) or not in_time():
+                raise
+            failures += 1
+            log(f"ติดต่อ server ไม่ได้ ({exc}) — ลองใหม่ใน {_wait_s(failures)} วินาที")
+            sleep(_wait_s(failures))
     current = [session]
     log(f"connected: environment={session.environment['name']} generation={session.generation}")
-    if on_session:
-        on_session(client, session)
+    failures = 0
     workers = [] if worker is None else worker if isinstance(worker, list) else [worker]
-    for w in workers:
-        w.start(client, lambda: current[0])
-    started, beats, reauthed = clock(), 0, False
-    last_check = clock()
     try:
-        while duration_s is None or clock() - started < duration_s:
-            sleep(session.heartbeat_interval_s)
+        if on_session:
+            with contextlib.suppress(ServerError, OSError):
+                on_session(client, session)
+        for w in workers:
+            w.start(client, lambda: current[0])
+        beats, reauthed = 0, False
+        last_check = clock()
+        while in_time():
+            sleep(_wait_s(failures) if failures else session.heartbeat_interval_s)
             try:
-                client.heartbeat(session)
+                try:
+                    client.heartbeat(session)
+                except ServerError as exc:
+                    if exc.code == "AGENT_SESSION_ENDED" and exc.reason == "expired" and not reauthed:
+                        session = client.authenticate(username, agent_token, installation_id)
+                        current[0], reauthed = session, True
+                        log(f"session expired; reconnected: generation={session.generation}")
+                        continue
+                    raise
+                if failures:
+                    log("ติดต่อ server ได้อีกครั้ง")
+                failures = 0
                 beats += 1
                 reauthed = False
                 if on_session and clock() - last_check >= periodic_s:
                     on_session(client, session)
                     last_check = clock()
-            except ServerError as exc:
-                if exc.code == "AGENT_SESSION_ENDED" and exc.reason == "expired" and not reauthed:
-                    session, reauthed = client.authenticate(username, agent_token, installation_id), True
-                    current[0] = session
-                    log(f"session expired; reconnected: generation={session.generation}")
+            except (ServerError, OSError) as exc:
+                if temporary(exc):
+                    failures += 1
+                    log(f"ติดต่อ server ไม่ได้ชั่วคราว ({exc}) — Agent ยังทำงานต่อ ลองใหม่ใน {_wait_s(failures)} วินาที")
                     continue
                 log(f"stopped by server: {exc.code} {exc.reason or ''} — {exc.message}")
                 return RunResult(beats, exc.reason or exc.code, session.environment)
@@ -256,4 +302,5 @@ def run_connection(client: ServerClient, username: str, agent_token: str, instal
     finally:
         for w in workers:
             w.stop()
-        client.end(session)
+        with contextlib.suppress(ServerError, OSError):
+            client.end(session)
