@@ -4,6 +4,12 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-20) — one network timeout closed the Agent mid-job (source 0.9.1)
+- PO (customer PC, 2026-10-19 22:22): job 53e3bfab sent clips 2-5/24, then "cannot reach server: The read operation timed out" and the Agent closed. Staging: last heartbeat 22:22:16, session ended `agent_exit`, job stuck at 5/24 overnight; server healthy (healthz 0.2-0.4 s). Earlier the same evening (19:05) the Agent also stopped after a "500"
+- Cause: `run_connection` caught only `ServerError` around the heartbeat; an `OSError` (timeout) left the loop, the `finally` ended the session and `connect` exited; a 5xx (e.g. Render restarting) was treated as "stopped by server"
+- Fix: `server_client.temporary` (network errors, 5xx, 429): the heartbeat loop says so and retries with growing waits (5-60 s), signs in again if the session expired meanwhile; the first sign-in waits the same way; phone check and session end never raise; a refusal (revoked, superseded, deregistered, bad token) still stops as before. Job runner: events and still uploads retry temporary errors 6 times (about 75 s) instead of 3 short network-only tries
+- Tests: test-unit 274 (timeout + 502 + 500 + network down keep running, long outage signs in again, first sign-in waits but a refusal does not, failing end/phone check); Agent HTTP integration 44 passed. Not tested on the customer PC yet (needs 0.9.1 there)
+
 ### Latest slice (2026-10-17) — Telegram link never completed on staging (webhook address)
 - PO: after "เชื่อม Telegram" the page showed nothing and offered the button again. Staging (0027): 4 link codes made 08:51–09:07, none used, no chat: Telegram's `/start` never reached the server
 - Cause: the webhook was registered once at start with `PUBLIC_API_BASE`, which staging does not set (default `http://127.0.0.1:8000`); Telegram only calls https, so setWebhook failed (logged only)

@@ -115,3 +115,56 @@ def test_phone_check_runs_on_start_and_then_every_minute():
                    clock=lambda: t[0], log=lambda *_: None, on_session=lambda c, s: calls.append(t[0]),
                    periodic_s=60)
     assert calls == [0.0, 60.0, 120.0]
+
+
+def test_a_timeout_or_a_5xx_never_stops_the_agent():
+    # Staging 2026-10-19: one read timeout closed the Agent mid-job (5/24 clips sent) until someone restarted it.
+    errors = [TimeoutError("The read operation timed out"), ServerError(502, "HTTP_ERROR", "Bad Gateway"),
+              ServerError(500, "INTERNAL", "x"), OSError("network down")]
+    client = FakeClient([None, *errors, None, None])
+    logs: list[str] = []
+    t = [0.0]
+    result = run_connection(client, "u", "cfat_x", "inst", 400, sleep=lambda s: t.__setitem__(0, t[0] + s),
+                            clock=lambda: t[0], log=logs.append)
+    assert result.stopped_because == "duration_elapsed" and client.auths == 1
+    assert sum("ชั่วคราว" in m for m in logs) == 4 and any("ได้อีกครั้ง" in m for m in logs)
+    assert result.heartbeats > 3  # back to heartbeats after the outage
+
+
+def test_a_long_outage_signs_in_again_when_the_session_expired():
+    expired = ServerError(401, "AGENT_SESSION_ENDED", "x", {"reason": "expired"})
+    client = FakeClient([TimeoutError("t")] * 6 + [expired, None])
+    result = _run(client, duration=600)
+    assert client.auths == 2 and result.stopped_because == "duration_elapsed"
+
+
+def test_the_first_sign_in_waits_for_the_network_but_not_for_a_refusal():
+    class Flaky(FakeClient):
+        def __init__(self, errors):
+            super().__init__([])
+            self.errors = list(errors)
+
+        def authenticate(self, *a):
+            if self.errors:
+                raise self.errors.pop(0)
+            return super().authenticate(*a)
+
+    client = Flaky([OSError("no route"), ServerError(503, "HTTP_ERROR", "starting")])
+    assert _run(client, duration=60).stopped_because == "duration_elapsed" and client.auths == 1
+    with pytest.raises(ServerError):
+        _run(Flaky([ServerError(401, "AGENT_AUTH_FAILED", "bad token")]))
+
+
+def test_a_failing_end_call_or_phone_check_does_not_raise():
+    class Broken(FakeClient):
+        def end(self, session):
+            raise TimeoutError("t")
+
+    t = [0.0]
+
+    def phone_check(c, s):
+        raise TimeoutError("t")
+
+    result = run_connection(Broken([]), "u", "cfat_x", "inst", 60, sleep=lambda s: t.__setitem__(0, t[0] + s),
+                            clock=lambda: t[0], log=lambda *_: None, on_session=phone_check, periodic_s=15)
+    assert result.stopped_because == "duration_elapsed"

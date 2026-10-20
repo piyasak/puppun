@@ -33,7 +33,7 @@ import uuid
 from pathlib import Path
 
 from agent import clips_folder
-from agent.server_client import ServerClient, ServerError, Session
+from agent.server_client import ServerClient, ServerError, Session, temporary
 
 STOP_CODES = {"LEASE_LOST", "JOB_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
 STAGES = ["SOURCE_VALIDATED", "DOWNLOADING", "ANALYZING", "RENDERING"]
@@ -60,7 +60,7 @@ def _sha256(path: Path) -> str:
 
 class JobRunner:
     def __init__(self, data_dir: Path, media_dir: Path | None = None, log=print, poll_s: float = 10.0,
-                 keepalive_s: float = 60.0, max_height: int = 1080, retries: int = 3, retry_wait_s: float = 2.0,
+                 keepalive_s: float = 60.0, max_height: int = 1080, retries: int = 6, retry_wait_s: float = 5.0,
                  clips_dir: Path | None = None):
         from clipflow_worker.cooldown import Cooldown
 
@@ -160,15 +160,13 @@ class _Job:
                 resp = self.client.job_event(self.session(), self.id, body)
                 self.state = resp["job"]["state"]
                 return resp["job"]
-            except ServerError as exc:
-                if exc.code in STOP_CODES:
+            except (ServerError, OSError) as exc:
+                if isinstance(exc, ServerError) and exc.code in STOP_CODES:
                     self.stopped.set()
                     raise JobStopped(exc.code) from None
-                raise
-            except OSError:
-                if attempt + 1 == self.r.retries:
+                if not temporary(exc) or attempt + 1 == self.r.retries:
                     raise
-                self.r._halt.wait(self.r.retry_wait_s * (attempt + 1))
+                self.r._halt.wait(self.r.retry_wait_s * (attempt + 1))  # 5+10+...: about 75 s in all
         raise AssertionError("unreachable")
 
     def session(self) -> Session:
@@ -431,12 +429,10 @@ class _Job:
             try:
                 self.client.upload_preview(self.session(), self.id, index, still)
                 return
-            except ServerError as exc:
-                if exc.code in STOP_CODES:
+            except (ServerError, OSError) as exc:
+                if isinstance(exc, ServerError) and exc.code in STOP_CODES:
                     self.stopped.set()
                     raise JobStopped(exc.code) from None
-                raise
-            except OSError:
-                if attempt + 1 == self.r.retries:
+                if not temporary(exc) or attempt + 1 == self.r.retries:
                     raise
                 self.r._halt.wait(self.r.retry_wait_s * (attempt + 1))
