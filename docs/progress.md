@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-21) — two phone windows showed one phone; Promote offer (source 0.9.2)
+- PO screenshot 22:12: windows "tx1" and "tx2 (ดูอย่างเดียว)" showed the same frame; PO: only right after the wall opens. The view-only label is by design (tx2 was posting, `ScreenWall.locked`). Posting itself was right: c37f6138 VERIFIED on @patsy4404 (tx2) 22:14:12, then tx1 3f61d7c0 started
+- Cause: the wall started one scrcpy per phone back to back with scrcpy's default port range (27183:27199); started together they could take the same tunnel port and both windows got one phone's stream
+- Fix: `ScreenWall` gives every window its own `--port` from 27200-27299 (outside the default range), a fresh one when a window is reopened (view-only and back), freed on close
+- The same screenshot shows TikTok's paid Promote offer (฿30 / ฿90 view packages) over the feed: added to the built-in never-press words ("โปรโมต", "promote", "฿", "รับยอดการดู", "ชำระเงิน", "payment"); the Admin UI profile can add more meanwhile
+- Tests: test-unit 276 (ports unique and outside the default range, reopen gets a new port, Promote labels never pressed). Not seen on the customer PC yet (needs 0.9.2)
+
 ### Latest slice (2026-10-20) — one network timeout closed the Agent mid-job (source 0.9.1)
 - PO (customer PC, 2026-10-19 22:22): job 53e3bfab sent clips 2-5/24, then "cannot reach server: The read operation timed out" and the Agent closed. Staging: last heartbeat 22:22:16, session ended `agent_exit`, job stuck at 5/24 overnight; server healthy (healthz 0.2-0.4 s). Earlier the same evening (19:05) the Agent also stopped after a "500"
 - Cause: `run_connection` caught only `ServerError` around the heartbeat; an `OSError` (timeout) left the loop, the `finally` ended the session and `connect` exited; a 5xx (e.g. Render restarting) was treated as "stopped by server"

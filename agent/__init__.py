@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.9.1"  # 0.9.0 + a timeout or 5xx never stops the Agent (retries, signs in again)
+SOURCE_VERSION = "0.9.2"  # 0.9.1 + each phone window its own scrcpy port; Promote offer never pressed
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"
