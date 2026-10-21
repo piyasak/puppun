@@ -109,6 +109,12 @@ def work_area() -> tuple[int, int, int, int]:
     return 0, 0, 1920, 1040
 
 
+# Each window gets its own local port for scrcpy's tunnel. With the default range (27183:27199) windows
+# started together could take the same port and both show one phone (PO 2026-10-21: two windows with one
+# picture, only right after the wall opened). Kept apart from the default range a person's own scrcpy uses.
+PORTS = range(27200, 27300)
+
+
 class ScreenWall:
     """The windows of the phones on this PC. `control=False` shows them view-only."""
 
@@ -118,10 +124,19 @@ class ScreenWall:
         self.area = area
         self.windows: dict[str, tuple[Phone, Cell, bool, object]] = {}  # serial -> (phone, cell, control, process)
         self.busy: set[str] = set()
+        self._ports: dict[str, int] = {}  # serial -> the port its window uses
         self._lock = threading.Lock()
 
+    def _new_port(self, serial: str) -> int:
+        """A port no other window uses, and not this window's previous one (it may still be closing)."""
+        taken = set(self._ports.values())
+        port = next(p for p in PORTS if p not in taken)
+        self._ports[serial] = port
+        return port
+
     def _open(self, phone: Phone, cell: Cell, control: bool):
-        args = [self.scrcpy, "-s", phone.serial, "--window-title", phone.title + ("" if control else " (ดูอย่างเดียว)"),
+        args = [self.scrcpy, "-s", phone.serial, f"--port={self._new_port(phone.serial)}",
+                "--window-title", phone.title + ("" if control else " (ดูอย่างเดียว)"),
                 f"--window-x={cell.x}", f"--window-y={cell.y}", f"--window-width={cell.width}",
                 f"--window-height={cell.height}", "--no-audio", "--max-size=1024", "--max-fps=30", "--no-power-on"]
         if not control:
@@ -145,6 +160,7 @@ class ScreenWall:
                 if serial not in wanted or wanted[serial] != (phone, cell) or not alive:
                     self._close(proc)
                     del self.windows[serial]
+                    self._ports.pop(serial, None)
             for serial, (phone, cell) in wanted.items():
                 if serial not in self.windows:
                     control = self.control and serial not in self.busy
@@ -178,6 +194,7 @@ class ScreenWall:
             for _phone, _cell, _control, proc in self.windows.values():
                 self._close(proc)
             self.windows.clear()
+            self._ports.clear()
 
 
 class ScreenWorker:

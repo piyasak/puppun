@@ -595,3 +595,10 @@ def test_the_marker_is_read_in_the_comments_sheet_and_nothing_is_typed():
     phone = CommentsPhone("ทดสอบ " + marker.hidden("37c09143-2082-4deb-8e33-3218687e6a91"))
     ui = TikTokUi(Adb(phone.run), "S", sleep=lambda s: None, settle_s=0, wait_s=0)
     assert not ui._marker_in_comments(mark) and not phone.sheet  # another post's caption: not this one
+
+
+def test_the_paid_promote_offer_is_never_pressed():
+    from agent.tiktok_ui import FORBIDDEN_FRAGMENTS
+
+    for label in ("รับยอดการดู 1.73K ถึง 4.96K ครั้ง ฿30.00", "โปรโมต", "Promote this video", "ชำระเงิน"):
+        assert any(f in label.lower() for f in FORBIDDEN_FRAGMENTS), label

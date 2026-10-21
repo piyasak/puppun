@@ -44,7 +44,9 @@ DUMP = "/sdcard/cf_ui.xml"
 # Never pressed, whatever matched: exact labels and fragments (Thai + English builds).
 FORBIDDEN_EXACT = {"โพสต์", "post", "โพสต์เลย", "post now", "ส่ง", "send", "ร่าง", "draft", "drafts"}
 FORBIDDEN_FRAGMENTS = ("story", "สตอรี่", "shop", "ร้านค้า", "ซื้อ", "buy", "ตะกร้า", "cart", "live", "ไลฟ์",
-                       "แบบร่าง", "บันทึกไปยัง", "save to")
+                       "แบบร่าง", "บันทึกไปยัง", "save to",
+                       # TikTok's paid Promote offer over the feed after posting (PO screenshot 2026-10-21)
+                       "โปรโมต", "promote", "฿", "รับยอดการดู", "ชำระเงิน", "payment")
 
 LOGIN_MARKERS = ("เข้าสู่ระบบ", "log in", "ลงทะเบียน", "sign up", "ใช้โทรศัพท์หรืออีเมล", "use phone or email")
 CAPTCHA_MARKERS = ("captcha", "ยืนยันว่าคุณไม่ใช่", "verify you", "ลากชิ้นส่วน", "drag the slider", "เลือก 2 วัตถุ",

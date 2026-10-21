@@ -85,3 +85,22 @@ def test_view_only_mode_never_gives_control():
 
 def test_layout_cell_type():
     assert isinstance(layout(2, (0, 0, 800, 600))[0], Cell)
+
+
+def _port(proc):
+    return next(int(a.split("=", 1)[1]) for a in proc.args if a.startswith("--port="))
+
+
+def test_every_window_has_its_own_port():
+    # PO 2026-10-21: right after the wall opened, two windows showed one phone (scrcpy instances started
+    # together shared a tunnel port).
+    w, opened = wall()
+    w.show([Phone("A", "เครื่อง 1"), Phone("B", "เครื่อง 2"), Phone("C", "เครื่อง 3")])
+    ports = [_port(p) for p in opened]
+    assert len(set(ports)) == 3 and all(27200 <= p < 27300 for p in ports)  # never scrcpy's default range
+    with w.locked("B"):  # reopened view-only: a new port, the old window may still be closing
+        assert _port(opened[3]) not in ports
+    assert len({_port(p) for p in opened[3:]} | {ports[0], ports[2]}) == len(opened[3:]) + 2
+    w.close()
+    w.show([Phone("A", "เครื่อง 1")])
+    assert _port(opened[-1]) == 27200  # ports are free again after close

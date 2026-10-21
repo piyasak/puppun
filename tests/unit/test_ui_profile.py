@@ -35,8 +35,8 @@ def test_the_defaults_are_a_valid_profile_and_only_listed_settings_with_limits_p
 
 
 def test_a_profile_can_only_add_never_press_words():
-    profile = ui_profile.UiProfile(2, ui_profile.validate({"forbidden_fragments_extra": ["โปรโมต"]}))
-    node = parse_dump('<hierarchy><node text="โปรโมตวิดีโอ" content-desc="" resource-id="" class="x" '
+    profile = ui_profile.UiProfile(2, ui_profile.validate({"forbidden_fragments_extra": ["สมัครสมาชิก"]}))
+    node = parse_dump('<hierarchy><node text="สมัครสมาชิกพรีเมียม" content-desc="" resource-id="" class="x" '
                       'clickable="true" bounds="[0,0][10,10]" /></hierarchy>')[0]
     assert forbidden(node, profile) and not forbidden(node)
     post = parse_dump('<hierarchy><node text="โพสต์" content-desc="" resource-id="" class="x" '
