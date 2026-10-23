@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.9.2"  # 0.9.1 + each phone window its own scrcpy port; Promote offer never pressed
+SOURCE_VERSION = "0.9.2"  # 0.9.1 + own scrcpy port per window; Promote never pressed; phone apps closed on start
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"
