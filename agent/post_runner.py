@@ -30,6 +30,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import random
 import re
 import threading
 import time
@@ -48,6 +49,7 @@ from agent.tiktok_ui import TikTokUi, UiStop, media_id
 STOP_CODES = {"LEASE_LOST", "ITEM_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
 FREE_SPACE_EVERY_S = 300.0
 PROFILE_EVERY_S = 3600.0  # Q-50: the UI profile is fetched on start and hourly
+STAGGER_S = (30.0, 90.0)  # PO 2026-10-23: same-time posts on several phones start this far apart (random)
 
 
 # Q-49 (PO 2026-10-15): "everyone" = public; verified on Profile's videos grid (TikTokUi.verify_public_post).
@@ -78,7 +80,8 @@ def sha256_file(path: Path) -> str:
 class PostRunner:
     def __init__(self, data_dir: Path, adb_factory, log=print, poll_s: float = 15.0, cleanup: bool = True,
                  retries: int = 3, retry_wait_s: float = 2.0, ui_rehearsal: bool = False, ui_factory=None,
-                 grant_source=None, crash_after_submit: bool = False, screens=None):
+                 grant_source=None, crash_after_submit: bool = False, screens=None, max_parallel: int = 1,
+                 stagger_s: tuple[float, float] = STAGGER_S, rng: random.Random | None = None, push_slots: int = 2):
         self.data_dir, self.adb_factory, self.log = Path(data_dir), adb_factory, log
         self.poll_s, self.cleanup = poll_s, cleanup
         # Q-27: in dry runs, also go through TikTok up to (never including) Post, then close it.
@@ -93,6 +96,22 @@ class PostRunner:
         self.profile = ui_profile.load_cached(self.data_dir)  # Q-50: last good one, else built in
         self._halt = threading.Event()
         self._thread: threading.Thread | None = None
+        # 0.10.0 (PO 2026-10-23): up to `max_parallel` phones work at once (default 1 = one at a time as
+        # before). A phone does one thing at a time; a post started while another runs waits a random
+        # `stagger_s` first; clip pushes share `push_slots` (USB); each line of the log says which phone.
+        self.max_parallel = max(1, int(max_parallel))
+        self.stagger_s, self.rng = stagger_s, rng or random.Random()
+        self.push_slots = threading.Semaphore(max(1, push_slots))
+        self._active: dict[str, threading.Thread] = {}  # normalized hw serial -> the thread working on it
+        self._active_lock = threading.Lock()
+        self._next_start = 0.0
+        self._tls = threading.local()
+        self._raw_log = log
+        self.log = self._log
+
+    def _log(self, message: str) -> None:
+        name = getattr(self._tls, "phone", None)
+        self._raw_log(f"[{name}] {message}" if name and self.max_parallel > 1 else message)
 
     # --- background loop -------------------------------------------------------------------
 
@@ -153,6 +172,82 @@ class PostRunner:
         self._halt.set()
         if self._thread:
             self._thread.join(timeout_s)
+        with self._active_lock:
+            workers = list(self._active.values())
+        for t in workers:
+            t.join(timeout_s)
+
+    # --- several phones at once (0.10.0) ---------------------------------------------------
+
+    def active(self) -> set[str]:
+        """Phones (normalized hw serial) something is running on now; finished ones are dropped."""
+        with self._active_lock:
+            for key in [k for k, t in self._active.items() if not t.is_alive()]:
+                del self._active[key]
+            return set(self._active)
+
+    def _spawn(self, key: str, name: str, work) -> threading.Thread:
+        def run() -> None:
+            self._tls.phone = name
+            try:
+                work()
+            except Exception as exc:  # noqa: BLE001 - one phone must never stop the others
+                self.log(f"ข้อผิดพลาดที่ไม่คาดไว้ ({type(exc).__name__}: {exc}); เครื่องอื่นทำงานต่อ")
+            finally:
+                with self._active_lock:
+                    if self._active.get(key) is threading.current_thread():
+                        del self._active[key]
+
+        thread = threading.Thread(target=run, daemon=True, name=f"clipflow-post-{name}")
+        with self._active_lock:
+            self._active[key] = thread
+        thread.start()
+        return thread
+
+    def dispatch_once(self, client: ServerClient, get_session) -> bool:
+        """Start one thing on a free phone (a due post first; else a screen check or Profile numbers).
+        True when something was started."""
+        busy = self.active()
+        if len(busy) >= self.max_parallel:
+            return False
+        if busy and time.monotonic() < self._next_start:
+            return False  # PO 2026-10-23: a post that starts while another runs waits a random 30-90 s
+        adb = self.adb_factory()
+        free = {key: p for key, p in self._ready_phones(adb).items() if key not in busy}
+        if not free:
+            return False
+        post = client.claim_post(get_session(), [p.hw_serial for p in free.values()])
+        if post is not None:
+            key = normalize_serial(post["device"]["serial"])
+            phone = free.get(key)
+            self._next_start = time.monotonic() + self.rng.uniform(*self.stagger_s)
+            self._spawn(key, self._name(post, phone), lambda: self._execute(client, get_session, post, adb, phone))
+            return True
+        request = client.diagnostic_requested(get_session(), [p.hw_serial for p in free.values()])
+        if request is not None:
+            key = normalize_serial(request["serial"])
+            phone = free.get(key)
+            if phone is None:
+                client.diagnostic_done(get_session(), request["id"], error="PHONE_NOT_CONNECTED")
+                return True
+            self._spawn(key, phone.hw_serial, lambda: self._diagnose(client, get_session, adb, phone, request))
+            return True
+        clock = account_stats.StatsClock(self.data_dir / "stats_clock.json")
+        for key, phone in free.items():
+            if clock.due(phone.hw_serial):
+                clock.mark(phone.hw_serial)  # once per period, even when the reading fails
+                self._spawn(key, phone.hw_serial, lambda p=phone: self._read_stats(client, get_session, adb, p))
+                return True
+        return False
+
+    @staticmethod
+    def _name(post: dict, phone) -> str:
+        device = post.get("device") or {}
+        return device.get("display_name") or device.get("expected_account") or (phone.hw_serial if phone else "?")
+
+    @staticmethod
+    def _ready_phones(adb) -> dict:
+        return {normalize_serial(p.hw_serial): p for p in discover(adb) if p.state == "device" and p.hw_serial}
 
     def _loop(self, client: ServerClient, get_session) -> None:
         try:
@@ -174,20 +269,17 @@ class PostRunner:
                 except (ServerError, OSError) as exc:
                     self.log(f"ลบคลิปหลังโพสต์: ทำต่อไม่ได้ชั่วคราว ({exc}); ลองใหม่ภายหลัง")
             try:
-                outcome = self.run_once(client, get_session)
+                started = self.dispatch_once(client, get_session)
             except (ServerError, OSError, AdbError) as exc:
                 self.log(f"โพสต์: ทำต่อไม่ได้ชั่วคราว ({exc}); ลองใหม่ภายหลัง")
-                outcome = None
+                started = False
             except Exception as exc:  # noqa: BLE001 - never let one post stop posting for every phone
                 self.log(f"โพสต์: ข้อผิดพลาดที่ไม่คาดไว้ ({type(exc).__name__}: {exc}); ทำงานต่อ")
-                outcome = None
-            if outcome is None:
-                try:  # idle: a screen check asked for on the web runs now, never during a post
-                    if not self.run_diagnostic_once(client, get_session):
-                        self.read_stats_once(client, get_session)  # Q-52: Profile numbers, ~twice a day
-                except Exception as exc:  # noqa: BLE001 - diagnostics must never stop posting
-                    self.log(f"ตรวจหน้าจอ: ทำไม่ได้ ({type(exc).__name__}: {exc})")
-                self._halt.wait(self.poll_s)  # idle: E-41 (<= 15 s)
+                started = False
+            # Started: look again at once (another phone may be due); otherwise E-41 (<= 15 s), or sooner
+            # while phones are busy so a finished phone is picked up quickly.
+            if not started:
+                self._halt.wait(self.poll_s if not self.active() else min(self.poll_s, 5.0))
 
     def delete_posted_clips(self, client: ServerClient, get_session) -> list[str]:
         """Delete (for good) the kept clips the server lists as posted and done. Returns the clip ids reported."""
@@ -230,11 +322,20 @@ class PostRunner:
         if phone is None:
             client.diagnostic_done(get_session(), request["id"], error="PHONE_NOT_CONNECTED")
             return True
+        self._diagnose(client, get_session, adb, phone, request)
+        return True
+
+    def _diagnose(self, client, get_session, adb, phone, request) -> None:
         lock = self.screens.locked(phone.adb_serial) if self.screens else contextlib.nullcontext()
         with lock:
             diagnostics.run_requested(client, get_session(), adb, phone.adb_serial, request, self.profile, self.log,
                                       self.ui_factory)
-        return True
+
+    def _read_stats(self, client, get_session, adb, phone) -> None:
+        lock = self.screens.locked(phone.adb_serial) if self.screens else contextlib.nullcontext()
+        with lock:
+            ui = (self.ui_factory or (lambda a, s: TikTokUi.for_phone(a, s, self.profile)))(adb, phone.adb_serial)
+            account_stats.read_and_send(client, get_session(), ui, phone.hw_serial, self.log)
 
     def read_stats_once(self, client: ServerClient, get_session) -> bool:
         """Q-52: when idle, read one phone's Profile numbers if its last reading is old enough."""
@@ -244,10 +345,7 @@ class PostRunner:
             if phone.state != "device" or not phone.hw_serial or not clock.due(phone.hw_serial):
                 continue
             clock.mark(phone.hw_serial)  # once per period, even when the reading fails
-            lock = self.screens.locked(phone.adb_serial) if self.screens else contextlib.nullcontext()
-            with lock:
-                ui = (self.ui_factory or (lambda a, s: TikTokUi.for_phone(a, s, self.profile)))(adb, phone.adb_serial)
-                account_stats.read_and_send(client, get_session(), ui, phone.hw_serial, self.log)
+            self._read_stats(client, get_session, adb, phone)
             return True
         return False
 
@@ -260,7 +358,9 @@ class PostRunner:
         post = client.claim_post(get_session(), [p.hw_serial for p in phones.values()])
         if post is None:
             return None
-        phone = phones.get(normalize_serial(post["device"]["serial"]))
+        return self._execute(client, get_session, post, adb, phones.get(normalize_serial(post["device"]["serial"])))
+
+    def _execute(self, client, get_session, post: dict, adb, phone) -> str:
         lock = self.screens.locked(phone.adb_serial) if self.screens and phone else contextlib.nullcontext()
         with lock:  # a click on the PC must never meet the Agent's taps on the same phone
             return _Post(self, client, get_session, post, adb, phone).run()
@@ -316,7 +416,8 @@ class _Post:
             local = self._file()
             name = f"cf_{self.id[:8]}_{self.post['clip']['index']:02d}.mp4"
             try:
-                self.remote = self.adb.push_verified(self.phone.adb_serial, local, remote_name=name)
+                with self.r.push_slots:  # several phones at once share the USB (0.10.0)
+                    self.remote = self.adb.push_verified(self.phone.adb_serial, local, remote_name=name)
             except AdbError as exc:
                 raise PostFailed("TRANSFER_FAILED", str(exc)[:200]) from None
             self.step(State.PREPARING, "PREPARING", self.remote)

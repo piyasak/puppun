@@ -4,6 +4,13 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-23) — posts on several phones at once (Q-54, source 0.10.0)
+- PO: max per PC settable, default 1; same-time posts start 30-90 s apart (random); release 0.9.2 first
+- Agent 0.9.2 published 2026-10-23 (master fe67e69): https://github.com/piyasak/punpun-agent/releases/tag/v0.9.2, setup SHA-256 c220dfec…a0f3, 59.4 MB; no .py/.pyc; exe reports 0.9.2 and carries the own-port windows, the Promote words and the clean start; simulated fresh PC: FFmpeg installed; bundle test 0.9.1 -> 0.9.2 passed; anonymous download HTTP 200, hash matches
+- `PostRunner.dispatch_once`: claims for free phones only, one thread per phone (`_spawn`), up to `max_parallel`; stagger before a start while another runs; `push_slots` (2) around clip pushes; diagnostics / Profile numbers on free phones; `run_once` stays synchronous (tests, one post). Locks: `AttemptJournal` (one RLock per file, check-then-append), `ScreenWall.busy`, `screen_reader.download`. Setting: `AgentConfig.max_parallel_posts`, settings window card "การโพสต์", `connect --max-parallel`
+- Found on the way: the unit suite froze on this PC because Python 3.14 asks WMI for `platform.machine()` / `win32_ver()` and WMI here hangs; `render.py` called it at import and yt-dlp's `YoutubeDL()` calls it too, so a customer PC with a stuck WMI would freeze clip jobs the same way. Fixed: `render.py` reads the CPU family from `sysconfig.get_platform()`, `compat.py` from `sys.platform`, and `agent/__init__.py` + `clipflow_worker/__init__.py` unset `platform._wmi` (Python then reads the same values from the registry; checked: Windows 11, 10.0.26100, AMD64; yt-dlp starts at once)
+- Tests: test-unit 284 (default one at a time; three phones each once, busy phone never offered, stagger 30-90 s, one phone's error logged with its name while the others finish; screen check only on free phones; journal written from 6 threads; setting 1-10). Not tried with real phones yet (needs 0.10.0 on the customer PC)
+
 ### Latest slice (2026-10-23) — clean start: phone apps closed before the Agent works (Q-53, source 0.9.2)
 - PO: when the Agent starts, kill all open applications first, then start. Done on the phones (`agent/clean_start.py`): Home, force-stop every installed app except punpun Thai input / the keyboard in use / the home screen, `am kill-all`; skipped per phone on error; `--no-clean-start` to turn off. Runs once at start, before the phone check, the screen wall and any post or job
 - Tests: test-unit (keyboards and home kept, unauthorized phone untouched, a failing phone skipped, odd package names never put in a shell command). No phone on this PC: not tried on a real phone yet (needs 0.9.2 on the customer PC). Product basket: PO "รอก่อน"

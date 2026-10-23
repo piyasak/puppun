@@ -3,7 +3,16 @@
 import sys
 from pathlib import Path
 
-SOURCE_VERSION = "0.9.2"  # 0.9.1 + own scrcpy port per window; Promote never pressed; phone apps closed on start
+# Python 3.14 asks WMI for the Windows version and CPU (platform.win32_ver/uname/machine), and a stuck WMI
+# service hangs every caller, yt-dlp's YoutubeDL() included (QA PC, 2026-10-23: imports and downloads froze).
+# Without its private _wmi module, platform reads the same answers from sys.getwindowsversion and the registry.
+if sys.platform == "win32":
+    import platform as _platform
+
+    if getattr(_platform, "_wmi", None) is not None:
+        _platform._wmi = None
+
+SOURCE_VERSION = "0.10.0"  # 0.9.2 + posts on several phones at once (settable, default 1); no WMI calls
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"

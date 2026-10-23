@@ -28,14 +28,14 @@ def test_an_unexpected_error_does_not_stop_posting(tmp_path):
     runner = PostRunner(tmp_path, adb_factory=lambda: None, log=logs.append, poll_s=0)
     calls = []
 
-    def run_once(client, get_session):
+    def dispatch_once(client, get_session):  # 0.10.0: the loop starts work through the dispatcher
         calls.append(1)
         if len(calls) == 1:
             raise RuntimeError("boom")
         runner._halt.set()
-        return None
+        return False
 
-    runner.run_once = run_once
+    runner.dispatch_once = dispatch_once
     runner.delete_posted_clips = lambda client, get_session: None
     runner._loop(None, None)
     assert len(calls) == 2 and any("RuntimeError" in m for m in logs)
