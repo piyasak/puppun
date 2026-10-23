@@ -37,7 +37,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent import account_stats, diagnostics, marker, thai_keyboard, ui_profile
+from agent import account_stats, clean_start, diagnostics, marker, thai_keyboard, ui_profile
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -424,6 +424,7 @@ class _Post:
             if not self.adb.scan_and_find(self.phone.adb_serial, self.remote):
                 raise PostFailed("GALLERY_NOT_FOUND", "the phone's Gallery did not list the clip")
             if self.post["posting_mode"] == "live" or self.r.ui_rehearsal:
+                self._clean_phone()
                 self._check_compat()
             if self.post["posting_mode"] == "live":
                 if self._live():
@@ -468,6 +469,17 @@ class _Post:
             raise
         finally:
             ui.close()
+
+    def _clean_phone(self) -> None:
+        """PO 2026-10-23: before TikTok is opened for a post, this phone goes Home and its installed apps are
+        closed (TikTok included), as on Agent start (agent/clean_start.py), so the post never meets a screen
+        left over from someone's use or an earlier stop. Only this phone; never stops the post."""
+        try:
+            stopped = clean_start.clean_phone(self.adb, self.phone.adb_serial)
+        except (AdbError, OSError) as exc:
+            self.r.log(f"โพสต์ {self.id[:8]}: ปิดแอปก่อนโพสต์ไม่ได้ ({exc}) — โพสต์ต่อ")
+            return
+        self.r.log(f"โพสต์ {self.id[:8]}: ปิดแอปที่เปิดอยู่ก่อนโพสต์แล้ว ({len(stopped)} แอป)")
 
     def _check_compat(self) -> None:
         """Never drive TikTok on a phone/app combination that was not tested (D03, NF-10, T25)."""

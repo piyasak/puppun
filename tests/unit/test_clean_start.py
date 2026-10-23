@@ -63,3 +63,25 @@ def test_only_installed_apps_are_named_never_system_or_odd_names():
     adb.shell = lambda s, c: calls.append(c) or original(s, c)
     assert clean_start.clean_phone(adb, "A") == ["com.ok.app"]
     assert not any("rm -rf" in c for c in calls)
+
+
+def test_before_a_post_opens_tiktok_the_phone_is_cleaned_first(tmp_path):
+    # PO 2026-10-23: close every app before each post, as on Agent start; a failure never stops the post.
+    from agent.post_runner import PostRunner, _Post
+
+    adb = FakeAdb([DeviceEntry("A", "device")])
+    logs = []
+    runner = PostRunner(tmp_path, adb_factory=lambda: adb, log=logs.append)
+
+    class Phone:
+        adb_serial, hw_serial = "A", "HWA"
+
+    post = {"id": "f240f595-172b-40c3-bcc6-cda52feaf9d0", "attempt": 1, "state": "CLAIMED",
+            "device": {"serial": "HWA"}, "text": {"caption": "x", "hashtags": []}}
+    _Post(runner, None, None, post, adb, Phone())._clean_phone()
+    commands = [c for _, c in adb.calls]
+    assert commands[0] == "input keyevent KEYCODE_HOME" and "am force-stop com.ss.android.ugc.trill" in " ".join(commands)
+    assert "2 แอป" in logs[-1]
+    broken = FakeAdb([DeviceEntry("A", "device")], broken={"A"})
+    _Post(runner, None, None, post, broken, Phone())._clean_phone()  # no exception
+    assert "ไม่ได้" in logs[-1]
