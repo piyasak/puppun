@@ -4,6 +4,11 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-23) — job errors that name the missing file (source 0.10.1)
+- Agent 0.10.0 published 2026-10-23 (master bf08138; server deployed bf08138 with migration 0028): https://github.com/piyasak/punpun-agent/releases/tag/v0.10.0, setup SHA-256 035c3eff…c324, 59.5 MB; no .py/.pyc; exe reports 0.10.0 and carries the dispatcher, the merge retry, the clean before each post and the WMI switch; simulated fresh PC: FFmpeg installed; bundle test 0.9.2 -> 0.10.0 passed; anonymous download HTTP 200, hash matches. Customer PC on 0.10.0 from 17:54; posting normal
+- YouTube job bd27e191 (1 h 43 min): on 0.9.2 the join failed (FFmpeg exit 2812791304 = 0xA7A7CA08, like 0xCCCFCB08 before: FFmpeg stopped or crashed on that PC; long sources only; the same Bilibili source joins here). Restarted twice on 0.10.0: `AGENT_ERROR: FileNotFoundError` within a minute, before the source check. Not reproduced here (0.10.0 code plans the same link: 21 clips, Thai captions); FFmpeg files present on the customer PC; agent.log had only start lines (job errors went to the Agent window only)
+- Fix (`agent/errors.py`): job and post errors send `type: message` plus the name of the file involved (the user's profile folders shown as %USERPROFILE%, 300 chars) instead of the bare type, and write the traceback to agent.log. Tests: test_agent_errors; test-unit 292; Agent HTTP 31. Next: release 0.10.1, restart bd27e191, read the named file
+
 ### Latest slice (2026-10-23) — server cap for posts at once (Q-54, server)
 - PO: the plan's phones by default, settable lower to reduce risk. `environments.max_parallel_posts` (migration 0028, NULL = the Environment's device limit, check >= 1); `PATCH /v1/environments/{id}` takes it (0 = back to NULL, above the device limit = 422); output adds `parallel_posts_cap`. `posts.claim` locks the Environment row and returns nothing while `parallel_posts_cap` posts are in flight (IN_FLIGHT states, not UNKNOWN). Web: Environments row "โพสต์พร้อมกันสูงสุด" (ตามจำนวนโทรศัพท์ / 1..N). Works with any Agent; Agent 0.10.0 adds its own per-PC setting below it
 - Tests: integration test_parallel_cap (default = phones, cap 1 holds the next claim until the first ends, 0 resets, above the phones refused, another Workspace 404). Web tsc -b clean
