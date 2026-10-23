@@ -12,7 +12,7 @@ if sys.platform == "win32":
     if getattr(_platform, "_wmi", None) is not None:
         _platform._wmi = None
 
-SOURCE_VERSION = "0.10.0"  # 0.9.2 + posts on several phones at once (settable, default 1); no WMI calls
+SOURCE_VERSION = "0.10.1"  # 0.10.0 + job/post errors name the file and go to agent.log
 # The server a new installation links to until another one is saved (PO 2026-10-12: the real domain; it serves
 # the same service as https://punpun-staging.onrender.com, which saved settings may still name and which keeps working).
 DEFAULT_SERVER = "https://punpun.tomatoparadise.online"

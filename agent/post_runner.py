@@ -37,7 +37,7 @@ import time
 import uuid
 from pathlib import Path
 
-from agent import account_stats, clean_start, diagnostics, marker, thai_keyboard, ui_profile
+from agent import account_stats, clean_start, diagnostics, errors, marker, thai_keyboard, ui_profile
 from agent.adb import Adb, AdbError, normalize_serial
 from agent.attempt import PRE_SUBMIT, AttemptJournal, State, TransitionError
 from agent.authorization import GrantRefused, PostGrant
@@ -192,7 +192,7 @@ class PostRunner:
             try:
                 work()
             except Exception as exc:  # noqa: BLE001 - one phone must never stop the others
-                self.log(f"ข้อผิดพลาดที่ไม่คาดไว้ ({type(exc).__name__}: {exc}); เครื่องอื่นทำงานต่อ")
+                self.log(f"ข้อผิดพลาดที่ไม่คาดไว้ ({errors.record(f'phone {name}', exc)}); เครื่องอื่นทำงานต่อ")
             finally:
                 with self._active_lock:
                     if self._active.get(key) is threading.current_thread():
@@ -446,7 +446,7 @@ class _Post:
         except UiStop as exc:  # login wall, CAPTCHA, wrong account, unknown screen: a person decides
             self._needs_action(exc.code, exc.detail)
         except (ServerError, OSError, AdbError) as exc:
-            self._fail("AGENT_ERROR", type(exc).__name__)
+            self._fail("AGENT_ERROR", errors.record(f"post {self.id}", exc))
         self._cleanup()
         self.r.log(f"{tag}: {self.state}")
         return self.state

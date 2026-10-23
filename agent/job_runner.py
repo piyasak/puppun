@@ -32,7 +32,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from agent import clips_folder
+from agent import clips_folder, errors
 from agent.server_client import ServerClient, ServerError, Session, temporary
 
 STOP_CODES = {"LEASE_LOST", "JOB_NOT_ACTIVE", "AGENT_SESSION_ENDED"}
@@ -216,8 +216,9 @@ class _Job:
             self.r.log(f"งาน {self.id[:8]}: Server ปฏิเสธ {exc}")
             self._fail("AGENT_ERROR", exc.code)
         except Exception as exc:  # noqa: BLE001 - reported to the server; full detail stays in the local log
-            self.r.log(f"งาน {self.id[:8]}: ผิดพลาด {exc!r}")
-            self._fail("AGENT_ERROR", type(exc).__name__)
+            detail = errors.record(f"job {self.id}", exc)  # traceback in agent.log, summary for the web
+            self.r.log(f"งาน {self.id[:8]}: ผิดพลาด {detail}")
+            self._fail("AGENT_ERROR", detail)
         finally:
             done.set()
             shutil.rmtree(self.work, ignore_errors=True)
