@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -66,22 +67,31 @@ class Record:
 
 
 class AttemptJournal:
+    # One lock per journal file for every instance in this process: posts on several phones write at once
+    # (0.10.0); each check-then-append below runs under it.
+    _locks: dict[str, threading.RLock] = {}
+    _locks_guard = threading.Lock()
+
     def __init__(self, path: Path):
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._locks_guard:
+            self.lock = self._locks.setdefault(str(self.path.resolve()), threading.RLock())
 
     def _append(self, record: Record) -> None:
         line = json.dumps({"attempt_id": record.attempt_id, "state": record.state, "at": record.at, "detail": record.detail}, ensure_ascii=False)
-        with open(self.path, "a", encoding="utf-8") as fh:
+        with self.lock, open(self.path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
             fh.flush()
             os.fsync(fh.fileno())
 
     def history(self, attempt_id: str) -> list[Record]:
-        if not self.path.exists():
-            return []
+        with self.lock:
+            if not self.path.exists():
+                return []
+            text = self.path.read_text(encoding="utf-8")
         out = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
+        for line in text.splitlines():
             if not line.strip():
                 continue
             try:
@@ -97,16 +107,18 @@ class AttemptJournal:
         return history[-1].state if history else None
 
     def begin(self, attempt_id: str) -> None:
-        if self.current(attempt_id) is not None:
-            raise TransitionError(f"attempt {attempt_id} already exists; a new attempt needs a new id")
-        self._append(Record(attempt_id, State.CLAIMED, time.time()))
+        with self.lock:
+            if self.current(attempt_id) is not None:
+                raise TransitionError(f"attempt {attempt_id} already exists; a new attempt needs a new id")
+            self._append(Record(attempt_id, State.CLAIMED, time.time()))
 
     def advance(self, attempt_id: str, new: State, detail: str = "") -> None:
         """Record intent to enter `new`. Call this before performing the step."""
-        cur = self.current(attempt_id)
-        if cur is None or new not in ALLOWED.get(cur, set()):
-            raise TransitionError(f"{cur} -> {new} is not allowed")
-        self._append(Record(attempt_id, new, time.time(), detail))
+        with self.lock:
+            cur = self.current(attempt_id)
+            if cur is None or new not in ALLOWED.get(cur, set()):
+                raise TransitionError(f"{cur} -> {new} is not allowed")
+            self._append(Record(attempt_id, new, time.time(), detail))
 
     def ids(self) -> list[str]:
         """Every attempt in the journal, in first-seen order."""

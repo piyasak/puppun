@@ -132,6 +132,72 @@ def _classify_download_error(exc: Exception) -> SourceError:
     return SourceError(SourceErrorCode.DOWNLOADER_ERROR, str(exc))
 
 
+def merge_failed(exc: Exception) -> bool:
+    """yt-dlp downloaded the video and audio but FFmpeg did not join them (customer PC, 2026-10-19:
+    "ffmpeg exited with code 3436169992")."""
+    message = _ANSI.sub("", str(exc)).lower()
+    return "ffmpeg exited with code" in message or "postprocessing:" in message
+
+
+def _exit_code(message: str) -> str:
+    """'... code 3436169992' -> '3436169992 (0xCCCFCB08)': Windows crash codes read better in hex."""
+    m = re.search(r"code (-?\d+)", message)
+    if not m:
+        return "?"
+    code = int(m.group(1))
+    return f"{code} (0x{code & 0xFFFFFFFF:08X})" if abs(code) > 255 else str(code)
+
+
+def _parts(dest_dir: Path, stem: str) -> list[Path]:
+    """The separate video and audio files yt-dlp keeps when the merge fails (stem.f<format>.<ext>)."""
+    return sorted(p for p in dest_dir.glob(f"{stem}.f*.*") if p.suffix not in (".part", ".ytdl") and p.is_file())
+
+
+def merge_parts(dest_dir: Path, stem: str, run=subprocess.run, timeout_s: float = 1800) -> tuple[bool, str]:
+    """Join the kept parts with our own FFmpeg call, so its own words are kept when it fails.
+    Returns (joined, the last lines FFmpeg wrote)."""
+    from clipflow_worker.media import binary
+
+    parts = _parts(dest_dir, stem)
+    if len(parts) < 2:
+        return False, f"no video and audio parts to join ({len(parts)} found)"
+    out = dest_dir / f"{stem}.mp4"
+    args = [binary("ffmpeg"), "-hide_banner", "-nostdin", "-y"]
+    for part in parts[:2]:
+        args += ["-i", str(part)]
+    args += ["-map", "0", "-map", "1", "-c", "copy", "-movflags", "+faststart", str(out)]
+    try:
+        done = run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"FFmpeg could not run: {type(exc).__name__}: {exc}"[:300]
+    lines = [ln.strip() for ln in (done.stderr or "").splitlines() if ln.strip()]
+    tail = " | ".join(lines[-3:])[:300]
+    if done.returncode == 0 and out.is_file() and out.stat().st_size > 0:
+        for part in parts[:2]:
+            part.unlink(missing_ok=True)
+        return True, tail
+    return False, f"exit {_exit_code(f'code {done.returncode}')}: {tail or 'no message'}"
+
+
+def _retry_merge(url: str, opts: dict, dest_dir: Path, stem: str, first: DownloadError) -> None:
+    """PO 2026-10-23: when FFmpeg fails joining video and audio, try once more (the parts are kept, so only the
+    join runs again), then join them ourselves to keep FFmpeg's own message. Raises with that message."""
+    try:
+        with public_only(), yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.extract_info(url, download=True)
+        return
+    except DownloadError as exc:
+        if not merge_failed(exc):
+            raise _classify_download_error(exc) from exc
+        second = exc
+    joined, said = merge_parts(dest_dir, stem)
+    if joined:
+        return
+    raise SourceError(SourceErrorCode.DOWNLOADER_ERROR,
+                      f"FFmpeg joined the video and audio 3 times and failed (yt-dlp exit "
+                      f"{_exit_code(str(first))}, again {_exit_code(str(second))}); FFmpeg said: {said}") from second
+
+
 def _base_opts() -> dict:
     return {
         "quiet": True,
@@ -250,7 +316,9 @@ def download(
         with public_only(), yt_dlp.YoutubeDL(opts) as ydl:
             ydl.extract_info(url, download=True)
     except DownloadError as exc:
-        raise _classify_download_error(exc) from exc
+        if not merge_failed(exc):
+            raise _classify_download_error(exc) from exc
+        _retry_merge(url, opts, dest_dir, stem, exc)
     video = dest_dir / f"{stem}.mp4"
     if not video.exists():
         raise SourceError(SourceErrorCode.DOWNLOADER_ERROR, "download finished without an mp4 output")

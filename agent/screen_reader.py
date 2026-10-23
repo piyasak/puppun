@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -56,8 +57,16 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+_download_lock = threading.Lock()  # two phones needing the reader at once download it once (0.10.0)
+
+
 def download(where: Path | None = None, opener=net.urlopen) -> Path:
     """The checked jar (downloaded once; a copy that does not match is replaced)."""
+    with _download_lock:
+        return _download(where, opener)
+
+
+def _download(where: Path | None, opener) -> Path:
     where = where or folder()
     path = where / f"u2-{VERSION}.jar"
     if path.is_file() and _sha256(path.read_bytes()) == JAR_SHA256:

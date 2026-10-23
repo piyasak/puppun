@@ -25,14 +25,23 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from . import devices as device_rules
 from . import notify, posting_grants, schedules, slots
 from .agent_sessions import AgentContext
 from .errors import ApiError
-from .models import Clip, ClipMetadata, Device, PostingGrant, ScheduleItem, ScheduleItemEvent, ScheduleSeries
+from .models import (
+    Clip,
+    ClipMetadata,
+    Device,
+    Environment,
+    PostingGrant,
+    ScheduleItem,
+    ScheduleItemEvent,
+    ScheduleSeries,
+)
 
 LEASE_S = 300
 # Verifying sends no event until it ends: a public post's check opens several videos and retries with waits
@@ -115,6 +124,12 @@ def defer_series(db: Session, series: ScheduleSeries, from_seq: int, at: datetim
     schedules.apply_shift(schedules.shift_plan(db, series, from_seq, at, lock=True), "DEFERRED", at)
 
 
+def _running(db: Session, environment_id: uuid.UUID) -> int:
+    """Posts between a claim and their result on this Environment's phones."""
+    return db.scalar(select(func.count()).select_from(ScheduleItem).join(Device, Device.id == ScheduleItem.device_id)
+                     .where(Device.environment_id == environment_id, ScheduleItem.state.in_(IN_FLIGHT))) or 0
+
+
 def _busy(db: Session, device_id: uuid.UUID) -> bool:
     return bool(db.scalar(select(exists().where(ScheduleItem.device_id == device_id,
                                                 ScheduleItem.state.in_(BUSY)))))
@@ -126,6 +141,11 @@ def claim(db: Session, ctx: AgentContext, ready_serials: list[str], *, can_post_
     at = now()
     expire_leases(db, ctx.environment_id, at)
     apply_offline_policy(db, ctx.environment_id, at)
+    # Q-54: no more posts running at once on this Environment than its cap (the owner's setting, else its
+    # phones). The row lock makes two claims at the same moment count one after the other.
+    env = db.scalars(select(Environment).where(Environment.id == ctx.environment_id).with_for_update()).first()
+    if env is not None and _running(db, env.id) >= (env.max_parallel_posts or max(env.device_limit, 1)):
+        return None
     keys = set()
     for raw in ready_serials[:50]:
         try:

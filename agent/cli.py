@@ -97,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
                        help="folder with the customer's own video files for local-file jobs (Q-17)")
     p_con.add_argument("--no-jobs", action="store_true", help="do not claim clip jobs (P3.3)")
     p_con.add_argument("--no-posts", action="store_true", help="do not take scheduled posts (P5, dry-run only)")
+    p_con.add_argument("--max-parallel", type=int, default=None,
+                       help="phones posting at the same time on this PC, 1-10 (default: the settings window, else 1)")
     p_con.add_argument("--no-clean-start", action="store_true",
                        help="leave the apps open on the phones (default: close them before starting, PO 2026-10-23)")
     p_con.add_argument("--ui-rehearsal", action="store_true",
@@ -175,7 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         return connect(args.server, args.username, args.seconds, args.data_dir, not args.no_phone_check,
                        None if args.no_jobs else (args.media_dir or saved_media_dir(args.data_dir) or Path.cwd()),
                        posts=not args.no_posts,
-                       ui_rehearsal=args.ui_rehearsal, clean_start=not args.no_clean_start)
+                       ui_rehearsal=args.ui_rehearsal, clean_start=not args.no_clean_start,
+                       max_parallel=args.max_parallel)
     if args.cmd == "register-devices":
         return register_devices(args.server, args.username, args.serial, args.data_dir)
 
@@ -273,7 +276,7 @@ def saved_media_dir(data_dir: Path | None) -> Path | None:
 
 def connect(server: str, username: str, seconds: float | None, data_dir: Path | None,
             phone_check: bool = True, media_dir: Path | None = None, posts: bool = True,
-            ui_rehearsal: bool = False, clean_start: bool = True) -> int:
+            ui_rehearsal: bool = False, clean_start: bool = True, max_parallel: int | None = None) -> int:
     """The token comes from CLIPFLOW_AGENT_TOKEN or a hidden prompt, never from argv (visible to other
     processes). Windows Credential Manager storage arrives with the installer (P5)."""
     import getpass
@@ -324,8 +327,13 @@ def connect(server: str, username: str, seconds: float | None, data_dir: Path | 
                 workers.append(LibraryWorker(media_dir))
             wall = screen_wall(load_config(data_dir), exe)  # phone screens on the PC (PO 2026-10-10)
             if posts:  # P5: scheduled posts, dry-run only (the server refuses Submit, E-40)
+                from agent.credentials import parallel_posts
+
+                parallel = parallel_posts(max_parallel or (saved.max_parallel_posts if saved else 1))
+                if parallel > 1:
+                    print(f"โพสต์พร้อมกันได้สูงสุด {parallel} เครื่อง (เวลาเดียวกันเริ่มห่างกัน 30-90 วินาที)")
                 workers.append(PostRunner(data_dir, lambda: Adb(default_runner()), ui_rehearsal=ui_rehearsal,
-                                          screens=wall))
+                                          screens=wall, max_parallel=parallel))
             if wall is not None:
                 from agent.screens import ScreenWorker
 

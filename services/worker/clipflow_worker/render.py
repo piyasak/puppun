@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import os
-import platform
 import subprocess
 import sys
+import sysconfig
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,7 +34,10 @@ ENCODER_THREADS = 4
 # algorithms on every CPU: its own SIMD choice gave different video on Intel and AMD, and on
 # AVX-512 CPUs different video from one render to the next. Checked on 12 CI runners (5 CPU
 # models, AVX2 and AVX-512): one file. No measurable cost.
-CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if platform.machine().lower() in ("amd64", "x86_64") else ()
+# The CPU family from this Python's build tag ("win-amd64", "linux-x86_64"), never platform.machine(): on
+# Windows, Python 3.14 asks WMI for it, and a stuck WMI froze every import of this module (QA PC, 2026-10-23).
+X86_64 = any(tag in sysconfig.get_platform().lower() for tag in ("amd64", "x86_64"))
+CPU_ARGS = ("-cpuflags", "mmx+mmxext+sse+sse2+cmov") if X86_64 else ()
 X264_ARGS = ("-x264-params", "cpu-independent=1")
 # No metadata from the source (creation time, location, chapters) and no version strings from the
 # muxer: only the frames and samples decide the bytes.

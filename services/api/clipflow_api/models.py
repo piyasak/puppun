@@ -170,6 +170,7 @@ class Environment(Base):
                         name="ck_environments_limits_non_negative"),
         CheckConstraint("concurrent_session_limit <= registered_agent_limit",
                         name="ck_environments_sessions_within_agents"),
+        CheckConstraint("max_parallel_posts IS NULL OR max_parallel_posts >= 1", name="ck_environments_parallel_posts"),
     )
 
     id: Mapped[uuid.UUID] = _uuid()
@@ -178,6 +179,9 @@ class Environment(Base):
     registered_agent_limit: Mapped[int] = mapped_column(Integer)
     concurrent_session_limit: Mapped[int] = mapped_column(Integer)
     device_limit: Mapped[int] = mapped_column(Integer)
+    # Q-54 (PO 2026-10-23): posts running at once on this Environment; NULL = as many as its phones (device
+    # limit). Not a plan allocation: only a lower ceiling the owner may set to reduce risk.
+    max_parallel_posts: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created()
 
 

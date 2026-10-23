@@ -4,7 +4,11 @@ export type Limits = {
   device_limit: number
 }
 
-export type Environment = Limits & { id: string; name: string; created_at: string }
+export type Environment = Limits & {
+  id: string; name: string; created_at: string
+  // Q-54: posts at once; null = as many as the phones (parallel_posts_cap is the one in force)
+  max_parallel_posts: number | null; parallel_posts_cap: number
+}
 
 export type Usage = {
   plan: { code: string; version: number; name: string; is_demo: boolean; status: string }

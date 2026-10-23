@@ -192,6 +192,17 @@ class SettingsWindow:
         self.clips.trace_add("write", lambda *_: self.show_free())
         self.show_free()
 
+        # --- posts on several phones at once (PO 2026-10-23) ---
+        posting = Card(page, "การโพสต์", family)
+        posting.pack(fill="x", pady=6)
+        pb = posting.body
+        self.muted(pb, "โพสต์พร้อมกันได้สูงสุด (เครื่อง)").grid(row=1, column=0, sticky="w", pady=4)
+        self.max_parallel = tk.IntVar(value=state.max_parallel_posts)
+        tk.Spinbox(pb, from_=1, to=10, width=4, textvariable=self.max_parallel, font=(family, 10),
+                   state="readonly").grid(row=1, column=1, sticky="w", padx=10)
+        self.muted(pb, "1 = ทีละเครื่อง • มากกว่า 1: โพสต์ที่ถึงเวลาพร้อมกันจะเริ่มห่างกัน 30-90 วินาที • "
+                       "มีผลเมื่อเปิด Agent ครั้งถัดไป", 9).grid(row=2, column=0, columnspan=3, sticky="w")
+
         # --- phone screens on this PC (PO 2026-10-10) ---
         screens = Card(page, "หน้าจอโทรศัพท์", family)
         screens.pack(fill="x", pady=6)
@@ -394,6 +405,7 @@ class SettingsWindow:
         try:
             settings.save_folders(self.data_dir, self.clips.get(), self.media.get())
             settings.save_screens(self.data_dir, self.show_screens.get(), self.screens_control.get() == "control")
+            settings.save_posting(self.data_dir, self.max_parallel.get())
             if self.launcher is not None and self.autostart.get() != settings.autostart_on():
                 settings.set_autostart(self.autostart.get(), self.launcher)
         except settings.SettingsError as exc:

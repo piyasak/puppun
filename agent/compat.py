@@ -6,7 +6,6 @@ means testing it first (G1-03 / G5-01) and adding it here in a new Agent version
 
 from __future__ import annotations
 
-import platform
 import sys
 from dataclasses import dataclass
 
@@ -36,7 +35,8 @@ def check_phone(model: str | None, android: str | None, package: str | None, ver
 
 
 def check_windows(system: str | None = None, build: int | None = None) -> Verdict:
-    system = system or platform.system()
+    # sys.platform, never platform.system(): on Windows, Python 3.14 asks WMI for it and a stuck WMI hangs.
+    system = system or {"win32": "Windows", "darwin": "Darwin"}.get(sys.platform, sys.platform.capitalize())
     if system != "Windows":
         return Verdict(False, f"{system} is not supported (Windows 11 only)")
     build = build if build is not None else (sys.getwindowsversion().build if sys.platform == "win32" else 0)

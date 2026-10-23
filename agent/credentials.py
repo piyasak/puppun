@@ -33,6 +33,7 @@ class AgentConfig:
     media_dir: str | None = None  # the customer's own videos for "file on the Agent PC" jobs (Q-17)
     show_screens: bool = False  # phone screens on the PC while connected (PO 2026-10-10)
     screens_control: bool = True  # False = view-only windows
+    max_parallel_posts: int = 1  # phones posting at the same time on this PC (PO 2026-10-23: settable, default 1)
 
 
 def save_config(data_dir: Path, config: AgentConfig) -> None:
@@ -42,11 +43,23 @@ def save_config(data_dir: Path, config: AgentConfig) -> None:
     os.replace(tmp, data_dir / "config.json")
 
 
+MAX_PARALLEL_POSTS = 10
+
+
+def parallel_posts(value) -> int:
+    """1-10; anything else (missing, text, 0) is 1, the old one-at-a-time behaviour."""
+    try:
+        return min(max(int(value), 1), MAX_PARALLEL_POSTS)
+    except (TypeError, ValueError):
+        return 1
+
+
 def load_config(data_dir: Path) -> AgentConfig | None:
     try:
         data = json.loads((data_dir / "config.json").read_text(encoding="utf-8"))
         return AgentConfig(data["server"], data["username"], data.get("clips_dir"), data.get("media_dir"),
-                           bool(data.get("show_screens", False)), bool(data.get("screens_control", True)))
+                           bool(data.get("show_screens", False)), bool(data.get("screens_control", True)),
+                           parallel_posts(data.get("max_parallel_posts", 1)))
     except (FileNotFoundError, KeyError, ValueError):
         return None
 

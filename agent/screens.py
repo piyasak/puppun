@@ -179,13 +179,15 @@ class ScreenWall:
     @contextlib.contextmanager
     def locked(self, serial: str):
         """View-only while the Agent works on this phone; control comes back afterwards."""
-        self.busy.add(serial)
+        with self._lock:
+            self.busy.add(serial)
         if self.control:
             self._set_control(serial, False)
         try:
             yield
         finally:
-            self.busy.discard(serial)
+            with self._lock:
+                self.busy.discard(serial)
             if self.control:
                 self._set_control(serial, True)
 
