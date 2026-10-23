@@ -41,6 +41,8 @@ class EnvironmentPatch(BaseModel):
     registered_agent_limit: int | None = Field(default=None, ge=0, le=1000)
     concurrent_session_limit: int | None = Field(default=None, ge=0, le=1000)
     device_limit: int | None = Field(default=None, ge=0, le=1000)
+    # Q-54: posts at once; 0 = back to "as many as the phones" (NULL), 1..device limit otherwise
+    max_parallel_posts: int | None = Field(default=None, ge=0, le=1000)
 
 
 def _out(env: Environment) -> dict:
@@ -50,8 +52,15 @@ def _out(env: Environment) -> dict:
         "registered_agent_limit": env.registered_agent_limit,
         "concurrent_session_limit": env.concurrent_session_limit,
         "device_limit": env.device_limit,
+        "max_parallel_posts": env.max_parallel_posts,
+        "parallel_posts_cap": parallel_cap(env),
         "created_at": env.created_at.isoformat(),
     }
+
+
+def parallel_cap(env: Environment) -> int:
+    """Posts running at once on this Environment (Q-54): the owner's setting, else its phones."""
+    return env.max_parallel_posts or max(env.device_limit, 1)
 
 
 def _name_taken() -> ApiError:
@@ -126,6 +135,11 @@ def update_environment(environment_id: uuid.UUID, body: EnvironmentPatch, reques
         setattr(env, name, value)
     if body.name is not None:
         env.name = body.name.strip()
+    if body.max_parallel_posts is not None:
+        env.max_parallel_posts = body.max_parallel_posts or None
+    if env.max_parallel_posts is not None and env.max_parallel_posts > max(env.device_limit, 1):
+        raise ApiError(422, "VALIDATION_ERROR", "โพสต์พร้อมกันต้องไม่เกินจำนวนโทรศัพท์ของ Environment นี้",
+                       {"fields": [{"field": "max_parallel_posts", "reason": "above_device_limit"}]})
     try:
         db.flush()
     except IntegrityError:

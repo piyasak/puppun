@@ -84,6 +84,39 @@ function LimitsForm({ initial, submitLabel, onSubmit, onCancel }: {
   )
 }
 
+/** Q-54 (PO 2026-10-23): posts running at once on this Environment, at most its phones; lower = less risk. */
+function ParallelCap({ env, onSaved }: { env: Environment; onSaved: () => Promise<void> }) {
+  const [value, setValue] = useState(String(env.max_parallel_posts ?? ''))
+  const [error, setError] = useState('')
+  const max = Math.max(env.device_limit, 1)
+
+  async function save() {
+    setError('')
+    try {
+      await api(`/v1/environments/${env.id}`, { method: 'PATCH', body: { max_parallel_posts: Number(value) || 0 } })
+      await onSaved()
+    } catch (err) {
+      setError((err as ApiError).message)
+    }
+  }
+
+  return (
+    <div className="admin-action" data-testid="parallel-cap">
+      <label>
+        โพสต์พร้อมกันสูงสุด{' '}
+        <select value={value} onChange={(e) => setValue(e.target.value)} aria-label={`โพสต์พร้อมกันสูงสุด ${env.name}`}>
+          <option value="">ตามจำนวนโทรศัพท์ ({max})</option>
+          {Array.from({ length: max }, (_, i) => i + 1).map((n) => <option key={n} value={String(n)}>{n} เครื่อง</option>)}
+        </select>
+      </label>
+      <button type="button" className="btn btn-secondary btn-small" onClick={() => void save()}
+        disabled={value === String(env.max_parallel_posts ?? '')}>บันทึก</button>
+      <span className="muted">ตอนนี้ใช้ {env.parallel_posts_cap} • ตั้งน้อยลงเพื่อลดความเสี่ยง • Agent 0.10.0 ขึ้นไปตั้งในเครื่องได้อีกชั้น</span>
+      {error && <Alert kind="error">{error}</Alert>}
+    </div>
+  )
+}
+
 export function EnvironmentsPage() {
   const [items, setItems] = useState<Environment[] | null>(null)
   const [usage, setUsage] = useState<Usage | null>(null)
@@ -142,6 +175,7 @@ export function EnvironmentsPage() {
                     <span className="muted">
                       {KEYS.map((k) => `${LIMIT_LABELS[k]} ${env[k]}`).join(' • ')}
                     </span>
+                    <ParallelCap env={env} onSaved={load} />
                   </div>
                   <button type="button" className="btn btn-secondary" onClick={() => setEditing(env.id)}
                     aria-label={`แก้ไข ${env.name}`}>แก้ไข</button>

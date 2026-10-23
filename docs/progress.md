@@ -4,6 +4,10 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-23) — server cap for posts at once (Q-54, server)
+- PO: the plan's phones by default, settable lower to reduce risk. `environments.max_parallel_posts` (migration 0028, NULL = the Environment's device limit, check >= 1); `PATCH /v1/environments/{id}` takes it (0 = back to NULL, above the device limit = 422); output adds `parallel_posts_cap`. `posts.claim` locks the Environment row and returns nothing while `parallel_posts_cap` posts are in flight (IN_FLIGHT states, not UNKNOWN). Web: Environments row "โพสต์พร้อมกันสูงสุด" (ตามจำนวนโทรศัพท์ / 1..N). Works with any Agent; Agent 0.10.0 adds its own per-PC setting below it
+- Tests: integration test_parallel_cap (default = phones, cap 1 holds the next claim until the first ends, 0 resets, above the phones refused, another Workspace 404). Web tsc -b clean
+
 ### Latest slice (2026-10-23) — posts on several phones at once (Q-54, source 0.10.0)
 - PO: max per PC settable, default 1; same-time posts start 30-90 s apart (random); release 0.9.2 first
 - Agent 0.9.2 published 2026-10-23 (master fe67e69): https://github.com/piyasak/punpun-agent/releases/tag/v0.9.2, setup SHA-256 c220dfec…a0f3, 59.4 MB; no .py/.pyc; exe reports 0.9.2 and carries the own-port windows, the Promote words and the clean start; simulated fresh PC: FFmpeg installed; bundle test 0.9.1 -> 0.9.2 passed; anonymous download HTTP 200, hash matches
