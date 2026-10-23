@@ -4,6 +4,10 @@
 
 Last updated: 2026-10-07
 
+### Latest slice (2026-10-23) — clean start: phone apps closed before the Agent works (Q-53, source 0.9.2)
+- PO: when the Agent starts, kill all open applications first, then start. Done on the phones (`agent/clean_start.py`): Home, force-stop every installed app except punpun Thai input / the keyboard in use / the home screen, `am kill-all`; skipped per phone on error; `--no-clean-start` to turn off. Runs once at start, before the phone check, the screen wall and any post or job
+- Tests: test-unit (keyboards and home kept, unauthorized phone untouched, a failing phone skipped, odd package names never put in a shell command). No phone on this PC: not tried on a real phone yet (needs 0.9.2 on the customer PC). Product basket: PO "รอก่อน"
+
 ### Latest slice (2026-10-21) — two phone windows showed one phone; Promote offer (source 0.9.2)
 - PO screenshot 22:12: windows "tx1" and "tx2 (ดูอย่างเดียว)" showed the same frame; PO: only right after the wall opens. The view-only label is by design (tx2 was posting, `ScreenWall.locked`). Posting itself was right: c37f6138 VERIFIED on @patsy4404 (tx2) 22:14:12, then tx1 3f61d7c0 started
 - Cause: the wall started one scrcpy per phone back to back with scrcpy's default port range (27183:27199); started together they could take the same tunnel port and both windows got one phone's stream
